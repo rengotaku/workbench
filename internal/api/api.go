@@ -1,0 +1,373 @@
+// Package api exposes the task store over HTTP. It is the only writer, so
+// the CLI and the page cannot disagree about what happened or skip an event.
+package api
+
+import (
+	"errors"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/rengotaku/todo-order/internal/task"
+)
+
+// DefaultScopeDays is the window the page opens with: one week.
+const DefaultScopeDays = 7
+
+// API serves the task endpoints.
+type API struct {
+	store *task.Store
+	loc   *time.Location
+}
+
+// New returns an API backed by store.
+func New(store *task.Store, loc *time.Location) *API {
+	if loc == nil {
+		loc = time.Local
+	}
+	return &API{store: store, loc: loc}
+}
+
+// Mount registers the endpoints under /api.
+func (a *API) Mount(r gin.IRouter) {
+	g := r.Group("/api")
+
+	g.GET("/tasks", a.listTasks)
+	g.POST("/tasks", a.addTask)
+	g.PATCH("/tasks/:id", a.patchTask)
+	g.POST("/tasks/:id/done", a.doneTask)
+	g.POST("/tasks/:id/wait", a.waitTask)
+	g.POST("/tasks/:id/resume", a.resumeTask)
+	g.POST("/tasks/:id/order", a.orderTask)
+	g.GET("/tasks/:id/context", a.taskContext)
+
+	g.GET("/ask", a.ask)
+	g.POST("/events/:id/why", a.why)
+}
+
+// View is a task plus the presentation facts the page and CLI both need, so
+// neither has to re-derive the due-date arithmetic.
+type View struct {
+	DueLabel string `json:"due_label"`
+	DueClass string `json:"due_class"`
+	task.Task
+	StalledFor int  `json:"stalled_for,omitempty"`
+	InScope    bool `json:"in_scope"`
+	Overdue    bool `json:"overdue"`
+}
+
+type listResponse struct {
+	Today   string `json:"today"`
+	Queue   []View `json:"queue"`
+	Waiting []View `json:"waiting"`
+	Done    []View `json:"done"`
+	Counts  struct {
+		Over int `json:"over"`
+		Near int `json:"near"`
+		Rest int `json:"rest"`
+	} `json:"counts"`
+	ScopeDays int `json:"scope_days"`
+}
+
+func (a *API) listTasks(c *gin.Context) {
+	scope, err := scopeDays(c.Query("scope"))
+	if err != nil {
+		badRequest(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, a.build(scope))
+}
+
+func (a *API) build(scope int) listResponse {
+	today := a.today()
+	var res listResponse
+	res.Today = today.Format(task.DateLayout)
+	res.ScopeDays = scope
+
+	// Completions older than the most recent Monday drop off the page. The
+	// week boundary is a query, not a migration — nothing is moved on disk.
+	weekStart := mondayOf(today)
+
+	for _, t := range a.store.List() {
+		v := a.view(t, today, scope)
+		switch t.State {
+		case task.StateWaiting:
+			res.Waiting = append(res.Waiting, v)
+		case task.StateDone:
+			if t.CompletedAt != nil && t.CompletedAt.In(a.loc).Before(weekStart) {
+				continue
+			}
+			res.Done = append(res.Done, v)
+		default:
+			res.Queue = append(res.Queue, v)
+			switch {
+			case v.Overdue:
+				res.Counts.Over++
+			case v.InScope:
+				res.Counts.Near++
+			default:
+				res.Counts.Rest++
+			}
+		}
+	}
+	return res
+}
+
+func (a *API) view(t task.Task, today time.Time, scope int) View {
+	v := View{Task: t}
+
+	if days, ok := t.StalledFor(today); ok {
+		v.StalledFor = days
+	}
+
+	if t.Due == "" {
+		v.DueLabel, v.DueClass = "期限なし", "none"
+		return v
+	}
+	d, err := task.ParseDate(t.Due, a.loc)
+	if err != nil {
+		v.DueLabel, v.DueClass = t.Due, "none"
+		return v
+	}
+	diff := int(d.Sub(today).Hours() / 24)
+	switch {
+	case diff < 0:
+		v.DueLabel = strconv.Itoa(-diff) + "日超過"
+		v.DueClass = "over"
+		v.Overdue, v.InScope = true, true
+	case diff == 0:
+		v.DueLabel, v.DueClass = "今日", "over"
+		v.Overdue, v.InScope = true, true
+	case diff <= scope:
+		v.DueLabel = "あと" + strconv.Itoa(diff) + "日"
+		v.DueClass = "near"
+		v.InScope = true
+	default:
+		v.DueLabel = d.Format("1/2")
+		v.DueClass = "plain"
+	}
+	return v
+}
+
+type addRequest struct {
+	Name   string `json:"name"`
+	Detail string `json:"detail"`
+	Due    string `json:"due"`
+	Actor  string `json:"actor"`
+}
+
+func (a *API) addTask(c *gin.Context) {
+	var req addRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	t, err := a.store.Add(req.Name, req.Detail, req.Due, actorOf(req.Actor))
+	a.respond(c, t, err)
+}
+
+type patchRequest struct {
+	Due    *string `json:"due"`
+	Detail *string `json:"detail"`
+	Actor  string  `json:"actor"`
+}
+
+func (a *API) patchTask(c *gin.Context) {
+	var req patchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	id := c.Param("id")
+	actor := actorOf(req.Actor)
+
+	var (
+		t   task.Task
+		err error
+	)
+	if req.Due != nil {
+		if t, err = a.store.SetDue(id, *req.Due, actor); err != nil {
+			a.respond(c, t, err)
+			return
+		}
+	}
+	if req.Detail != nil {
+		if t, err = a.store.SetDetail(id, *req.Detail, actor); err != nil {
+			a.respond(c, t, err)
+			return
+		}
+	}
+	if req.Due == nil && req.Detail == nil {
+		badRequest(c, errors.New("nothing to change: pass due or detail"))
+		return
+	}
+	a.respond(c, t, nil)
+}
+
+func (a *API) doneTask(c *gin.Context) {
+	t, err := a.store.Done(c.Param("id"), actorOf(c.Query("actor")))
+	a.respond(c, t, err)
+}
+
+type waitRequest struct {
+	To    string `json:"to"`
+	Note  string `json:"note"`
+	Actor string `json:"actor"`
+}
+
+func (a *API) waitTask(c *gin.Context) {
+	var req waitRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	t, err := a.store.Wait(c.Param("id"), req.To, req.Note, actorOf(req.Actor))
+	a.respond(c, t, err)
+}
+
+type resumeRequest struct {
+	Note  string `json:"note"`
+	Actor string `json:"actor"`
+}
+
+func (a *API) resumeTask(c *gin.Context) {
+	var req resumeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	t, err := a.store.Resume(c.Param("id"), req.Note, actorOf(req.Actor))
+	a.respond(c, t, err)
+}
+
+type orderRequest struct {
+	ScopeDays *int   `json:"scope_days"`
+	Actor     string `json:"actor"`
+	To        int    `json:"to"`
+}
+
+func (a *API) orderTask(c *gin.Context) {
+	var req orderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	scope := DefaultScopeDays
+	if req.ScopeDays != nil {
+		scope = *req.ScopeDays
+	}
+	t, err := a.store.Reorder(c.Param("id"), req.To, scope, actorOf(req.Actor))
+	a.respond(c, t, err)
+}
+
+func (a *API) taskContext(c *gin.Context) {
+	id := c.Param("id")
+	t, err := a.store.Get(id)
+	if err != nil {
+		a.fail(c, err)
+		return
+	}
+	events, err := a.store.Events(id)
+	if err != nil {
+		a.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"task": t, "events": events})
+}
+
+func (a *API) ask(c *gin.Context) {
+	pending, err := a.store.Ask()
+	if err != nil {
+		a.fail(c, err)
+		return
+	}
+	if pending == nil {
+		pending = []task.Pending{}
+	}
+	c.JSON(http.StatusOK, gin.H{"pending": pending})
+}
+
+type whyRequest struct {
+	Reason string `json:"reason"`
+}
+
+func (a *API) why(c *gin.Context) {
+	var req whyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	e, err := a.store.Why(c.Param("id"), req.Reason)
+	if err != nil {
+		a.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"event": e})
+}
+
+// ---- helpers ----
+
+func (a *API) today() time.Time {
+	n := time.Now().In(a.loc)
+	return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, a.loc)
+}
+
+func (a *API) respond(c *gin.Context, t task.Task, err error) {
+	if err != nil {
+		a.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"task": t})
+}
+
+// fail maps store errors onto status codes. A missing or already-completed ID
+// is reported as an error rather than a quiet success, so a mistyped ID cannot
+// look like it worked.
+func (a *API) fail(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, task.ErrNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case errors.Is(err, task.ErrAlreadyDone):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
+}
+
+func badRequest(c *gin.Context, err error) {
+	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+}
+
+func actorOf(s string) task.Actor {
+	if s == string(task.ActorAI) {
+		return task.ActorAI
+	}
+	return task.ActorHuman
+}
+
+// scopeDays parses the scope query. "all" keeps everything in view.
+func scopeDays(raw string) (int, error) {
+	if raw == "" {
+		return DefaultScopeDays, nil
+	}
+	if raw == "all" {
+		return 36500, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return 0, errors.New(`scope must be a number of days or "all"`)
+	}
+	return n, nil
+}
+
+// mondayOf returns the most recent Monday at midnight, which is where the
+// "done this week" list starts.
+func mondayOf(today time.Time) time.Time {
+	weekday := int(today.Weekday())
+	if weekday == 0 {
+		weekday = 7 // Sunday closes the week that began the previous Monday
+	}
+	return today.AddDate(0, 0, -(weekday - 1))
+}

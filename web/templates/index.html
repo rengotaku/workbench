@@ -1,0 +1,66 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="wrap">
+  <div class="app">
+    <div class="app-head">
+      <div class="head-left">
+        <h1 class="app-name">着手順</h1>
+        <span class="app-date">{{.Today}}</span>
+      </div>
+      <div class="head-right">
+        <div class="scope-set" role="group" aria-label="スコープ">
+          <button type="button" data-scope="7" aria-pressed="true">1週間</button>
+          <button type="button" data-scope="14" aria-pressed="false">2週間</button>
+          <button type="button" data-scope="all" aria-pressed="false">すべて</button>
+          <button type="button" data-scope="custom" aria-pressed="false">指定</button>
+        </div>
+        <label class="scope-until" id="scope-until-wrap" hidden>～<input type="date" id="scope-until" aria-label="スコープの締め日"></label>
+        <div class="counts">
+          <span class="count over" title="期限超過"><i aria-hidden="true"></i><b id="c-over">0</b><span class="sr">件 期限超過</span></span>
+          <span class="count near" title="スコープ内に期限"><i aria-hidden="true"></i><b id="c-near">0</b><span class="sr">件 スコープ内に期限</span></span>
+          <span class="count rest" title="スコープ外・期限なし"><i aria-hidden="true"></i><b id="c-rest">0</b><span class="sr">件 スコープ外</span></span>
+        </div>
+      </div>
+    </div>
+
+    <section class="sec">
+      <div class="sec-head">
+        <h2 class="sec-title">着手順</h2>
+        <span class="sec-hint">上から順に取る</span>
+      </div>
+      <ul class="list" id="queue"></ul>
+      <button type="button" class="more" id="more" hidden></button>
+      <p class="empty" id="queue-empty" hidden>着手順は空。<code>todo "タスク名"</code> で追加する</p>
+    </section>
+
+    <section class="sec" id="waiting-sec" hidden>
+      <div class="sec-head">
+        <h2 class="sec-title">待ち</h2>
+        <span class="sec-hint">ボールを渡してからの経過日数で並ぶ</span>
+      </div>
+      <ul class="list" id="waitlist"></ul>
+    </section>
+
+    <section class="sec" id="done-sec" hidden>
+      <div class="sec-head">
+        <h2 class="sec-title">今週完了</h2>
+        <span class="sec-hint">月曜以降の分だけ残る</span>
+      </div>
+      <ul class="list" id="donelist"></ul>
+    </section>
+
+    <div class="add-row">
+      <code>todo "タスク名" --due YYYY-MM-DD</code>
+      <span>→ このアプリに直接入る（不通ならエラーで止まる）</span>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span class="l-over"><i></i>期限超過</span>
+    <span class="l-near"><i></i>スコープ内に期限</span>
+    <span class="l-rest"><i></i>期限なし・スコープ外</span>
+  </div>
+  <p class="err" id="err" hidden></p>
+</div>
+{{end}}

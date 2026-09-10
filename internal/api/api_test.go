@@ -1,0 +1,323 @@
+package api_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/rengotaku/todo-order/internal/api"
+	"github.com/rengotaku/todo-order/internal/task"
+)
+
+func init() { gin.SetMode(gin.TestMode) }
+
+func setup(t *testing.T) (*task.Store, http.Handler) {
+	t.Helper()
+	store, err := task.Open(t.TempDir(), time.Local)
+	require.NoError(t, err)
+
+	r := gin.New()
+	api.New(store, time.Local).Mount(r)
+	return store, r
+}
+
+func dateIn(days int) string {
+	n := time.Now()
+	return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.Local).
+		AddDate(0, 0, days).Format(task.DateLayout)
+}
+
+func call(t *testing.T, h http.Handler, method, path string, body any) (int, map[string]any) {
+	t.Helper()
+	var buf *bytes.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		require.NoError(t, err)
+		buf = bytes.NewReader(b)
+	} else {
+		buf = bytes.NewReader(nil)
+	}
+	req := httptest.NewRequest(method, path, buf)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	out := map[string]any{}
+	if rec.Body.Len() > 0 {
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out), rec.Body.String())
+	}
+	return rec.Code, out
+}
+
+func TestList_SplitsSectionsAndCountsTheScope(t *testing.T) {
+	store, h := setup(t)
+
+	overdue, err := store.Add("超過している", "", dateIn(-1), task.ActorHuman)
+	require.NoError(t, err)
+	_, err = store.Add("週内に期限", "", dateIn(3), task.ActorHuman)
+	require.NoError(t, err)
+	_, err = store.Add("ずっと先", "", dateIn(60), task.ActorHuman)
+	require.NoError(t, err)
+	waiting, err := store.Add("渡してある", "", "", task.ActorHuman)
+	require.NoError(t, err)
+	_, err = store.Wait(waiting.ID, "相手", "回答待ち", task.ActorHuman)
+	require.NoError(t, err)
+
+	code, body := call(t, h, http.MethodGet, "/api/tasks?scope=7", nil)
+	require.Equal(t, http.StatusOK, code)
+
+	queue := rowsOf(t, body, "queue")
+	assert.Len(t, queue, 3)
+	assert.Len(t, rowsOf(t, body, "waiting"), 1)
+
+	counts := countsOf(t, body)
+	assert.EqualValues(t, 1, counts["over"])
+	assert.EqualValues(t, 1, counts["near"])
+	assert.EqualValues(t, 1, counts["rest"], "the far due date sits outside the week")
+
+	first, ok := queue[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, overdue.ID, first["id"])
+	assert.Equal(t, "over", first["due_class"])
+	assert.Equal(t, "1日超過", first["due_label"])
+	assert.Equal(t, true, first["overdue"])
+}
+
+// countsOf pulls the three header numbers out of a list response.
+func countsOf(t *testing.T, body map[string]any) map[string]any {
+	t.Helper()
+	counts, ok := body["counts"].(map[string]any)
+	require.True(t, ok, "response has no counts: %v", body)
+	return counts
+}
+
+// rowsOf pulls one section out of a list response.
+func rowsOf(t *testing.T, body map[string]any, key string) []any {
+	t.Helper()
+	rows, ok := body[key].([]any)
+	if !ok {
+		return nil
+	}
+	return rows
+}
+
+// taskOf pulls the task out of a single-task response.
+func taskOf(t *testing.T, body map[string]any) map[string]any {
+	t.Helper()
+	got, ok := body["task"].(map[string]any)
+	require.True(t, ok, "response has no task: %v", body)
+	return got
+}
+
+// idOf reads the task ID out of a single-task response.
+func idOf(t *testing.T, body map[string]any) string {
+	t.Helper()
+	id, ok := taskOf(t, body)["id"].(string)
+	require.True(t, ok, "task has no id: %v", body)
+	return id
+}
+
+func TestList_WideningTheScopePullsTheFarDueDateIn(t *testing.T) {
+	store, h := setup(t)
+	_, err := store.Add("10日後", "", dateIn(10), task.ActorHuman)
+	require.NoError(t, err)
+
+	_, week := call(t, h, http.MethodGet, "/api/tasks?scope=7", nil)
+	assert.EqualValues(t, 1, countsOf(t, week)["rest"])
+
+	_, fortnight := call(t, h, http.MethodGet, "/api/tasks?scope=14", nil)
+	assert.EqualValues(t, 1, countsOf(t, fortnight)["near"])
+
+	_, all := call(t, h, http.MethodGet, "/api/tasks?scope=all", nil)
+	assert.EqualValues(t, 1, countsOf(t, all)["near"])
+}
+
+func TestList_RejectsAMeaninglessScope(t *testing.T) {
+	_, h := setup(t)
+	code, body := call(t, h, http.MethodGet, "/api/tasks?scope=soon", nil)
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Contains(t, body["error"], "scope")
+}
+
+func TestList_ShowsOnlyThisWeeksCompletions(t *testing.T) {
+	store, h := setup(t)
+	fresh, err := store.Add("今週やった", "", "", task.ActorHuman)
+	require.NoError(t, err)
+	_, err = store.Done(fresh.ID, task.ActorHuman)
+	require.NoError(t, err)
+
+	_, body := call(t, h, http.MethodGet, "/api/tasks", nil)
+	assert.Len(t, rowsOf(t, body, "done"), 1)
+}
+
+func TestAdd_ThenDone_ReportsAConflictOnTheSecondTry(t *testing.T) {
+	_, h := setup(t)
+
+	code, body := call(t, h, http.MethodPost, "/api/tasks", map[string]any{"name": "やる"})
+	require.Equal(t, http.StatusOK, code)
+	id := idOf(t, body)
+
+	code, _ = call(t, h, http.MethodPost, "/api/tasks/"+id+"/done", nil)
+	assert.Equal(t, http.StatusOK, code)
+
+	code, body = call(t, h, http.MethodPost, "/api/tasks/"+id+"/done", nil)
+	assert.Equal(t, http.StatusConflict, code)
+	assert.Contains(t, body["error"], "already done")
+}
+
+func TestUnknownID_Is404(t *testing.T) {
+	_, h := setup(t)
+	code, _ := call(t, h, http.MethodPost, "/api/tasks/T999/done", nil)
+	assert.Equal(t, http.StatusNotFound, code)
+
+	code, _ = call(t, h, http.MethodGet, "/api/tasks/T999/context", nil)
+	assert.Equal(t, http.StatusNotFound, code)
+}
+
+func TestAdd_RejectsAnEmptyName(t *testing.T) {
+	_, h := setup(t)
+	code, body := call(t, h, http.MethodPost, "/api/tasks", map[string]any{"name": ""})
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.NotEmpty(t, body["error"])
+}
+
+func TestPatch_NeedsSomethingToChange(t *testing.T) {
+	store, h := setup(t)
+	added, _ := store.Add("直す", "", "", task.ActorHuman)
+
+	code, body := call(t, h, http.MethodPatch, "/api/tasks/"+added.ID, map[string]any{})
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Contains(t, body["error"], "nothing to change")
+
+	code, _ = call(t, h, http.MethodPatch, "/api/tasks/"+added.ID,
+		map[string]any{"due": dateIn(2), "detail": "詳しい話"})
+	require.Equal(t, http.StatusOK, code)
+
+	got, err := store.Get(added.ID)
+	require.NoError(t, err)
+	assert.Equal(t, dateIn(2), got.Due)
+	assert.Equal(t, "詳しい話", got.Detail)
+}
+
+func TestWait_RequiresWhoHoldsTheBall(t *testing.T) {
+	store, h := setup(t)
+	added, _ := store.Add("渡す", "", "", task.ActorHuman)
+
+	code, _ := call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/wait", map[string]any{})
+	assert.Equal(t, http.StatusBadRequest, code)
+
+	code, _ = call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/wait",
+		map[string]any{"to": "相手", "note": "回答待ち"})
+	require.Equal(t, http.StatusOK, code)
+
+	code, _ = call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/resume",
+		map[string]any{"note": "返ってきた"})
+	assert.Equal(t, http.StatusOK, code)
+}
+
+func TestOrder_MovesATaskAndTheEventNamesWhatItOvertook(t *testing.T) {
+	store, h := setup(t)
+	near, _ := store.Add("期限が近い", "", dateIn(2), task.ActorHuman)
+	mover, _ := store.Add("期限なし", "", "", task.ActorHuman)
+
+	code, body := call(t, h, http.MethodPost, "/api/tasks/"+mover.ID+"/order",
+		map[string]any{"to": 0, "scope_days": 7})
+	require.Equal(t, http.StatusOK, code)
+	assert.EqualValues(t, 0, taskOf(t, body)["order"])
+
+	code, ctx := call(t, h, http.MethodGet, "/api/tasks/"+mover.ID+"/context", nil)
+	require.Equal(t, http.StatusOK, code)
+
+	var jumpedIDs []string
+	for _, raw := range rowsOf(t, ctx, "events") {
+		e, ok := raw.(map[string]any)
+		require.True(t, ok)
+		if e["kind"] != string(task.KindReordered) {
+			continue
+		}
+		jumped, ok := e["jumped"].([]any)
+		if !ok {
+			continue
+		}
+		for _, j := range jumped {
+			row, ok := j.(map[string]any)
+			require.True(t, ok)
+			id, ok := row["id"].(string)
+			require.True(t, ok)
+			jumpedIDs = append(jumpedIDs, id)
+		}
+	}
+	assert.Equal(t, []string{near.ID}, jumpedIDs)
+}
+
+func TestOrder_RejectsAPositionOutsideTheQueue(t *testing.T) {
+	store, h := setup(t)
+	added, _ := store.Add("1件だけ", "", "", task.ActorHuman)
+
+	code, body := call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/order",
+		map[string]any{"to": 9})
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Contains(t, body["error"], "out of range")
+}
+
+func TestAskAndWhy_QueueTheChangeThenRecordTheReason(t *testing.T) {
+	store, h := setup(t)
+	_, _ = store.Add("A", "", "", task.ActorHuman)
+	b, _ := store.Add("B", "", "", task.ActorHuman)
+
+	code, _ := call(t, h, http.MethodPost, "/api/tasks/"+b.ID+"/order", map[string]any{"to": 0})
+	require.Equal(t, http.StatusOK, code)
+
+	code, body := call(t, h, http.MethodGet, "/api/ask", nil)
+	require.Equal(t, http.StatusOK, code)
+	pending := rowsOf(t, body, "pending")
+	require.Len(t, pending, 1)
+
+	first, ok := pending[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "1位に上げた", first["trigger"])
+
+	event, ok := first["event"].(map[string]any)
+	require.True(t, ok)
+	eventID, ok := event["id"].(string)
+	require.True(t, ok)
+
+	code, body = call(t, h, http.MethodPost, "/api/events/"+eventID+"/why",
+		map[string]any{"reason": "切替日が動いたので前に出した"})
+	require.Equal(t, http.StatusOK, code)
+	recorded, ok := body["event"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "切替日が動いたので前に出した", recorded["reason"])
+
+	code, body = call(t, h, http.MethodGet, "/api/ask", nil)
+	require.Equal(t, http.StatusOK, code)
+	assert.Empty(t, rowsOf(t, body, "pending"), "an explained change leaves the queue")
+}
+
+func TestWhy_UnknownEventIs404(t *testing.T) {
+	_, h := setup(t)
+	code, _ := call(t, h, http.MethodPost, "/api/events/E9999/why",
+		map[string]any{"reason": "理由"})
+	assert.Equal(t, http.StatusNotFound, code)
+}
+
+func TestActor_IsRecordedSoAIChangesAreDistinguishable(t *testing.T) {
+	store, h := setup(t)
+
+	code, body := call(t, h, http.MethodPost, "/api/tasks",
+		map[string]any{"name": "AI が入れた", "actor": "ai"})
+	require.Equal(t, http.StatusOK, code)
+	id := idOf(t, body)
+
+	events, err := store.Events(id)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	assert.Equal(t, task.ActorAI, events[0].Actor)
+}
