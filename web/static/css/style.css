@@ -339,8 +339,17 @@ ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction
   border-left: 3px solid transparent;
 }
 .task:last-child { border-bottom: 0; }
-.task.in-window { border-left-color: var(--near); background: linear-gradient(90deg, var(--near-soft), transparent 60%); }
-.task.overdue { border-left-color: var(--over); background: linear-gradient(90deg, var(--over-soft), transparent 60%); }
+/* The tint fades out before the name column starts (the name begins ~78px in),
+   so it never sits behind the text. It stays a widening of the stripe rather
+   than a highlight on the row. */
+.task.in-window {
+  border-left-color: var(--near);
+  background: linear-gradient(90deg, var(--near-soft) 0, var(--near-soft) 44px, transparent 68px);
+}
+.task.overdue {
+  border-left-color: var(--over);
+  background: linear-gradient(90deg, var(--over-soft) 0, var(--over-soft) 44px, transparent 68px);
+}
 .task.dragging { opacity: .4; }
 .task.openable { cursor: pointer; }
 .task.openable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
