@@ -31,6 +31,10 @@
     return e.isComposing === true || e.keyCode === 229;
   }
 
+  var TRASH_SVG = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">'
+    + '<path d="M2.5 4.5h11M6 4.5V2.8h4v1.7M4.2 4.5l.7 8.7h6.2l.7-8.7M6.6 6.8v4.6M9.4 6.8v4.6"'
+    + ' fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+
   var el = {
     queue: document.getElementById('queue'),
     waitSec: document.getElementById('waiting-sec'),
@@ -319,52 +323,29 @@
     return span;
   }
 
-  // removeIcon is two clicks: the first arms the button (it turns into a red
-  // 「削除」), the second removes the task. One click sits too close to the due
-  // chip to be safe, so a stray click only arms. Moving off the row or pressing
-  // Escape disarms it again. The delete itself is recoverable with undo.
+  // removeIcon deletes on one click. There is no confirmation: the delete is
+  // recorded as an event with the whole task in it, so the notice that follows
+  // offers 元に戻す and `Cmd/Ctrl+Z` works too. Asking first would cost a click
+  // on every real deletion to guard against a rare stray one.
   function removeIcon(t) {
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'del del-slot';
     btn.title = '削除する';
     btn.setAttribute('aria-label', t.name + ' を削除する');
-    btn.innerHTML = '<svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true">'
-      + '<path d="M2.5 4h9M5.5 4V2.5h3V4M4 4l.6 7.5h4.8L10 4" fill="none"'
-      + ' stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
-
-    function disarm() {
-      if (!btn.classList.contains('armed')) return;
-      btn.classList.remove('armed');
-      btn.textContent = '';
-      btn.innerHTML = '<svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true">'
-        + '<path d="M2.5 4h9M5.5 4V2.5h3V4M4 4l.6 7.5h4.8L10 4" fill="none"'
-        + ' stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
-      btn.title = '削除する';
-    }
+    btn.innerHTML = TRASH_SVG;
 
     btn.addEventListener('click', function (ev) {
       // The row opens on click; deleting must not also open or close it.
       ev.stopPropagation();
-      if (!btn.classList.contains('armed')) {
-        btn.classList.add('armed');
-        btn.textContent = '削除';
-        btn.title = 'もう一度押すと削除（Cmd/Ctrl+Z で戻せる）';
-        return;
-      }
       btn.disabled = true;
       request('DELETE', '/api/tasks/' + encodeURIComponent(t.id))
         .then(function () {
           if (state.openId === t.id) state.openId = null;
           return load().then(function () { flash('削除した: ' + t.name); });
         })
-        .catch(function (err) { btn.disabled = false; disarm(); showError(err); });
+        .catch(function (err) { btn.disabled = false; showError(err); });
     });
-    btn.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape') { ev.stopPropagation(); disarm(); }
-    });
-    btn.addEventListener('mouseleave', disarm);
-    btn.addEventListener('blur', disarm);
     return btn;
   }
 
