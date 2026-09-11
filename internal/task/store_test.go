@@ -527,6 +527,36 @@ func TestReopen_ThenDoneAgainWorks(t *testing.T) {
 	assert.Equal(t, task.StateDone, again.State)
 }
 
+func TestSetName_KeepsTheOldNameInTheEvent(t *testing.T) {
+	s := newStore(t)
+	added, _ := s.Add("元の名前", "", "", task.ActorHuman)
+
+	renamed, err := s.SetName(added.ID, "直した名前", task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, "直した名前", renamed.Name)
+
+	events, err := s.Events(added.ID)
+	require.NoError(t, err)
+	last := events[len(events)-1]
+	assert.Equal(t, task.KindRenamed, last.Kind)
+	assert.Equal(t, "元の名前", last.FromValue, "what it used to be called is not erased")
+	assert.Equal(t, "直した名前", last.ToValue)
+}
+
+func TestSetName_RejectsAnEmptyNameAndIgnoresANoOp(t *testing.T) {
+	s := newStore(t)
+	added, _ := s.Add("名前", "", "", task.ActorHuman)
+
+	_, err := s.SetName(added.ID, "", task.ActorHuman)
+	assert.ErrorContains(t, err, "name is required")
+
+	// Saving the same name records nothing.
+	before := s.Revision()
+	_, err = s.SetName(added.ID, "名前", task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, before, s.Revision())
+}
+
 func TestSetDue_ClearsWithAnEmptyStringAndRejectsBadInput(t *testing.T) {
 	s := newStore(t)
 	added, _ := s.Add("期限つき", "", dateIn(1), task.ActorHuman)

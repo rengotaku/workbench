@@ -42,6 +42,7 @@ const (
 	KindReopened  Kind = "reopened"
 	KindDetail    Kind = "detail_edited"
 	KindRemoved   Kind = "removed"
+	KindRenamed   Kind = "renamed"
 )
 
 // Task is the current state of one entry. Callers never mutate a Task in

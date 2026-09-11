@@ -44,7 +44,8 @@ func rootCmd() *cobra.Command {
 	root.Flags().String("detail", "", "detail text")
 
 	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), removeCmd(), waitCmd(), resumeCmd(),
-		orderCmd(), dueCmd(), detailCmd(), askCmd(), whyCmd(), contextCmd(), importCmd())
+		orderCmd(), dueCmd(), detailCmd(), renameCmd(), askCmd(), whyCmd(), contextCmd(),
+		importCmd())
 	return root
 }
 
@@ -359,6 +360,29 @@ func detailCmd() *cobra.Command {
 				return printRaw(raw)
 			}
 			fmt.Printf("詳細 %s  %s\n", t.ID, t.Name)
+			return nil
+		},
+	}
+}
+
+func renameCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "rename <ID> <新しい名前>",
+		Short: "タスク名を変える",
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			cl, err := newClient()
+			if err != nil {
+				return err
+			}
+			t, raw, err := cl.SetName(args[0], strings.Join(args[1:], " "))
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return printRaw(raw)
+			}
+			fmt.Printf("改名 %s  %s\n", t.ID, t.Name)
 			return nil
 		},
 	}

@@ -23,7 +23,6 @@
 
   var el = {
     queue: document.getElementById('queue'),
-    queueEmpty: document.getElementById('queue-empty'),
     waitSec: document.getElementById('waiting-sec'),
     waitList: document.getElementById('waitlist'),
     doneSec: document.getElementById('done-sec'),
@@ -32,6 +31,9 @@
     over: document.getElementById('c-over'),
     near: document.getElementById('c-near'),
     rest: document.getElementById('c-rest'),
+    addForm: document.getElementById('add-form'),
+    addName: document.getElementById('add-name'),
+    addDue: document.getElementById('add-due'),
     untilWrap: document.getElementById('scope-until-wrap'),
     until: document.getElementById('scope-until'),
     err: document.getElementById('err'),
@@ -128,8 +130,6 @@
       if (!inScope && !state.showOut) return;
       el.queue.appendChild(queueRow(t, inScope));
     });
-    el.queueEmpty.hidden = queue.length > 0;
-
     var out = queue.filter(function (t) { return !t.in_scope; }).length;
     el.more.hidden = out === 0;
     el.more.textContent = (state.showOut ? '− ' : '＋ ') + 'スコープ外 ' + out + '件';
@@ -306,12 +306,57 @@
     var panel = document.createElement('div');
     panel.className = 'panel';
 
-    if (t.detail) {
-      var detail = document.createElement('div');
-      detail.className = 'detail';
-      linkify(detail, t.detail);
-      panel.appendChild(detail);
+    // The panel is where a task is edited: opening it is the one place that
+    // has room for a name and a body without pushing the row past one line.
+    var nameField = field('名前', 'input', t.name);
+    var detailField = field('詳細', 'textarea', t.detail || '');
+    panel.appendChild(nameField.wrap);
+    panel.appendChild(detailField.wrap);
+
+    var actions = document.createElement('div');
+    actions.className = 'panel-actions';
+
+    var save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'primary';
+    save.textContent = '保存';
+    save.addEventListener('click', function () {
+      var body = {};
+      if (nameField.input.value.trim() && nameField.input.value !== t.name) {
+        body.name = nameField.input.value.trim();
+      }
+      if (detailField.input.value !== (t.detail || '')) {
+        body.detail = detailField.input.value;
+      }
+      if (!Object.keys(body).length) { flash('変更なし'); return; }
+      save.disabled = true;
+      request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), body)
+        .then(function () { return load().then(function () { flash('保存した'); }); })
+        .catch(function (err) { save.disabled = false; showError(err); });
+    });
+    actions.appendChild(save);
+
+    if (t.state === 'waiting') {
+      var resume = document.createElement('button');
+      resume.type = 'button';
+      resume.textContent = '着手順へ戻す';
+      resume.title = (t.handed_on || '?') + ' に ' + (t.handed_to || '?') + ' へ渡した分を戻す';
+      resume.addEventListener('click', function () {
+        resume.disabled = true;
+        request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/resume', { note: '' })
+          .then(function () { return load().then(function () { flash('着手順へ戻した'); }); })
+          .catch(function (err) { resume.disabled = false; showError(err); });
+      });
+      actions.appendChild(resume);
+    } else if (t.state === 'open') {
+      actions.appendChild(waitControl(t));
     }
+
+    var spacer = document.createElement('span');
+    spacer.className = 'spacer';
+    actions.appendChild(spacer);
+    panel.appendChild(actions);
+
     if (t.state === 'waiting' && t.handed_to) {
       var handoff = document.createElement('div');
       handoff.className = 'detail';
@@ -335,7 +380,7 @@
       .then(function (data) { fillTrail(trail, data.events || []); })
       .catch(function (err) { trail.textContent = err.message; });
 
-    panel.appendChild(removeControl(t));
+    actions.appendChild(removeControl(t));
     return panel;
   }
 
@@ -368,6 +413,68 @@
     if (last < text.length) {
       el.appendChild(document.createTextNode(text.slice(last)));
     }
+  }
+
+  function field(label, kind, value) {
+    var wrap = document.createElement('div');
+    wrap.className = 'field';
+    var id = 'f-' + Math.random().toString(36).slice(2, 9);
+
+    var lab = document.createElement('label');
+    lab.textContent = label;
+    lab.htmlFor = id;
+
+    var input = document.createElement(kind === 'textarea' ? 'textarea' : 'input');
+    input.id = id;
+    input.value = value;
+    if (kind !== 'textarea') input.type = 'text';
+
+    wrap.appendChild(lab);
+    wrap.appendChild(input);
+    return { wrap: wrap, input: input };
+  }
+
+  // waitControl asks who holds the ball before moving a task out of the queue:
+  // the elapsed count has no meaning without it.
+  function waitControl(t) {
+    var span = document.createElement('span');
+
+    var ask = document.createElement('button');
+    ask.type = 'button';
+    ask.textContent = '待ちにする';
+    ask.title = '相手に渡す。経過日数が数え始められる';
+    ask.addEventListener('click', function () {
+      span.textContent = '';
+      var who = document.createElement('input');
+      who.type = 'text';
+      who.placeholder = '渡した相手';
+      who.setAttribute('aria-label', '渡した相手');
+
+      var go = document.createElement('button');
+      go.type = 'button';
+      go.className = 'primary';
+      go.textContent = '渡した';
+      function submit() {
+        if (!who.value.trim()) { who.focus(); return; }
+        go.disabled = true;
+        request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/wait',
+          { to: who.value.trim(), note: '' })
+          .then(function () { return load().then(function () { flash('待ちへ移した'); }); })
+          .catch(function (err) { go.disabled = false; showError(err); });
+      }
+      go.addEventListener('click', submit);
+      who.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        if (e.key === 'Escape') { render(); }
+      });
+
+      span.appendChild(who);
+      span.appendChild(go);
+      who.focus();
+    });
+
+    span.appendChild(ask);
+    return span;
   }
 
   // removeControl lives inside the opened detail, not on the row: deleting is
@@ -422,6 +529,7 @@
 
   var KIND_LABEL = {
     created: '追加',
+    renamed: '名前を変更',
     reordered: '順序変更',
     due_set: '期限',
     waiting: '待ちへ',
@@ -457,13 +565,48 @@
       if (e.reason) {
         why.textContent = '— ' + e.reason;
       } else if (needsReason(e)) {
-        why.textContent = '— 理由なし';
+        why.textContent = '— 理由を書く';
+        why.classList.add('ask');
+        why.title = '押すとここに理由を書ける';
         line.classList.add('unexplained');
+        why.addEventListener('click', function () { openReasonEditor(line, e); });
       }
       line.appendChild(why);
 
       trail.appendChild(line);
     });
+  }
+
+  // openReasonEditor is the human side of `todo ask`: the question can be
+  // answered where it is asked, instead of only from the terminal.
+  function openReasonEditor(line, e) {
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'なぜそうしたか';
+    input.setAttribute('aria-label', '理由');
+
+    var done = false;
+    function finish(save) {
+      if (done) return;
+      done = true;
+      state.busy = false;
+      if (!save || !input.value.trim()) { render(); return; }
+      request('POST', '/api/events/' + encodeURIComponent(e.id) + '/why',
+        { reason: input.value.trim() })
+        .then(function () { return load().then(function () { flash('理由を記録した'); }); })
+        .catch(function (err) { showError(err); render(); });
+    }
+
+    input.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); finish(true); }
+      if (ev.key === 'Escape') { finish(false); }
+    });
+    input.addEventListener('blur', function () { finish(true); });
+
+    state.busy = true;
+    line.textContent = '';
+    line.appendChild(input);
+    input.focus();
   }
 
   function changeOf(e) {
@@ -586,6 +729,29 @@
       try { input.showPicker(); } catch (e) { /* not allowed without a gesture */ }
     }
   }
+
+  el.addForm.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var name = el.addName.value.trim();
+    if (!name) return;
+
+    var body = { name: name };
+    if (el.addDue.value) body.due = el.addDue.value;
+
+    el.addName.disabled = true;
+    request('POST', '/api/tasks', body)
+      .then(function () {
+        el.addName.value = '';
+        el.addDue.value = '';
+        el.addName.disabled = false;
+        return load().then(function () { el.addName.focus(); });
+      })
+      .catch(function (err) { el.addName.disabled = false; showError(err); });
+  });
+
+  // Typing must not be interrupted by the poll redrawing the list.
+  el.addName.addEventListener('focus', function () { state.busy = true; });
+  el.addName.addEventListener('blur', function () { state.busy = !!el.addName.value; });
 
   scopeButtons.forEach(function (b) {
     b.addEventListener('click', function () {

@@ -188,6 +188,7 @@ func (a *API) addTask(c *gin.Context) {
 }
 
 type patchRequest struct {
+	Name   *string `json:"name"`
 	Due    *string `json:"due"`
 	Detail *string `json:"detail"`
 	Actor  string  `json:"actor"`
@@ -206,6 +207,12 @@ func (a *API) patchTask(c *gin.Context) {
 		t   task.Task
 		err error
 	)
+	if req.Name != nil {
+		if t, err = a.store.SetName(id, *req.Name, actor); err != nil {
+			a.respond(c, t, err)
+			return
+		}
+	}
 	if req.Due != nil {
 		if t, err = a.store.SetDue(id, *req.Due, actor); err != nil {
 			a.respond(c, t, err)
@@ -218,8 +225,8 @@ func (a *API) patchTask(c *gin.Context) {
 			return
 		}
 	}
-	if req.Due == nil && req.Detail == nil {
-		badRequest(c, errors.New("nothing to change: pass due or detail"))
+	if req.Name == nil && req.Due == nil && req.Detail == nil {
+		badRequest(c, errors.New("nothing to change: pass name, due or detail"))
 		return
 	}
 	a.respond(c, t, nil)

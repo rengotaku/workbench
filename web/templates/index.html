@@ -27,7 +27,10 @@
     <section class="sec">
       <ul class="list" id="queue"></ul>
       <button type="button" class="more" id="more" hidden></button>
-      <p class="empty" id="queue-empty" hidden>着手順は空。<code>todo "タスク名"</code> で追加する</p>
+      <form class="add" id="add-form" autocomplete="off">
+        <input type="text" id="add-name" placeholder="タスクを足す（Enter）" aria-label="タスク名">
+        <input type="date" id="add-due" aria-label="期限（任意）">
+      </form>
     </section>
 
     <section class="sec" id="waiting-sec" hidden>
@@ -48,7 +51,7 @@
 
     <div class="add-row">
       <code>todo "タスク名" --due YYYY-MM-DD</code>
-      <span>→ このアプリに直接入る（不通ならエラーで止まる）</span>
+      <span>→ 端末からも同じ口に入る</span>
     </div>
   </div>
 

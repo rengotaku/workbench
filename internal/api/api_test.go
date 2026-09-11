@@ -280,6 +280,28 @@ func TestPatch_NeedsSomethingToChange(t *testing.T) {
 	assert.Equal(t, "詳しい話", got.Detail)
 }
 
+// Everything the page needs to create and edit has to be reachable over the
+// API, not only from the CLI.
+func TestPatch_ChangesTheName(t *testing.T) {
+	store, h := setup(t)
+	added, _ := store.Add("元の名前", "", "", task.ActorHuman)
+
+	code, body := call(t, h, http.MethodPatch, "/api/tasks/"+added.ID,
+		map[string]any{"name": "直した名前"})
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "直した名前", taskOf(t, body)["name"])
+}
+
+func TestPatch_RejectsAnEmptyName(t *testing.T) {
+	store, h := setup(t)
+	added, _ := store.Add("名前", "", "", task.ActorHuman)
+
+	code, body := call(t, h, http.MethodPatch, "/api/tasks/"+added.ID,
+		map[string]any{"name": ""})
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Contains(t, body["error"], "name is required")
+}
+
 func TestWait_RequiresWhoHoldsTheBall(t *testing.T) {
 	store, h := setup(t)
 	added, _ := store.Add("渡す", "", "", task.ActorHuman)

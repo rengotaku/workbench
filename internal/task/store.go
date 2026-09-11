@@ -344,6 +344,37 @@ func (s *Store) SetDue(id, due string, actor Actor) (Task, error) {
 	return s.mustGet(id), nil
 }
 
+// SetName replaces the task name. The old name goes into the event, so a
+// rename does not erase what the task used to be called.
+func (s *Store) SetName(id, name string, actor Actor) (Task, error) {
+	if name == "" {
+		return Task{}, errors.New("name is required")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	i, err := s.indexOf(id)
+	if err != nil {
+		return Task{}, err
+	}
+	t := s.st.Tasks[i]
+	from := t.Name
+	if from == name {
+		return t, nil
+	}
+	t.Name = name
+	s.st.Tasks[i] = t
+
+	if err := s.record(Event{TaskID: id, Kind: KindRenamed, Actor: actor, FromValue: from, ToValue: name}); err != nil {
+		return Task{}, err
+	}
+	if err := s.persist(); err != nil {
+		return Task{}, err
+	}
+	return s.mustGet(id), nil
+}
+
 // SetDetail replaces the detail text.
 func (s *Store) SetDetail(id, detail string, actor Actor) (Task, error) {
 	s.mu.Lock()

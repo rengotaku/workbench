@@ -135,6 +135,13 @@ func (c *Client) Order(id string, to, scopeDays, revision int) (Task, []byte, er
 	})
 }
 
+// SetName replaces the task name.
+func (c *Client) SetName(id, name string) (Task, []byte, error) {
+	return c.taskCall(http.MethodPatch, "/api/tasks/"+url.PathEscape(id), map[string]any{
+		"name": name, "actor": actor(),
+	})
+}
+
 // SetDue sets or clears a due date.
 func (c *Client) SetDue(id, due string) (Task, []byte, error) {
 	return c.taskCall(http.MethodPatch, "/api/tasks/"+url.PathEscape(id), map[string]any{
