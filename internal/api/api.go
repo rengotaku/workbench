@@ -35,6 +35,7 @@ func (a *API) Mount(r gin.IRouter) {
 	g := r.Group("/api")
 
 	g.GET("/tasks", a.listTasks)
+	g.GET("/revision", a.revision)
 	g.POST("/tasks", a.addTask)
 	g.PATCH("/tasks/:id", a.patchTask)
 	g.POST("/tasks/:id/done", a.doneTask)
@@ -72,6 +73,7 @@ type listResponse struct {
 		Rest int `json:"rest"`
 	} `json:"counts"`
 	ScopeDays int `json:"scope_days"`
+	Revision  int `json:"revision"`
 }
 
 func (a *API) listTasks(c *gin.Context) {
@@ -93,7 +95,10 @@ func (a *API) build(scope int) listResponse {
 	// week boundary is a query, not a migration — nothing is moved on disk.
 	weekStart := mondayOf(today)
 
-	for _, t := range a.store.List() {
+	tasks, rev := a.store.List()
+	res.Revision = rev
+
+	for _, t := range tasks {
 		v := a.view(t, today, scope)
 		switch t.State {
 		case task.StateWaiting:
@@ -116,6 +121,12 @@ func (a *API) build(scope int) listResponse {
 		}
 	}
 	return res
+}
+
+// revision is what the page polls to notice a change made elsewhere — by the
+// CLI, or by another window — without re-fetching the whole list.
+func (a *API) revision(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"revision": a.store.Revision()})
 }
 
 func (a *API) view(t task.Task, today time.Time, scope int) View {
@@ -258,6 +269,7 @@ func (a *API) resumeTask(c *gin.Context) {
 
 type orderRequest struct {
 	ScopeDays *int   `json:"scope_days"`
+	Revision  *int   `json:"revision"`
 	Actor     string `json:"actor"`
 	To        int    `json:"to"`
 }
@@ -272,7 +284,11 @@ func (a *API) orderTask(c *gin.Context) {
 	if req.ScopeDays != nil {
 		scope = *req.ScopeDays
 	}
-	t, err := a.store.Reorder(c.Param("id"), req.To, scope, actorOf(req.Actor))
+	expect := 0
+	if req.Revision != nil {
+		expect = *req.Revision
+	}
+	t, err := a.store.Reorder(c.Param("id"), req.To, scope, expect, actorOf(req.Actor))
 	a.respond(c, t, err)
 }
 
@@ -370,6 +386,10 @@ func (a *API) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, task.ErrAlreadyDone):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, task.ErrStale):
+		// 409 rather than 400: nothing is wrong with the request, the list
+		// simply moved. The caller re-reads and decides again.
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "stale": true})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}

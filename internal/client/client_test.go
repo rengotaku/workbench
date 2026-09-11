@@ -138,7 +138,7 @@ func TestWaitResumeOrderDueDetail_HitTheRightEndpoints(t *testing.T) {
 		},
 		{
 			name:       "order",
-			call:       func(c *client.Client) error { _, _, err := c.Order("T001", 0, 7); return err },
+			call:       func(c *client.Client) error { _, _, err := c.Order("T001", 0, 7, 0); return err },
 			wantPath:   "/api/tasks/T001/order",
 			wantMethod: http.MethodPost,
 			wantBody:   map[string]any{"to": float64(0), "scope_days": float64(7)},

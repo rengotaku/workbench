@@ -319,6 +319,47 @@ func TestOrder_RejectsAPositionOutsideTheQueue(t *testing.T) {
 	assert.Contains(t, body["error"], "out of range")
 }
 
+// The page polls the revision to notice a change made by the CLI or another
+// window without pulling the whole list.
+func TestRevision_IsServedAndMatchesTheList(t *testing.T) {
+	store, h := setup(t)
+	_, err := store.Add("何か", "", "", task.ActorHuman)
+	require.NoError(t, err)
+
+	_, list := call(t, h, http.MethodGet, "/api/tasks", nil)
+	_, rev := call(t, h, http.MethodGet, "/api/revision", nil)
+	assert.Equal(t, list["revision"], rev["revision"])
+
+	_, err = store.Add("もう一つ", "", "", task.ActorHuman)
+	require.NoError(t, err)
+
+	_, after := call(t, h, http.MethodGet, "/api/revision", nil)
+	assert.NotEqual(t, rev["revision"], after["revision"])
+}
+
+// A drag built on a list that has since moved comes back as a conflict, so the
+// page can re-read instead of putting the row in the wrong place.
+func TestOrder_AStaleRevisionIsAConflict(t *testing.T) {
+	store, h := setup(t)
+	a, _ := store.Add("A", "", "", task.ActorHuman)
+	b, _ := store.Add("B", "", "", task.ActorHuman)
+	_, _ = store.Add("C", "", "", task.ActorHuman)
+
+	_, list := call(t, h, http.MethodGet, "/api/tasks", nil)
+	rawRev, ok := list["revision"].(float64)
+	require.True(t, ok)
+	stale := int(rawRev)
+
+	code, _ := call(t, h, http.MethodPost, "/api/tasks/"+b.ID+"/order",
+		map[string]any{"to": 0, "revision": stale})
+	require.Equal(t, http.StatusOK, code)
+
+	code, body := call(t, h, http.MethodPost, "/api/tasks/"+a.ID+"/order",
+		map[string]any{"to": 2, "revision": stale})
+	assert.Equal(t, http.StatusConflict, code)
+	assert.Equal(t, true, body["stale"])
+}
+
 func TestAskAndWhy_QueueTheChangeThenRecordTheReason(t *testing.T) {
 	store, h := setup(t)
 	_, _ = store.Add("A", "", "", task.ActorHuman)

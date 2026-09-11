@@ -20,11 +20,17 @@ var ErrNotFound = errors.New("not found")
 // ErrAlreadyDone is returned when a task is completed twice.
 var ErrAlreadyDone = errors.New("already done")
 
+// ErrStale is returned when a caller acts on a list that has changed under it.
+// Reordering is the case that matters: a position means nothing once the rows
+// have moved, so the request is refused instead of landing somewhere else.
+var ErrStale = errors.New("the list changed since it was read")
+
 // state is the on-disk shape of tasks.json.
 type state struct {
 	Tasks     []Task `json:"tasks"`
 	NextTask  int    `json:"next_task"`  // next T number; never reuses a removed one
 	NextEvent int    `json:"next_event"` // next E number
+	Revision  int    `json:"revision"`   // bumped on every write; readers poll it
 }
 
 // Store keeps the current tasks in tasks.json and every change in
@@ -84,11 +90,19 @@ func (s *Store) SetNextTaskNumber(n int) error {
 	return s.persist()
 }
 
-// List returns copies of every task, ordered by their place in the queue.
-func (s *Store) List() []Task {
+// List returns copies of every task, ordered by their place in the queue,
+// together with the revision they were read at.
+func (s *Store) List() ([]Task, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.snapshot()
+	return s.snapshot(), s.st.Revision
+}
+
+// Revision reports the current revision. It is cheap enough to poll.
+func (s *Store) Revision() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.st.Revision
 }
 
 // Get returns a copy of one task.
@@ -323,9 +337,18 @@ func (s *Store) SetDetail(id, detail string, actor Actor) (Task, error) {
 // Reorder moves one open task to position to (0-based) in the queue and
 // records what it overtook. scopeDays sets the window that decides whether an
 // overtaken due date is close enough to be worth explaining.
-func (s *Store) Reorder(id string, to int, scopeDays int, actor Actor) (Task, error) {
+//
+// expectRevision guards against acting on a list that has moved: pass the
+// revision the positions were read at, or 0 to skip the check. A position is
+// only meaningful against the order it was read from, so a mismatch is an
+// error rather than a move to the wrong place.
+func (s *Store) Reorder(id string, to, scopeDays, expectRevision int, actor Actor) (Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if expectRevision != 0 && expectRevision != s.st.Revision {
+		return Task{}, fmt.Errorf("%w (read at %d, now %d)", ErrStale, expectRevision, s.st.Revision)
+	}
 
 	i, err := s.indexOf(id)
 	if err != nil {
@@ -652,9 +675,11 @@ func (s *Store) readEvents() ([]Event, error) {
 	return out, nil
 }
 
-// persist rewrites tasks.json through a temp file and a rename, so a crash
-// mid-write cannot leave a half-written state file.
+// persist rewrites tasks.json. Every write goes through here, so this is also
+// where the revision moves on.
 func (s *Store) persist() error {
+	s.st.Revision++
+
 	b, err := json.MarshalIndent(s.st, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encoding state: %w", err)

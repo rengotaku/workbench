@@ -4,7 +4,14 @@
   'use strict';
 
   var SCOPE_KEY = 'todo-order.scope';
-  var state = { scope: '7', showOut: false, board: null, open: {} };
+  var POLL_MS = 4000;
+  var state = {
+    scope: '7',
+    showOut: false,
+    board: null,
+    open: {},
+    busy: false, // a drag or a date field is in progress; do not redraw under it
+  };
 
   // A ticket key at the start of a name becomes a link when a base URL is
   // configured. The app itself knows nothing about any tracker; this is only
@@ -34,6 +41,27 @@
 
   // ---- server ----
 
+  // The page is not the only writer: the CLI (and whatever the assistant runs
+  // through it) changes the same list. Polling the revision is cheap and keeps
+  // the page from showing a list that has moved on.
+  function watch() {
+    setInterval(function () {
+      if (state.busy || !state.board || document.hidden) return;
+      request('GET', '/api/revision')
+        .then(function (r) {
+          if (r.revision !== state.board.revision) {
+            load().then(function () { flash('外で変更があったので読み直した'); });
+          }
+        })
+        .catch(function () { /* a blip: the next tick tries again */ });
+    }, POLL_MS);
+
+    // Coming back to the window is the moment a stale list is most visible.
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && !state.busy) load();
+    });
+  }
+
   function request(method, path, body) {
     var opts = { method: method, headers: {} };
     if (body) {
@@ -60,8 +88,19 @@
 
   function showError(err) {
     if (!err) { el.err.hidden = true; return; }
+    el.err.classList.remove('notice');
     el.err.textContent = err.message || String(err);
     el.err.hidden = false;
+  }
+
+  // flash says what just happened without looking like a failure.
+  function flash(text) {
+    el.err.classList.add('notice');
+    el.err.textContent = text;
+    el.err.hidden = false;
+    window.setTimeout(function () {
+      if (el.err.classList.contains('notice')) el.err.hidden = true;
+    }, 4000);
   }
 
   // ---- rendering ----
@@ -73,6 +112,14 @@
     el.over.textContent = b.counts.over;
     el.near.textContent = b.counts.near;
     el.rest.textContent = b.counts.rest;
+
+    // The colour is the whole legend, so each swatch says what it means and
+    // what the current scope is — the meaning of amber moves with the scope.
+    var within = b.scope_days > 365 ? 'いつでも' : b.scope_days + '日以内';
+    setTitle('.count.over', '赤: 期限を過ぎている（今日を含む）— ' + b.counts.over + '件');
+    setTitle('.count.near', '黄: ' + within + 'に期限がある（いまのスコープ）— ' + b.counts.near + '件');
+    setTitle('.count.rest', '灰: 期限なし、または ' + within + 'より先 — ' + b.counts.rest + '件。'
+      + '期限が先のものは末尾に畳まれ、期限なしは常に出る');
 
     var queue = b.queue || [];
     el.queue.textContent = '';
@@ -99,6 +146,29 @@
     el.doneSec.hidden = done.length === 0;
     el.doneList.textContent = '';
     done.forEach(function (t) { el.doneList.appendChild(doneRow(t)); });
+  }
+
+  function setTitle(sel, text) {
+    var node = document.querySelector(sel);
+    if (node) node.title = text;
+  }
+
+  // dueTitle explains the row's colour in words. The stripe on the left edge
+  // is a border and cannot be hovered on its own, so the chip — which carries
+  // the same colour — is where the explanation lives.
+  function dueTitle(t) {
+    var scope = Number(state.scope) || 7;
+    var within = state.scope === 'all' ? 'いつでも' : scope + '日以内';
+    switch (t.due_class) {
+      case 'over':
+        return '赤: 期限 ' + t.due + ' を過ぎている（' + t.due_label + '）\nクリックで変更';
+      case 'near':
+        return '黄: 期限 ' + t.due + ' が ' + within + '（' + t.due_label + '）\nクリックで変更';
+      case 'plain':
+        return '灰: 期限 ' + t.due + ' は ' + within + 'より先。行は末尾に畳まれる\nクリックで変更';
+      default:
+        return '灰: 期限なし。スコープでは畳まれず常に出る\nクリックで設定';
+    }
   }
 
   // row builds the shared 5-column shape: every section lines up on the same
@@ -161,11 +231,12 @@
       due = document.createElement('button');
       due.type = 'button';
       due.className = 'due due-edit';
-      due.title = '期限を設定する';
+      due.title = opts.dueTitle || '期限を設定する';
       due.dataset.due = opts.task.due || '';
     } else {
       due = document.createElement('span');
       due.className = 'due';
+      if (opts.dueTitle) due.title = opts.dueTitle;
     }
     if (opts.dueClass) due.classList.add(opts.dueClass);
     due.textContent = opts.dueLabel;
@@ -188,6 +259,7 @@
       dueClass: t.due_class === 'plain' || t.due_class === 'none' ? '' : t.due_class,
       hasPanel: true,
       editableDue: true,
+      dueTitle: dueTitle(t),
       extraClass: cls,
     });
     li.draggable = true;
@@ -196,12 +268,15 @@
 
   function waitRow(t) {
     var days = t.stalled_for || 0;
+    var level = days >= 10 ? '赤: 10日以上' : (days >= 5 ? '黄: 5日以上' : '灰: 5日未満');
     return row({
       task: t,
       mark: '◷',
       markClass: 'mark-wait',
       dueLabel: days + '日',
       dueClass: days >= 10 ? 'over' : (days >= 5 ? 'near' : ''),
+      dueTitle: level + '経過\n' + (t.handed_on || '?') + ' に ' + (t.handed_to || '?')
+        + ' へ渡してから ' + days + '日。14日で理由を聞かれる',
       hasPanel: true,
       extraClass: 'waiting',
     });
@@ -219,6 +294,7 @@
       markClass: 'mark-done',
       checked: true,
       dueLabel: label,
+      dueTitle: label + ' に完了。直近の月曜以降の分だけ残る\nチェックを外すと着手順の末尾へ戻る',
       hasPanel: false,
       extraClass: 'done',
     });
@@ -435,6 +511,7 @@
     function finish(save) {
       if (done) return;
       done = true;
+      state.busy = false;
       if (!save || input.value === (chip.dataset.due || '')) {
         load(); // put the row back the way the server has it
         return;
@@ -451,6 +528,7 @@
       if (e.key === 'Enter') { finish(true); }
     });
 
+    state.busy = true;
     chip.replaceWith(input);
     input.focus();
     if (input.showPicker) {
@@ -494,6 +572,7 @@
   el.queue.addEventListener('dragstart', function (ev) {
     var li = ev.target.closest('.task');
     if (!li) return;
+    state.busy = true;
     dragged = li;
     li.classList.add('dragging');
     ev.dataTransfer.effectAllowed = 'move';
@@ -528,10 +607,20 @@
       .map(function (t) { return t.id; });
     var target = fullIndexOf(li.dataset.id, to, visibleBefore);
 
+    // The revision the positions were read at travels with the move. If the
+    // list changed in between, the server refuses instead of dropping the row
+    // somewhere else, and the page re-reads.
     request('POST', '/api/tasks/' + encodeURIComponent(li.dataset.id) + '/order', {
       to: target,
       scope_days: Number(state.scope) || 7,
-    }).then(load).catch(function (err) { showError(err); load(); });
+      revision: state.board.revision,
+    })
+      .then(function () { state.busy = false; return load(); })
+      .catch(function (err) {
+        state.busy = false;
+        showError(err);
+        load();
+      });
   });
 
   // fullIndexOf converts a position among visible rows into a position in the
@@ -567,5 +656,5 @@
     }
   } catch (e) { /* storage unavailable; the default scope still applies */ }
 
-  load();
+  load().then(watch);
 })();

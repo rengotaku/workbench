@@ -66,7 +66,8 @@ func TestImport_WritesNothingWhenARowIsBad(t *testing.T) {
 	// Validation happens before any write, so the store is still empty.
 	reopened, err := task.Open(dir, time.Local)
 	require.NoError(t, err)
-	assert.Empty(t, reopened.List(), "a bad row must leave the store untouched")
+	tasks, _ := reopened.List()
+	assert.Empty(t, tasks, "a bad row must leave the store untouched")
 }
 
 func TestImport_RefusesRowsItCannotTrust(t *testing.T) {

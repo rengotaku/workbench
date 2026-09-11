@@ -259,7 +259,9 @@ func orderCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			t, raw, err := cl.Order(args[0], pos, scopeDays)
+			// The CLI moves a task by its own reckoning rather than from a
+			// list it read a moment ago, so there is no revision to check.
+			t, raw, err := cl.Order(args[0], pos, scopeDays, 0)
 			if err != nil {
 				return err
 			}

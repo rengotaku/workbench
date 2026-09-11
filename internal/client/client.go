@@ -72,6 +72,7 @@ type Board struct {
 		Rest int `json:"rest"`
 	} `json:"counts"`
 	ScopeDays int `json:"scope_days"`
+	Revision  int `json:"revision"`
 }
 
 // List fetches the board for a scope ("7", "14", "all", or "").
@@ -116,10 +117,11 @@ func (c *Client) Resume(id, note string) (Task, []byte, error) {
 	})
 }
 
-// Order moves a task to a position in the queue.
-func (c *Client) Order(id string, to, scopeDays int) (Task, []byte, error) {
+// Order moves a task to a position in the queue. revision guards against a
+// list that has moved since it was read; pass 0 to skip the check.
+func (c *Client) Order(id string, to, scopeDays, revision int) (Task, []byte, error) {
 	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/order", map[string]any{
-		"to": to, "scope_days": scopeDays, "actor": actor(),
+		"to": to, "scope_days": scopeDays, "revision": revision, "actor": actor(),
 	})
 }
 

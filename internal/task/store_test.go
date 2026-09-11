@@ -149,12 +149,13 @@ func TestReorder_MovesTheTaskAndRenumbersTheQueue(t *testing.T) {
 	b, _ := s.Add("B", "", "", task.ActorHuman)
 	c, _ := s.Add("C", "", "", task.ActorHuman)
 
-	moved, err := s.Reorder(c.ID, 0, 7, task.ActorHuman)
+	moved, err := s.Reorder(c.ID, 0, 7, 0, task.ActorHuman)
 	require.NoError(t, err)
 	assert.Equal(t, 0, moved.Order)
 
 	order := map[string]int{}
-	for _, tk := range s.List() {
+	tasks, _ := s.List()
+	for _, tk := range tasks {
 		order[tk.ID] = tk.Order
 	}
 	assert.Equal(t, 0, order[c.ID])
@@ -166,7 +167,7 @@ func TestReorder_RejectsPositionsOutsideTheQueue(t *testing.T) {
 	s := newStore(t)
 	a, _ := s.Add("A", "", "", task.ActorHuman)
 
-	_, err := s.Reorder(a.ID, 5, 7, task.ActorHuman)
+	_, err := s.Reorder(a.ID, 5, 7, 0, task.ActorHuman)
 	assert.ErrorContains(t, err, "out of range")
 }
 
@@ -178,7 +179,7 @@ func TestReorder_RecordsWhatItOvertookWhenDueIsInScope(t *testing.T) {
 	far, _ := s.Add("期限が遠い", "", dateIn(60), task.ActorHuman)
 	noDue, _ := s.Add("期限なし", "", "", task.ActorHuman)
 
-	_, err := s.Reorder(noDue.ID, 0, 7, task.ActorHuman)
+	_, err := s.Reorder(noDue.ID, 0, 7, 0, task.ActorHuman)
 	require.NoError(t, err)
 
 	events, err := s.Events(noDue.ID)
@@ -201,7 +202,7 @@ func TestReorder_MovingDownRecordsNothingJumped(t *testing.T) {
 	first, _ := s.Add("先頭", "", dateIn(1), task.ActorHuman)
 	_, _ = s.Add("2番目", "", dateIn(1), task.ActorHuman)
 
-	_, err := s.Reorder(first.ID, 1, 7, task.ActorHuman)
+	_, err := s.Reorder(first.ID, 1, 7, 0, task.ActorHuman)
 	require.NoError(t, err)
 
 	events, _ := s.Events(first.ID)
@@ -221,14 +222,14 @@ func TestAsk_ReturnsOnlyTheFourChangesWorthExplaining(t *testing.T) {
 
 	// A swap in the middle of the queue explains itself: not the top, not the
 	// bottom, and nothing with a nearby due date was overtaken.
-	_, err := s.Reorder(b.ID, 2, 7, task.ActorHuman)
+	_, err := s.Reorder(b.ID, 2, 7, 0, task.ActorHuman)
 	require.NoError(t, err)
 	pending, err := s.Ask()
 	require.NoError(t, err)
 	assert.Empty(t, pending, "a middle swap is not worth asking about")
 
 	// Moving to the top is worth asking about.
-	_, err = s.Reorder(c.ID, 0, 7, task.ActorHuman)
+	_, err = s.Reorder(c.ID, 0, 7, 0, task.ActorHuman)
 	require.NoError(t, err)
 	pending, err = s.Ask()
 	require.NoError(t, err)
@@ -238,7 +239,7 @@ func TestAsk_ReturnsOnlyTheFourChangesWorthExplaining(t *testing.T) {
 
 	// So is dropping something to the bottom. A sits at position 2 of 4 after
 	// the moves above, so this is a genuine fall rather than a no-op.
-	_, err = s.Reorder(a.ID, 3, 7, task.ActorHuman)
+	_, err = s.Reorder(a.ID, 3, 7, 0, task.ActorHuman)
 	require.NoError(t, err)
 	pending, err = s.Ask()
 	require.NoError(t, err)
@@ -281,7 +282,7 @@ func TestWhy_RecordsAReasonAndRefusesToOverwriteOne(t *testing.T) {
 	s := newStore(t)
 	_, _ = s.Add("A", "", "", task.ActorHuman)
 	b, _ := s.Add("B", "", "", task.ActorHuman)
-	_, err := s.Reorder(b.ID, 0, 7, task.ActorHuman)
+	_, err := s.Reorder(b.ID, 0, 7, 0, task.ActorHuman)
 	require.NoError(t, err)
 
 	pending, err := s.Ask()
@@ -308,6 +309,62 @@ func TestWhy_RecordsAReasonAndRefusesToOverwriteOne(t *testing.T) {
 
 	_, err = s.Why(eventID, "")
 	assert.ErrorContains(t, err, "reason is required")
+}
+
+// A position only means something against the order it was read from. If the
+// list moved in between — the AI reordering while a person drags — the move is
+// refused rather than landing somewhere else.
+func TestReorder_RefusesAPositionReadFromAnOlderList(t *testing.T) {
+	s := newStore(t)
+	a, _ := s.Add("A", "", "", task.ActorHuman)
+	b, _ := s.Add("B", "", "", task.ActorHuman)
+	_, _ = s.Add("C", "", "", task.ActorHuman)
+
+	_, rev := s.List()
+
+	// Something else changes the list first.
+	_, err := s.Reorder(b.ID, 0, 7, rev, task.ActorAI)
+	require.NoError(t, err)
+
+	// The move built on the older reading is refused.
+	_, err = s.Reorder(a.ID, 2, 7, rev, task.ActorHuman)
+	assert.ErrorIs(t, err, task.ErrStale)
+
+	// Re-reading and trying again works.
+	_, fresh := s.List()
+	_, err = s.Reorder(a.ID, 2, 7, fresh, task.ActorHuman)
+	assert.NoError(t, err)
+}
+
+func TestReorder_WithoutARevisionSkipsTheCheck(t *testing.T) {
+	s := newStore(t)
+	a, _ := s.Add("A", "", "", task.ActorHuman)
+	_, _ = s.Add("B", "", "", task.ActorHuman)
+
+	// 0 means "no expectation": the CLI moves a task by its own reckoning.
+	_, err := s.Reorder(a.ID, 1, 7, 0, task.ActorHuman)
+	assert.NoError(t, err)
+}
+
+// The revision moves on every write, which is what the page polls.
+func TestRevision_AdvancesOnEveryWrite(t *testing.T) {
+	s := newStore(t)
+	start := s.Revision()
+
+	added, err := s.Add("書き込み 1", "", "", task.ActorHuman)
+	require.NoError(t, err)
+	afterAdd := s.Revision()
+	assert.Greater(t, afterAdd, start)
+
+	_, err = s.SetDue(added.ID, dateIn(1), task.ActorHuman)
+	require.NoError(t, err)
+	assert.Greater(t, s.Revision(), afterAdd)
+
+	// Reading does not move it.
+	before := s.Revision()
+	_, rev := s.List()
+	assert.Equal(t, before, rev)
+	assert.Equal(t, before, s.Revision())
 }
 
 func TestEvents_AreKeptPerTaskAndSurviveAReload(t *testing.T) {
@@ -363,7 +420,8 @@ func TestReopen_PutsACompletedTaskBackAtTheEndOfTheQueue(t *testing.T) {
 	assert.Nil(t, back.CompletedAt, "the completion time is cleared")
 
 	order := map[string]int{}
-	for _, tk := range s.List() {
+	tasks, _ := s.List()
+	for _, tk := range tasks {
 		order[tk.ID] = tk.Order
 	}
 	assert.Equal(t, 0, order[first.ID])
@@ -429,7 +487,7 @@ func TestOpen_ReadsBackAnExistingStore(t *testing.T) {
 
 	reopened, err := task.Open(dir, nil)
 	require.NoError(t, err)
-	list := reopened.List()
+	list, _ := reopened.List()
 	require.Len(t, list, 1)
 	assert.Equal(t, "残るはず", list[0].Name)
 

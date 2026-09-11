@@ -383,6 +383,8 @@ button.due-edit:focus-visible { outline: 2px solid var(--accent); outline-offset
   color: var(--over);
   font-size: 13px;
 }
+/* A reload that happened on its own is news, not a failure. */
+.err.notice { background: var(--accent-soft); color: var(--accent); }
 
 @media (prefers-reduced-motion: no-preference) {
   .task { transition: background .15s ease, border-color .15s ease; }
