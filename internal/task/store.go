@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -229,6 +230,37 @@ func (s *Store) Resume(id, note string, actor Actor) (Task, error) {
 	s.renumber()
 
 	if err := s.record(Event{TaskID: id, Kind: KindResumed, Actor: actor, FromValue: from, ToValue: note}); err != nil {
+		return Task{}, err
+	}
+	if err := s.persist(); err != nil {
+		return Task{}, err
+	}
+	return s.mustGet(id), nil
+}
+
+// Reopen puts a completed task back into the queue, at the end of it. It is
+// the way out of a mis-click on the checkbox: completion is a state, not a
+// one-way door.
+func (s *Store) Reopen(id string, actor Actor) (Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	i, err := s.indexOf(id)
+	if err != nil {
+		return Task{}, err
+	}
+	t := s.st.Tasks[i]
+	if t.State != StateDone {
+		return Task{}, fmt.Errorf("%s is not done", id)
+	}
+
+	t.State = StateOpen
+	t.CompletedAt = nil
+	t.Order = math.MaxInt32 // renumber puts it at the end of the queue
+	s.st.Tasks[i] = t
+	s.renumber()
+
+	if err := s.record(Event{TaskID: id, Kind: KindReopened, Actor: actor}); err != nil {
 		return Task{}, err
 	}
 	if err := s.persist(); err != nil {

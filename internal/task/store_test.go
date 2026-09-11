@@ -347,6 +347,65 @@ func TestEvents_AreKeptPerTaskAndSurviveAReload(t *testing.T) {
 	assert.ErrorIs(t, err, task.ErrNotFound)
 }
 
+// Completion is a state, not a one-way door: a mis-click has to have a way out.
+func TestReopen_PutsACompletedTaskBackAtTheEndOfTheQueue(t *testing.T) {
+	s := newStore(t)
+	first, _ := s.Add("残る", "", "", task.ActorHuman)
+	mistake, _ := s.Add("誤って完了にした", "", "", task.ActorHuman)
+	second, _ := s.Add("あとから足した", "", "", task.ActorHuman)
+
+	_, err := s.Done(mistake.ID, task.ActorHuman)
+	require.NoError(t, err)
+
+	back, err := s.Reopen(mistake.ID, task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, task.StateOpen, back.State)
+	assert.Nil(t, back.CompletedAt, "the completion time is cleared")
+
+	order := map[string]int{}
+	for _, tk := range s.List() {
+		order[tk.ID] = tk.Order
+	}
+	assert.Equal(t, 0, order[first.ID])
+	assert.Equal(t, 1, order[second.ID])
+	assert.Equal(t, 2, order[mistake.ID], "it comes back at the end, not where it was")
+
+	// The trail keeps both the completion and the undo.
+	events, err := s.Events(mistake.ID)
+	require.NoError(t, err)
+	kinds := []task.Kind{}
+	for _, e := range events {
+		kinds = append(kinds, e.Kind)
+	}
+	assert.Equal(t, []task.Kind{task.KindCreated, task.KindDone, task.KindReopened}, kinds)
+}
+
+func TestReopen_RefusesATaskThatIsNotDone(t *testing.T) {
+	s := newStore(t)
+	open, _ := s.Add("まだ終わっていない", "", "", task.ActorHuman)
+
+	_, err := s.Reopen(open.ID, task.ActorHuman)
+	assert.ErrorContains(t, err, "not done")
+
+	_, err = s.Reopen("T999", task.ActorHuman)
+	assert.ErrorIs(t, err, task.ErrNotFound)
+}
+
+// A reopened task can be completed again; the first completion does not make
+// the second one a conflict.
+func TestReopen_ThenDoneAgainWorks(t *testing.T) {
+	s := newStore(t)
+	added, _ := s.Add("やり直す", "", "", task.ActorHuman)
+	_, err := s.Done(added.ID, task.ActorHuman)
+	require.NoError(t, err)
+	_, err = s.Reopen(added.ID, task.ActorHuman)
+	require.NoError(t, err)
+
+	again, err := s.Done(added.ID, task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, task.StateDone, again.State)
+}
+
 func TestSetDue_ClearsWithAnEmptyStringAndRejectsBadInput(t *testing.T) {
 	s := newStore(t)
 	added, _ := s.Add("期限つき", "", dateIn(1), task.ActorHuman)

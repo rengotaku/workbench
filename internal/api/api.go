@@ -38,6 +38,7 @@ func (a *API) Mount(r gin.IRouter) {
 	g.POST("/tasks", a.addTask)
 	g.PATCH("/tasks/:id", a.patchTask)
 	g.POST("/tasks/:id/done", a.doneTask)
+	g.POST("/tasks/:id/reopen", a.reopenTask)
 	g.POST("/tasks/:id/wait", a.waitTask)
 	g.POST("/tasks/:id/resume", a.resumeTask)
 	g.POST("/tasks/:id/order", a.orderTask)
@@ -214,6 +215,13 @@ func (a *API) patchTask(c *gin.Context) {
 
 func (a *API) doneTask(c *gin.Context) {
 	t, err := a.store.Done(c.Param("id"), actorOf(c.Query("actor")))
+	a.respond(c, t, err)
+}
+
+// reopenTask undoes a completion. Nothing is erased: the reopen is its own
+// event, so the trail still shows it was finished and then put back.
+func (a *API) reopenTask(c *gin.Context) {
+	t, err := a.store.Reopen(c.Param("id"), actorOf(c.Query("actor")))
 	a.respond(c, t, err)
 }
 

@@ -97,6 +97,11 @@ func (c *Client) Done(id string) (Task, []byte, error) {
 	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/done?actor="+actor(), nil)
 }
 
+// Reopen puts a completed task back into the queue.
+func (c *Client) Reopen(id string) (Task, []byte, error) {
+	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/reopen?actor="+actor(), nil)
+}
+
 // Wait hands a task to someone else.
 func (c *Client) Wait(id, to, note string) (Task, []byte, error) {
 	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/wait", map[string]any{

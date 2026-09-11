@@ -199,6 +199,31 @@ func TestAdd_ThenDone_ReportsAConflictOnTheSecondTry(t *testing.T) {
 	assert.Contains(t, body["error"], "already done")
 }
 
+func TestReopen_UndoesACompletionThroughTheAPI(t *testing.T) {
+	store, h := setup(t)
+	added, _ := store.Add("誤って完了にした", "", "", task.ActorHuman)
+
+	code, _ := call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/done", nil)
+	require.Equal(t, http.StatusOK, code)
+
+	code, body := call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/reopen", nil)
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "open", taskOf(t, body)["state"])
+
+	_, list := call(t, h, http.MethodGet, "/api/tasks", nil)
+	assert.Len(t, rowsOf(t, list, "queue"), 1)
+	assert.Empty(t, rowsOf(t, list, "done"))
+}
+
+func TestReopen_OnATaskThatIsNotDoneIsRejected(t *testing.T) {
+	store, h := setup(t)
+	added, _ := store.Add("まだ終わっていない", "", "", task.ActorHuman)
+
+	code, body := call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/reopen", nil)
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Contains(t, body["error"], "not done")
+}
+
 func TestUnknownID_Is404(t *testing.T) {
 	_, h := setup(t)
 	code, _ := call(t, h, http.MethodPost, "/api/tasks/T999/done", nil)

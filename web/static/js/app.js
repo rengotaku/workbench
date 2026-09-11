@@ -76,10 +76,10 @@
 
     var queue = b.queue || [];
     el.queue.textContent = '';
-    queue.forEach(function (t, i) {
+    queue.forEach(function (t) {
       var inScope = t.in_scope;
       if (!inScope && !state.showOut) return;
-      el.queue.appendChild(queueRow(t, i, inScope));
+      el.queue.appendChild(queueRow(t, inScope));
     });
     el.queueEmpty.hidden = queue.length > 0;
 
@@ -108,6 +108,14 @@
     li.className = 'task' + (opts.extraClass ? ' ' + opts.extraClass : '');
     li.dataset.id = opts.task.id;
 
+    // The row itself opens the detail — there is no separate control. Rows
+    // that have a panel are focusable so the keyboard can reach them.
+    if (opts.hasPanel) {
+      li.classList.add('openable');
+      li.tabIndex = 0;
+      li.setAttribute('aria-expanded', String(!!state.open[opts.task.id]));
+    }
+
     var grip = document.createElement('span');
     grip.className = 'grip' + (opts.draggable ? '' : ' empty');
     grip.setAttribute('aria-hidden', 'true');
@@ -124,8 +132,7 @@
     check.type = 'checkbox';
     check.className = 'check';
     check.checked = !!opts.checked;
-    check.setAttribute('aria-label', opts.checked ? '完了済み' : '完了にする');
-    check.disabled = !!opts.checked;
+    check.setAttribute('aria-label', opts.checked ? '完了を取り消す' : '完了にする');
     li.appendChild(check);
 
     var body = document.createElement('div');
@@ -139,16 +146,6 @@
     linkify(txt, opts.task.name);
     name.appendChild(txt);
 
-    if (opts.hasPanel) {
-      var toggle = document.createElement('button');
-      toggle.type = 'button';
-      toggle.className = 'detail-toggle';
-      toggle.setAttribute('aria-label', '詳細');
-      var open = !!state.open[opts.task.id];
-      toggle.textContent = open ? '−' : '+';
-      toggle.setAttribute('aria-expanded', String(open));
-      name.appendChild(toggle);
-    }
     body.appendChild(name);
 
     if (opts.hasPanel && state.open[opts.task.id]) {
@@ -177,12 +174,16 @@
     return li;
   }
 
-  function queueRow(t, i, inScope) {
+  function queueRow(t, inScope) {
     var cls = t.overdue ? 'overdue' : (inScope ? 'in-window' : 'out');
     var li = row({
       task: t,
       draggable: true,
-      mark: String(i + 1),
+      // The position is not shown. The order is what the list is for, and the
+      // row above/below already says it; a number only adds a value that goes
+      // stale the moment anything moves. It is still kept server-side, and
+      // `todo order` uses it.
+      mark: '',
       dueLabel: t.due_label,
       dueClass: t.due_class === 'plain' || t.due_class === 'none' ? '' : t.due_class,
       hasPanel: true,
@@ -214,7 +215,7 @@
     }
     return row({
       task: t,
-      mark: '✓',
+      mark: '', // the strike-through and the ticked box already say it is done
       markClass: 'mark-done',
       checked: true,
       dueLabel: label,
@@ -369,29 +370,55 @@
       openDueEditor(chip);
       return;
     }
-
-    var toggle = ev.target.closest('.detail-toggle');
-    if (toggle) {
-      var li = toggle.closest('.task');
-      var id = li.dataset.id;
-      state.open[id] = !state.open[id];
-      render();
-      return;
-    }
     if (ev.target === el.more) {
       state.showOut = !state.showOut;
       render();
+      return;
     }
+
+    // Anything else inside an openable row toggles its detail. The checkbox,
+    // the due chip and the panel itself are excluded: those are their own
+    // actions, and a click inside an open panel (selecting text) must not
+    // close it.
+    var row = ev.target.closest('.task.openable');
+    if (!row) return;
+    if (ev.target.closest('.check') || ev.target.closest('.due-input') ||
+        ev.target.closest('.panel')) {
+      return;
+    }
+    toggleRow(row);
+  });
+
+  function toggleRow(row) {
+    var id = row.dataset.id;
+    state.open[id] = !state.open[id];
+    render();
+  }
+
+  // Enter / Space open a row from the keyboard.
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    var row = ev.target.closest && ev.target.closest('.task.openable');
+    if (!row || row !== ev.target) return;
+    ev.preventDefault();
+    toggleRow(row);
   });
 
   document.addEventListener('change', function (ev) {
     var box = ev.target;
-    if (!box.classList || !box.classList.contains('check') || !box.checked) return;
+    if (!box.classList || !box.classList.contains('check')) return;
     var li = box.closest('.task');
+    var was = box.checked;
+    // Unticking a completed row puts it back: a mis-click has a way out.
+    var path = was ? '/done' : '/reopen';
     box.disabled = true;
-    request('POST', '/api/tasks/' + encodeURIComponent(li.dataset.id) + '/done')
+    request('POST', '/api/tasks/' + encodeURIComponent(li.dataset.id) + path)
       .then(load)
-      .catch(function (err) { box.checked = false; box.disabled = false; showError(err); });
+      .catch(function (err) {
+        box.checked = !was;
+        box.disabled = false;
+        showError(err);
+      });
   });
 
   // openDueEditor swaps the chip for a date field. Leaving it empty clears the

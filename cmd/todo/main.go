@@ -43,7 +43,7 @@ func rootCmd() *cobra.Command {
 	root.Flags().String("due", "", "due date (YYYY-MM-DD)")
 	root.Flags().String("detail", "", "detail text")
 
-	root.AddCommand(listCmd(), doneCmd(), waitCmd(), resumeCmd(), orderCmd(),
+	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), waitCmd(), resumeCmd(), orderCmd(),
 		dueCmd(), detailCmd(), askCmd(), whyCmd(), contextCmd(), importCmd())
 	return root
 }
@@ -157,6 +157,34 @@ func doneCmd() *cobra.Command {
 					continue
 				}
 				fmt.Printf("完了 %s  %s\n", t.ID, t.Name)
+			}
+			return nil
+		},
+	}
+}
+
+func reopenCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "reopen <ID>...",
+		Short: "完了を取り消して着手順の末尾へ戻す",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			cl, err := newClient()
+			if err != nil {
+				return err
+			}
+			for _, id := range args {
+				t, raw, err := cl.Reopen(id)
+				if err != nil {
+					return err
+				}
+				if asJSON {
+					if err := printRaw(raw); err != nil {
+						return err
+					}
+					continue
+				}
+				fmt.Printf("復活 %s  %s（着手順の末尾）\n", t.ID, t.Name)
 			}
 			return nil
 		},
