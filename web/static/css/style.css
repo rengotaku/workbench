@@ -182,7 +182,9 @@ body {
 
 /* ---- sections: same left baseline in all three ---- */
 .sec { padding: 18px 22px 20px; }
-.sec:first-of-type { padding-top: 10px; } /* the queue has no heading above it */
+/* The queue has no heading, so the section's own top padding would read as a
+   gap under the header. The rows carry 9px of their own. */
+.sec:first-of-type { padding-top: 2px; }
 .sec + .sec { border-top: 1px solid var(--line-soft); }
 .sec-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .sec-title {
