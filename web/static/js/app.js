@@ -335,6 +335,7 @@
       .then(function (data) { fillTrail(trail, data.events || []); })
       .catch(function (err) { trail.textContent = err.message; });
 
+    panel.appendChild(removeControl(t));
     return panel;
   }
 
@@ -367,6 +368,56 @@
     if (last < text.length) {
       el.appendChild(document.createTextNode(text.slice(last)));
     }
+  }
+
+  // removeControl lives inside the opened detail, not on the row: deleting is
+  // the one thing that cannot be undone, so it takes opening the task and then
+  // a second click. Anything reachable in one click from the list would be too
+  // easy to hit by accident.
+  function removeControl(t) {
+    var wrap = document.createElement('div');
+    wrap.className = 'panel-actions';
+
+    var ask = document.createElement('button');
+    ask.type = 'button';
+    ask.className = 'danger';
+    ask.textContent = '削除';
+    ask.title = 'このタスクを取り除く（戻せない）';
+
+    ask.addEventListener('click', function () {
+      wrap.textContent = '';
+
+      var label = document.createElement('span');
+      label.className = 'confirm-label';
+      label.textContent = '戻せません。削除しますか';
+
+      var yes = document.createElement('button');
+      yes.type = 'button';
+      yes.className = 'danger strong';
+      yes.textContent = '削除する';
+      yes.addEventListener('click', function () {
+        yes.disabled = true;
+        request('DELETE', '/api/tasks/' + encodeURIComponent(t.id))
+          .then(function () {
+            delete state.open[t.id];
+            return load().then(function () { flash('削除した: ' + t.name); });
+          })
+          .catch(function (err) { yes.disabled = false; showError(err); });
+      });
+
+      var no = document.createElement('button');
+      no.type = 'button';
+      no.textContent = 'やめる';
+      no.addEventListener('click', function () { render(); });
+
+      wrap.appendChild(label);
+      wrap.appendChild(yes);
+      wrap.appendChild(no);
+      yes.focus();
+    });
+
+    wrap.appendChild(ask);
+    return wrap;
   }
 
   var KIND_LABEL = {

@@ -98,6 +98,16 @@ func (c *Client) Done(id string) (Task, []byte, error) {
 	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/done?actor="+actor(), nil)
 }
 
+// Remove deletes a task and returns what was removed, so the caller can name
+// it back to the person who asked.
+func (c *Client) Remove(id string) (Task, []byte, error) {
+	var wrap struct {
+		Removed Task `json:"removed"`
+	}
+	raw, err := c.do(http.MethodDelete, "/api/tasks/"+url.PathEscape(id)+"?actor="+actor(), nil, &wrap)
+	return wrap.Removed, raw, err
+}
+
 // Reopen puts a completed task back into the queue.
 func (c *Client) Reopen(id string) (Task, []byte, error) {
 	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/reopen?actor="+actor(), nil)

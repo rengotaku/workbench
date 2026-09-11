@@ -252,6 +252,38 @@ func (s *Store) Resume(id, note string, actor Actor) (Task, error) {
 	return s.mustGet(id), nil
 }
 
+// Remove deletes a task. This is the one operation that loses something, so
+// the name and due date are written into the removal event: the task is gone
+// from the list, but the log still says what was taken out and when.
+//
+// Its other events stay in the log as orphans. Readers skip events whose task
+// no longer exists, so nothing downstream breaks.
+func (s *Store) Remove(id string, actor Actor) (Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	i, err := s.indexOf(id)
+	if err != nil {
+		return Task{}, err
+	}
+	removed := s.st.Tasks[i]
+
+	s.st.Tasks = append(s.st.Tasks[:i], s.st.Tasks[i+1:]...)
+	s.renumber()
+
+	ev := Event{TaskID: id, Kind: KindRemoved, Actor: actor, ToValue: removed.Name}
+	if removed.Due != "" {
+		ev.FromValue = "due:" + removed.Due
+	}
+	if err := s.record(ev); err != nil {
+		return Task{}, err
+	}
+	if err := s.persist(); err != nil {
+		return Task{}, err
+	}
+	return removed, nil
+}
+
 // Reopen puts a completed task back into the queue, at the end of it. It is
 // the way out of a mis-click on the checkbox: completion is a state, not a
 // one-way door.

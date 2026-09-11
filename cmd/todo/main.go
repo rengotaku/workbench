@@ -43,8 +43,8 @@ func rootCmd() *cobra.Command {
 	root.Flags().String("due", "", "due date (YYYY-MM-DD)")
 	root.Flags().String("detail", "", "detail text")
 
-	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), waitCmd(), resumeCmd(), orderCmd(),
-		dueCmd(), detailCmd(), askCmd(), whyCmd(), contextCmd(), importCmd())
+	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), removeCmd(), waitCmd(), resumeCmd(),
+		orderCmd(), dueCmd(), detailCmd(), askCmd(), whyCmd(), contextCmd(), importCmd())
 	return root
 }
 
@@ -157,6 +157,40 @@ func doneCmd() *cobra.Command {
 					continue
 				}
 				fmt.Printf("完了 %s  %s\n", t.ID, t.Name)
+			}
+			return nil
+		},
+	}
+}
+
+func removeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "rm <ID>...",
+		Aliases: []string{"remove"},
+		Short:   "タスクを取り除く（戻せない）",
+		Long: "タスクを取り除く。**戻せない**。誤って追加したものを消すためのもので、\n" +
+			"やめた作業は `done` か、詳細に理由を書いて残す方が経緯が読める。\n\n" +
+			"取り除いた名前と期限はイベントログに残るので、何を消したかは追える。",
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			cl, err := newClient()
+			if err != nil {
+				return err
+			}
+			// One at a time, stopping at the first failure: a typo must not
+			// take out the rest of the list behind it.
+			for _, id := range args {
+				t, raw, err := cl.Remove(id)
+				if err != nil {
+					return err
+				}
+				if asJSON {
+					if err := printRaw(raw); err != nil {
+						return err
+					}
+					continue
+				}
+				fmt.Printf("削除 %s  %s%s\n", t.ID, t.Name, dueSuffix(t))
 			}
 			return nil
 		},

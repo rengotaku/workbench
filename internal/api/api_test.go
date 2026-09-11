@@ -224,6 +224,28 @@ func TestReopen_OnATaskThatIsNotDoneIsRejected(t *testing.T) {
 	assert.Contains(t, body["error"], "not done")
 }
 
+func TestRemove_TakesATaskOutThroughTheAPI(t *testing.T) {
+	store, h := setup(t)
+	keep, _ := store.Add("残る", "", "", task.ActorHuman)
+	junk, _ := store.Add("誤って追加した", "", "", task.ActorHuman)
+
+	code, body := call(t, h, http.MethodDelete, "/api/tasks/"+junk.ID, nil)
+	require.Equal(t, http.StatusOK, code)
+	gone, ok := body["removed"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "誤って追加した", gone["name"])
+
+	_, list := call(t, h, http.MethodGet, "/api/tasks", nil)
+	rows := rowsOf(t, list, "queue")
+	require.Len(t, rows, 1)
+	first, ok := rows[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, keep.ID, first["id"])
+
+	code, _ = call(t, h, http.MethodDelete, "/api/tasks/"+junk.ID, nil)
+	assert.Equal(t, http.StatusNotFound, code, "removing it twice is not found")
+}
+
 func TestUnknownID_Is404(t *testing.T) {
 	_, h := setup(t)
 	code, _ := call(t, h, http.MethodPost, "/api/tasks/T999/done", nil)

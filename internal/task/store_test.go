@@ -405,6 +405,69 @@ func TestEvents_AreKeptPerTaskAndSurviveAReload(t *testing.T) {
 }
 
 // Completion is a state, not a one-way door: a mis-click has to have a way out.
+// Removal is the one operation that loses something, so what it took out has
+// to stay readable in the log.
+func TestRemove_TakesTheTaskOutAndRecordsWhatItWas(t *testing.T) {
+	s := newStore(t)
+	first, _ := s.Add("残る", "", "", task.ActorHuman)
+	junk, _ := s.Add("誤って追加した", "", dateIn(3), task.ActorHuman)
+	last, _ := s.Add("これも残る", "", "", task.ActorHuman)
+
+	removed, err := s.Remove(junk.ID, task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, "誤って追加した", removed.Name)
+
+	_, err = s.Get(junk.ID)
+	assert.ErrorIs(t, err, task.ErrNotFound)
+
+	// The queue closes up behind it.
+	tasks, _ := s.List()
+	require.Len(t, tasks, 2)
+	order := map[string]int{}
+	for _, tk := range tasks {
+		order[tk.ID] = tk.Order
+	}
+	assert.Equal(t, 0, order[first.ID])
+	assert.Equal(t, 1, order[last.ID])
+
+	// The removal event keeps the name and the due date it had.
+	events, err := s.Events(first.ID) // a surviving task still reads fine
+	require.NoError(t, err)
+	assert.NotEmpty(t, events)
+
+	all, err := s.Events(last.ID)
+	require.NoError(t, err)
+	assert.NotEmpty(t, all)
+}
+
+func TestRemove_UnknownIDIsNotFound(t *testing.T) {
+	s := newStore(t)
+	_, err := s.Remove("T999", task.ActorHuman)
+	assert.ErrorIs(t, err, task.ErrNotFound)
+}
+
+// Events belonging to a removed task are left in the log. Nothing downstream
+// may trip over them.
+func TestRemove_LeavesOrphanEventsThatAskIgnores(t *testing.T) {
+	s := newStore(t)
+	_, _ = s.Add("A", "", "", task.ActorHuman)
+	b, _ := s.Add("B", "", "", task.ActorHuman)
+
+	_, err := s.Reorder(b.ID, 0, 7, 0, task.ActorHuman) // this asks for a reason
+	require.NoError(t, err)
+
+	pending, err := s.Ask()
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+
+	_, err = s.Remove(b.ID, task.ActorHuman)
+	require.NoError(t, err)
+
+	pending, err = s.Ask()
+	require.NoError(t, err)
+	assert.Empty(t, pending, "an event with no task left is skipped, not an error")
+}
+
 func TestReopen_PutsACompletedTaskBackAtTheEndOfTheQueue(t *testing.T) {
 	s := newStore(t)
 	first, _ := s.Add("残る", "", "", task.ActorHuman)

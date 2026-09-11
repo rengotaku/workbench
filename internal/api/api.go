@@ -38,6 +38,7 @@ func (a *API) Mount(r gin.IRouter) {
 	g.GET("/revision", a.revision)
 	g.POST("/tasks", a.addTask)
 	g.PATCH("/tasks/:id", a.patchTask)
+	g.DELETE("/tasks/:id", a.removeTask)
 	g.POST("/tasks/:id/done", a.doneTask)
 	g.POST("/tasks/:id/reopen", a.reopenTask)
 	g.POST("/tasks/:id/wait", a.waitTask)
@@ -222,6 +223,17 @@ func (a *API) patchTask(c *gin.Context) {
 		return
 	}
 	a.respond(c, t, nil)
+}
+
+// removeTask deletes a task. It is the only call that loses data, so it is a
+// DELETE and nothing else routes to it by accident.
+func (a *API) removeTask(c *gin.Context) {
+	t, err := a.store.Remove(c.Param("id"), actorOf(c.Query("actor")))
+	if err != nil {
+		a.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"removed": t})
 }
 
 func (a *API) doneTask(c *gin.Context) {
