@@ -27,10 +27,12 @@
     <section class="sec">
       <ul class="list" id="queue"></ul>
       <button type="button" class="more" id="more" hidden></button>
-      <form class="add" id="add-form" autocomplete="off">
-        <input type="text" id="add-name" placeholder="タスクを足す（Enter）" aria-label="タスク名">
-        <input type="date" id="add-due" aria-label="期限（任意）">
-      </form>
+      <div class="add" id="add-slot">
+        <span></span><span></span>
+        <span class="plus" aria-hidden="true">＋</span>
+        <button type="button" class="as-button" id="add-trigger">タスクを追加</button>
+        <span></span>
+      </div>
     </section>
 
     <section class="sec" id="waiting-sec" hidden>
@@ -42,11 +44,10 @@
     </section>
 
     <section class="sec" id="done-sec" hidden>
-      <div class="sec-head">
-        <h2 class="sec-title">今週完了</h2>
-        <span class="sec-hint">月曜以降の分だけ残る</span>
-      </div>
-      <ul class="list" id="donelist"></ul>
+      <button type="button" class="fold-head" id="done-fold" aria-expanded="false" aria-controls="donelist">
+        <span class="caret" aria-hidden="true">▶</span>今週完了<span class="n" id="done-count">0</span>
+      </button>
+      <ul class="list" id="donelist" hidden></ul>
     </section>
 
     <div class="add-row">

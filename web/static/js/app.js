@@ -4,12 +4,14 @@
   'use strict';
 
   var SCOPE_KEY = 'todo-order.scope';
+  var DONE_KEY = 'todo-order.done-open';
   var POLL_MS = 4000;
   var state = {
     scope: '7',
     showOut: false,
     board: null,
     open: {},
+    doneOpen: false, // the completed list is a record, not a queue
     busy: false, // a drag or a date field is in progress; do not redraw under it
   };
 
@@ -31,9 +33,10 @@
     over: document.getElementById('c-over'),
     near: document.getElementById('c-near'),
     rest: document.getElementById('c-rest'),
-    addForm: document.getElementById('add-form'),
-    addName: document.getElementById('add-name'),
-    addDue: document.getElementById('add-due'),
+    addSlot: document.getElementById('add-slot'),
+    addTrigger: document.getElementById('add-trigger'),
+    doneFold: document.getElementById('done-fold'),
+    doneCount: document.getElementById('done-count'),
     untilWrap: document.getElementById('scope-until-wrap'),
     until: document.getElementById('scope-until'),
     err: document.getElementById('err'),
@@ -144,6 +147,10 @@
 
     var done = b.done || [];
     el.doneSec.hidden = done.length === 0;
+    el.doneCount.textContent = done.length;
+    el.doneFold.setAttribute('aria-expanded', String(state.doneOpen));
+    el.doneFold.querySelector('.caret').textContent = state.doneOpen ? '▼' : '▶';
+    el.doneList.hidden = !state.doneOpen;
     el.doneList.textContent = '';
     done.forEach(function (t) { el.doneList.appendChild(doneRow(t)); });
   }
@@ -730,28 +737,103 @@
     }
   }
 
-  el.addForm.addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    var name = el.addName.value.trim();
-    if (!name) return;
+  el.addTrigger.addEventListener('click', openAddEditor);
 
-    var body = { name: name };
-    if (el.addDue.value) body.due = el.addDue.value;
+  // openAddEditor turns the button into a field. It stays open after a task is
+  // added so several can go in one after another, and closes on Escape or on
+  // leaving it empty.
+  function openAddEditor() {
+    var slot = el.addSlot;
+    slot.classList.add('editing');
+    slot.textContent = '';
 
-    el.addName.disabled = true;
-    request('POST', '/api/tasks', body)
-      .then(function () {
-        el.addName.value = '';
-        el.addDue.value = '';
-        el.addName.disabled = false;
-        return load().then(function () { el.addName.focus(); });
-      })
-      .catch(function (err) { el.addName.disabled = false; showError(err); });
+    var name = document.createElement('input');
+    name.type = 'text';
+    name.id = 'add-name';
+    name.placeholder = 'タスク名（Enter で追加）';
+    name.setAttribute('aria-label', 'タスク名');
+    name.autocomplete = 'off';
+
+    var due = document.createElement('input');
+    due.type = 'date';
+    due.id = 'add-due';
+    due.setAttribute('aria-label', '期限（任意）');
+
+    function close() {
+      state.busy = false;
+      slot.classList.remove('editing');
+      slot.textContent = '';
+      ['', ''].forEach(function () { slot.appendChild(document.createElement('span')); });
+      var plus = document.createElement('span');
+      plus.className = 'plus';
+      plus.setAttribute('aria-hidden', 'true');
+      plus.textContent = '＋';
+      var trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.className = 'as-button';
+      trigger.id = 'add-trigger';
+      trigger.textContent = 'タスクを追加';
+      trigger.addEventListener('click', openAddEditor);
+      slot.appendChild(plus);
+      slot.appendChild(trigger);
+      slot.appendChild(document.createElement('span'));
+      el.addTrigger = trigger;
+    }
+
+    function submit() {
+      var value = name.value.trim();
+      if (!value) { close(); return; }
+
+      var body = { name: value };
+      if (due.value) body.due = due.value;
+
+      name.disabled = true;
+      request('POST', '/api/tasks', body)
+        .then(function () {
+          return load().then(function () {
+            // The list was redrawn; open a fresh field at the end again.
+            openAddEditor();
+            flash('追加した: ' + value);
+          });
+        })
+        .catch(function (err) { name.disabled = false; showError(err); });
+    }
+
+    name.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); submit(); }
+      if (e.key === 'Escape') { close(); }
+    });
+    due.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); submit(); }
+      if (e.key === 'Escape') { close(); }
+    });
+    name.addEventListener('blur', function () {
+      // Leaving an empty field puts the button back; a half-typed one stays.
+      window.setTimeout(function () {
+        if (!name.value.trim() && document.activeElement !== due) close();
+      }, 120);
+    });
+
+    var plusMark = document.createElement('span');
+    plusMark.className = 'plus';
+    plusMark.setAttribute('aria-hidden', 'true');
+    plusMark.textContent = '＋';
+
+    slot.appendChild(document.createElement('span'));
+    slot.appendChild(document.createElement('span'));
+    slot.appendChild(plusMark);
+    slot.appendChild(name);
+    slot.appendChild(due);
+
+    state.busy = true; // typing must not be interrupted by the poll
+    name.focus();
+  }
+
+  el.doneFold.addEventListener('click', function () {
+    state.doneOpen = !state.doneOpen;
+    try { localStorage.setItem(DONE_KEY, state.doneOpen ? '1' : '0'); } catch (e) { /* private window */ }
+    render();
   });
-
-  // Typing must not be interrupted by the poll redrawing the list.
-  el.addName.addEventListener('focus', function () { state.busy = true; });
-  el.addName.addEventListener('blur', function () { state.busy = !!el.addName.value; });
 
   scopeButtons.forEach(function (b) {
     b.addEventListener('click', function () {
@@ -862,6 +944,10 @@
   }
 
   // ---- boot ----
+
+  try {
+    state.doneOpen = localStorage.getItem(DONE_KEY) === '1';
+  } catch (e) { /* storage unavailable; closed is the default */ }
 
   try {
     var saved = localStorage.getItem(SCOPE_KEY);
