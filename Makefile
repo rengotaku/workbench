@@ -1,4 +1,4 @@
-.PHONY: install build run stop status lint test test-cov check ci clean help
+.PHONY: install build run stop status install-agent lint test test-cov check ci clean help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -38,6 +38,10 @@ stop:
 ## status: Check if server is running
 status:
 	@lsof -ti :$(PORT) -sTCP:LISTEN >/dev/null 2>&1 && echo "todo-order: running (:$(PORT))" || echo "todo-order: stopped"
+
+## install-agent: Build, place the binaries and the launchd plist (does not load it)
+install-agent:
+	./scripts/install-agent.sh --port $(PORT)
 
 ## lint: Run golangci-lint
 lint:

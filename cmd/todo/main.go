@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/rengotaku/todo-order/internal/client"
+	"github.com/rengotaku/todo-order/internal/legacy"
 	"github.com/rengotaku/todo-order/internal/task"
 )
 
@@ -43,7 +44,7 @@ func rootCmd() *cobra.Command {
 	root.Flags().String("detail", "", "detail text")
 
 	root.AddCommand(listCmd(), doneCmd(), waitCmd(), resumeCmd(), orderCmd(),
-		dueCmd(), detailCmd(), askCmd(), whyCmd(), contextCmd())
+		dueCmd(), detailCmd(), askCmd(), whyCmd(), contextCmd(), importCmd())
 	return root
 }
 
@@ -391,6 +392,90 @@ func contextCmd() *cobra.Command {
 			}
 			return nil
 		},
+	}
+}
+
+// ---- migration ----
+
+func importCmd() *cobra.Command {
+	var ledgerPath, orderPath string
+	var dryRun bool
+
+	c := &cobra.Command{
+		Use:   "import",
+		Short: "旧台帳（TODO ファイル + 順序ファイル）から移行する",
+		Long: "旧台帳をこのアプリへ移す。順序ファイルの並びがそのまま着手順になり、\n" +
+			"行に付いていたコメントは詳細として残る。1 回だけ実行する（既にタスクが\n" +
+			"入っているときは何も書き込まずに止まる）。",
+		Args: cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			ledger, err := legacy.ReadLedger(ledgerPath)
+			if err != nil {
+				return err
+			}
+			order, err := legacy.ReadOrder(orderPath)
+			if err != nil {
+				return err
+			}
+			items, err := legacy.Plan(ledger, order)
+			if err != nil {
+				return err
+			}
+
+			if dryRun {
+				printPlan(items)
+				return nil
+			}
+
+			cl, err := newClient()
+			if err != nil {
+				return err
+			}
+			n, raw, err := cl.Import(items)
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return printRaw(raw)
+			}
+			fmt.Printf("移行 %d 件\n", n)
+			fmt.Println("旧台帳はこのあと参照されない。集計スクリプトのデータ源を切り替えること")
+			return nil
+		},
+	}
+	c.Flags().StringVar(&ledgerPath, "ledger", "", "旧 TODO ファイル（必須）")
+	c.Flags().StringVar(&orderPath, "order", "", "旧 順序ファイル（必須）")
+	c.Flags().BoolVar(&dryRun, "dry-run", false, "書き込まずに移行計画だけ出す")
+	_ = c.MarkFlagRequired("ledger")
+	_ = c.MarkFlagRequired("order")
+	return c
+}
+
+// printPlan shows what an import would do, so the plan can be checked before
+// anything is written.
+func printPlan(items []task.ImportItem) {
+	fmt.Printf("移行計画 %d 件（--dry-run なので書き込んでいない）\n\n", len(items))
+	for i, it := range items {
+		id := it.ID
+		if id == "" {
+			id = "（新規採番）"
+		}
+		state := ""
+		if it.Done {
+			state = "  [完了]"
+		}
+		due := ""
+		if it.Due != "" {
+			due = "  期限 " + it.Due
+		}
+		fmt.Printf("%3d %-12s %s%s%s\n", i+1, id, it.Name, due, state)
+		if it.Detail != "" {
+			for _, line := range strings.Split(it.Detail, "\n") {
+				if strings.TrimSpace(line) != "" {
+					fmt.Printf("             │ %s\n", line)
+				}
+			}
+		}
 	}
 }
 

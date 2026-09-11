@@ -43,6 +43,8 @@ func (a *API) Mount(r gin.IRouter) {
 	g.POST("/tasks/:id/order", a.orderTask)
 	g.GET("/tasks/:id/context", a.taskContext)
 
+	g.POST("/import", a.importTasks)
+
 	g.GET("/ask", a.ask)
 	g.POST("/events/:id/why", a.why)
 }
@@ -105,7 +107,7 @@ func (a *API) build(scope int) listResponse {
 			switch {
 			case v.Overdue:
 				res.Counts.Over++
-			case v.InScope:
+			case t.Due != "" && v.InScope:
 				res.Counts.Near++
 			default:
 				res.Counts.Rest++
@@ -123,7 +125,11 @@ func (a *API) view(t task.Task, today time.Time, scope int) View {
 	}
 
 	if t.Due == "" {
+		// A task with no due date is not "past the window" — there is no date
+		// to be past. Collapsing it would hide the top of the queue, so it
+		// stays visible and only counts as neither overdue nor in-window.
 		v.DueLabel, v.DueClass = "期限なし", "none"
+		v.InScope = true
 		return v
 	}
 	d, err := task.ParseDate(t.Due, a.loc)
@@ -260,6 +266,31 @@ func (a *API) orderTask(c *gin.Context) {
 	}
 	t, err := a.store.Reorder(c.Param("id"), req.To, scope, actorOf(req.Actor))
 	a.respond(c, t, err)
+}
+
+type importRequest struct {
+	Actor string            `json:"actor"`
+	Items []task.ImportItem `json:"items"`
+}
+
+// importTasks brings the old ledgers over. The server stays the only writer,
+// so the migration goes through here rather than editing the files directly.
+func (a *API) importTasks(c *gin.Context) {
+	var req importRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	tasks, err := a.store.Import(req.Items, actorOf(req.Actor))
+	if err != nil {
+		if errors.Is(err, task.ErrNotEmpty) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		badRequest(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"tasks": tasks, "imported": len(tasks)})
 }
 
 func (a *API) taskContext(c *gin.Context) {

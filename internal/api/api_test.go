@@ -139,6 +139,33 @@ func TestList_WideningTheScopePullsTheFarDueDateIn(t *testing.T) {
 	assert.EqualValues(t, 1, countsOf(t, all)["near"])
 }
 
+// A task with no due date is the top of the queue often enough that hiding it
+// under "スコープ外" loses the first thing to work on.
+func TestList_ATaskWithNoDueDateStaysVisible(t *testing.T) {
+	store, h := setup(t)
+	noDue, err := store.Add("期限なし", "", "", task.ActorHuman)
+	require.NoError(t, err)
+	_, err = store.Add("ずっと先", "", dateIn(60), task.ActorHuman)
+	require.NoError(t, err)
+
+	_, body := call(t, h, http.MethodGet, "/api/tasks?scope=7", nil)
+
+	rows := rowsOf(t, body, "queue")
+	require.Len(t, rows, 2)
+
+	first, ok := rows[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, noDue.ID, first["id"])
+	assert.Equal(t, true, first["in_scope"], "no due date means nothing to be outside of")
+
+	second, ok := rows[1].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, false, second["in_scope"], "a far due date is genuinely outside the window")
+
+	// Both still count as "neither overdue nor due this week".
+	assert.EqualValues(t, 2, countsOf(t, body)["rest"])
+}
+
 func TestList_RejectsAMeaninglessScope(t *testing.T) {
 	_, h := setup(t)
 	code, body := call(t, h, http.MethodGet, "/api/tasks?scope=soon", nil)

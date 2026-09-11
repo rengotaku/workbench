@@ -132,6 +132,17 @@ func (c *Client) SetDetail(id, detail string) (Task, []byte, error) {
 	})
 }
 
+// Import posts the migration plan built from the old ledgers.
+func (c *Client) Import(items []task.ImportItem) (int, []byte, error) {
+	var wrap struct {
+		Imported int `json:"imported"`
+	}
+	raw, err := c.do(http.MethodPost, "/api/import", map[string]any{
+		"items": items, "actor": actor(),
+	}, &wrap)
+	return wrap.Imported, raw, err
+}
+
 // Context returns one task with its whole event history.
 func (c *Client) Context(id string) (task.Task, []task.Event, []byte, error) {
 	var wrap struct {
