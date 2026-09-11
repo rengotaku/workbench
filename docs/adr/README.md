@@ -8,3 +8,5 @@
 | [0002](0002-json-plus-append-only-log.md) | 保存は tasks.json と追記専用の JSONL で行い SQLite を使わない | accepted | 2026-09-10 | 件数が数十のため DB を置かず、状態は JSON、履歴は月次 JSONL の追記で持つ |
 | [0003](0003-cli-writes-through-the-server.md) | CLI はサーバ経由でのみ書き込み、データファイルを直接触らない | accepted | 2026-09-10 | 書き手をサーバ1つに限り、サーバ不通時はエラーで止めて正本の二重化を防ぐ |
 | [0004](0004-ask-for-reasons-after-the-fact.md) | 並べ替えの理由は後から聞き、対象を4条件に限る | accepted | 2026-09-10 | ドラッグ時に理由を聞かず空で記録し、説明が要る4条件だけ後から質問する |
+| [0005](0005-focus-is-a-mark-not-a-state.md) | フォーカスは状態ではなく印として持つ | accepted | 2026-09-11 | Focused を状態遷移に組み込まず独立したフラグにし、フォーカス中のタスクを着手順から抜かない |
+| [0006](0006-undo-replays-inverse-events.md) | 取り消しはサーバ側でイベントを逆適用する | accepted | 2026-09-11 | undo をクライアントのスタックではなくイベントログの逆適用で実装し、逆操作自体も消費済みにして往復を防ぐ |
