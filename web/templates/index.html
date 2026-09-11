@@ -2,6 +2,7 @@
 
 {{define "content"}}
 <div class="wrap" data-ticket-url-base="{{.TicketURLBase}}">
+  <div class="panes">
   <div class="app">
     <div class="app-head">
       <div class="head-left">
@@ -59,6 +60,11 @@
       <code>todo "タスク名" --due YYYY-MM-DD</code>
       <span>→ 端末からも同じ口に入る</span>
     </div>
+  </div>
+
+  <!-- 読むだけの詳細。一覧の行に乗せると追従する。幅が足りない画面では消え、
+       そのときは行を開く導線だけが残る（開閉は広い画面でもそのまま使える）。 -->
+  <aside class="detail" id="detail" aria-live="polite"></aside>
   </div>
 
   <div class="legend">

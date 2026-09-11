@@ -13,7 +13,13 @@
     openId: null, // only one row is open at a time; another row closes it
     doneOpen: false, // the completed list is a record, not a queue
     busy: false, // a drag or a date field is in progress; do not redraw under it
+    shownId: null, // the task the detail box is showing; the pointer moves it
   };
+
+  // The detail box keeps the last task it was given. Letting it empty when the
+  // pointer leaves the list would blank it mid-read, which is when it is most
+  // in use.
+  var trailCache = {};
 
   // A ticket key at the start of a name becomes a link when a base URL is
   // configured. The app itself knows nothing about any tracker; this is only
@@ -50,6 +56,7 @@
     focusCount: document.getElementById('focus-count'),
     addSlot: document.getElementById('add-slot'),
     addTrigger: document.getElementById('add-trigger'),
+    detail: document.getElementById('detail'),
     doneFold: document.getElementById('done-fold'),
     doneCount: document.getElementById('done-count'),
     untilWrap: document.getElementById('scope-until-wrap'),
@@ -190,6 +197,8 @@
     el.waitList.textContent = '';
     waiting.forEach(function (t) { el.waitList.appendChild(waitRow(t)); });
 
+    refreshDetail();
+
     var done = b.done || [];
     el.doneSec.hidden = done.length === 0;
     el.doneCount.textContent = done.length;
@@ -198,6 +207,21 @@
     el.doneList.hidden = !state.doneOpen;
     el.doneList.textContent = '';
     done.forEach(function (t) { el.doneList.appendChild(doneRow(t)); });
+  }
+
+  // After a reload the box holds an older copy of the task. Redraw it from the
+  // fresh board, or fall back to the first task when it has none yet (the box
+  // should not open empty).
+  function refreshDetail() {
+    if (!el.detail) return;
+    var b = state.board;
+    if (!b) return;
+    var all = (b.queue || []).concat(b.waiting || [], b.done || []);
+    if (all.length === 0) return;
+    var still = null;
+    all.forEach(function (t) { if (t.id === state.shownId) still = t; });
+    if (still) { trailCache[still.id] = null; delete trailCache[still.id]; showDetail(still); return; }
+    if (state.shownId === null) showDetail(all[0]);
   }
 
   function setTitle(sel, text) {
@@ -307,6 +331,10 @@
     if (opts.dueClass) due.classList.add(opts.dueClass);
     due.textContent = opts.dueLabel;
     li.appendChild(due);
+
+    // Moving over a row hands it to the detail box. The box is read-only, so
+    // this cannot interrupt anything being typed; editing stays in the row.
+    li.addEventListener('mouseenter', function () { showDetail(opts.task); });
 
     // The delete slot sits next to the due chip and only appears on hover, so
     // the row stays quiet while reading. The column is always there (even for
@@ -452,6 +480,96 @@
       dueTitle: label + ' に完了。直近の月曜以降の分だけ残る\nチェックを外すと着手順の末尾へ戻る',
       hasPanel: false,
       extraClass: 'done',
+    });
+  }
+
+  // showDetail fills the box beside the list. It reads; every change is still
+  // made in the row, so the box can disappear at narrow widths without taking
+  // any operation with it.
+  function showDetail(t) {
+    if (!el.detail) return;
+    state.shownId = t.id;
+    el.detail.textContent = '';
+
+    var eyebrow = document.createElement('div');
+    eyebrow.className = 'd-eyebrow';
+    var id = document.createElement('span');
+    id.textContent = t.id;
+    var where = document.createElement('span');
+    where.textContent = detailState(t);
+    eyebrow.appendChild(id);
+    eyebrow.appendChild(where);
+    el.detail.appendChild(eyebrow);
+
+    var name = document.createElement('p');
+    name.className = 'd-name';
+    linkify(name, t.name);
+    el.detail.appendChild(name);
+
+    var body = document.createElement('div');
+    body.className = 'd-body' + (t.detail ? '' : ' none');
+    body.textContent = t.detail || '詳細なし';
+    el.detail.appendChild(body);
+
+    var sec = document.createElement('div');
+    sec.className = 'd-sec';
+    var h = document.createElement('h2');
+    h.textContent = '経緯';
+    sec.appendChild(h);
+    var list = document.createElement('ul');
+    list.className = 'd-trail';
+    sec.appendChild(list);
+    el.detail.appendChild(sec);
+
+    if (trailCache[t.id]) {
+      fillDetailTrail(list, trailCache[t.id]);
+      return;
+    }
+    var waiting = document.createElement('li');
+    waiting.textContent = '読み込み中';
+    list.appendChild(waiting);
+    var asked = t.id;
+    request('GET', '/api/tasks/' + encodeURIComponent(t.id) + '/context')
+      .then(function (data) {
+        trailCache[asked] = data.events || [];
+        if (state.shownId !== asked) return; // the pointer moved on
+        fillDetailTrail(list, trailCache[asked]);
+      })
+      .catch(function () {
+        if (state.shownId !== asked) return;
+        list.textContent = '';
+        var oops = document.createElement('li');
+        oops.textContent = '経緯を読めない';
+        list.appendChild(oops);
+      });
+  }
+
+  function detailState(t) {
+    if (t.state === 'waiting') {
+      return (t.handed_to ? t.handed_to + ' 待ち' : '待ち') + ' ' + (t.stalled_for || 0) + '日';
+    }
+    if (t.state === 'done') return '完了';
+    return t.focused ? '着手順 ◎ フォーカス' : '着手順';
+  }
+
+  function fillDetailTrail(list, events) {
+    list.textContent = '';
+    if (events.length === 0) {
+      var none = document.createElement('li');
+      none.textContent = '経緯なし';
+      list.appendChild(none);
+      return;
+    }
+    events.slice().reverse().forEach(function (e) {
+      var li = document.createElement('li');
+      var d = new Date(e.at);
+      var when = document.createElement('time');
+      when.textContent = (d.getMonth() + 1) + '/' + d.getDate() + ' '
+        + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+      li.appendChild(when);
+      var what = (KIND_LABEL[e.kind] || e.kind) + changeOf(e) + (e.actor === 'ai' ? '（AI）' : '');
+      li.appendChild(document.createTextNode(what + (e.reason ? ' — ' + e.reason : '')));
+      list.appendChild(li);
     });
   }
 

@@ -86,6 +86,51 @@ body {
 
 .wrap { max-width: 660px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 
+/* 詳細は一覧とは別の箱。広い画面でだけ出し、狭ければ箱ごと消す（行を開く
+   導線は残っているので、消えても操作は一通りそろう）。 */
+.panes { display: contents; }
+.detail { display: none; }
+@media (min-width: 900px) {
+  .wrap { max-width: 1012px; }
+  .panes {
+    display: grid;
+    grid-template-columns: 660px 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+  .detail {
+    display: block;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 15px 17px;
+    position: sticky;
+    top: 18px;
+    max-height: calc(100vh - 36px);
+    overflow-y: auto;
+  }
+}
+.d-eyebrow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin-bottom: 9px;
+}
+.d-name { font-size: 13.5px; font-weight: 500; line-height: 1.6; margin: 0 0 8px; }
+.d-body { font-size: 12px; line-height: 1.85; color: var(--ink-soft); white-space: pre-wrap; }
+.d-body.none { color: var(--muted); }
+.d-sec { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line-soft); }
+.d-sec h2 { margin: 0 0 6px; font-size: 10.5px; letter-spacing: .08em; color: var(--muted); font-weight: 500; }
+.d-trail { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.d-trail li { font-size: 11.5px; color: var(--ink-soft); line-height: 1.6; }
+.d-trail time { font-family: var(--mono); color: var(--muted); margin-right: 6px; }
+.d-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.9; }
+
 .app {
   background: var(--surface);
   border: 1px solid var(--line);
