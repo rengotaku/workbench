@@ -36,6 +36,7 @@ func (a *API) Mount(r gin.IRouter) {
 
 	g.GET("/tasks", a.listTasks)
 	g.GET("/revision", a.revision)
+	g.POST("/undo", a.undo)
 	g.POST("/tasks", a.addTask)
 	g.PATCH("/tasks/:id", a.patchTask)
 	g.DELETE("/tasks/:id", a.removeTask)
@@ -75,6 +76,7 @@ type listResponse struct {
 	} `json:"counts"`
 	ScopeDays int `json:"scope_days"`
 	Revision  int `json:"revision"`
+	Undoable  int `json:"undoable"`
 }
 
 func (a *API) listTasks(c *gin.Context) {
@@ -98,6 +100,9 @@ func (a *API) build(scope int) listResponse {
 
 	tasks, rev := a.store.List()
 	res.Revision = rev
+	if n, err := a.store.UndoableCount(); err == nil {
+		res.Undoable = n
+	}
 
 	for _, t := range tasks {
 		v := a.view(t, today, scope)
@@ -122,6 +127,21 @@ func (a *API) build(scope int) listResponse {
 		}
 	}
 	return res
+}
+
+// undo reverses the last change, whoever made it: one entry point for the page
+// and the CLI, so undoing does not depend on which one did the thing.
+func (a *API) undo(c *gin.Context) {
+	done, err := a.store.Undo(actorOf(c.Query("actor")))
+	if err != nil {
+		if errors.Is(err, task.ErrNothingToUndo) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		a.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"undone": done})
 }
 
 // revision is what the page polls to notice a change made elsewhere — by the

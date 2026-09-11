@@ -280,29 +280,25 @@ body {
 }
 .fold-head[aria-expanded="true"] + .list { margin-top: 10px; }
 
-/* ---- editing inside the panel ---- */
-.field { display: flex; flex-direction: column; gap: 3px; }
-.field label {
+/* ---- editing in place ---- */
+/* No labels, no boxes, no save button: the text itself is the field. */
+.live { outline: none; }
+.live:empty::before { content: attr(data-placeholder); color: var(--muted); }
+.name .live { cursor: text; }
+.name .live:focus { box-shadow: inset 0 -1px 0 var(--accent); }
+.task.row-open { background: var(--surface-sunk); }
+
+.save-state {
   font-family: var(--mono);
   font-size: 10.5px;
-  letter-spacing: .12em;
-  text-transform: uppercase;
+  letter-spacing: .06em;
   color: var(--muted);
+  opacity: 0;
+  transition: opacity .18s ease;
 }
-.field input, .field textarea {
-  font-family: var(--sans);
-  font-size: 13px;
-  color: var(--ink);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  padding: 5px 7px;
-  width: 100%;
-  resize: vertical;
-}
-.field textarea { min-height: 60px; line-height: 1.6; }
-.field input:focus-visible, .field textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-.panel-actions button.primary { color: var(--accent); border-color: var(--accent); }
+.save-state.on { opacity: 1; }
+.save-state.saved { color: var(--done); }
+
 .panel-actions .spacer { flex: 1; }
 .panel-actions input {
   font-family: var(--sans);
@@ -314,13 +310,21 @@ body {
   padding: 2px 6px;
 }
 
-/* An event with no reason is the one thing the page asks for. */
-.trail-row .why.ask {
-  color: var(--near);
-  cursor: pointer;
+/* The history is one line; its tooltip carries the content, so opening a row
+   does not grow by as many lines as the task has events. */
+.trail-link, .reason-link, .handoff-note {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .03em;
+  color: var(--muted);
   text-decoration: underline dotted;
+  text-underline-offset: 3px;
 }
-.trail-row .why.ask:hover { color: var(--ink); }
+.trail-link { cursor: default; }
+.trail-link:hover { color: var(--ink-soft); }
+.reason-link { color: var(--near); cursor: pointer; }
+.reason-link:hover { color: var(--ink); }
+.handoff-note { text-decoration: none; cursor: default; }
 
 ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 
@@ -437,16 +441,17 @@ a.ticket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   margin-top: 4px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
-.panel .detail { font-size: 13px; color: var(--ink-soft); line-height: 1.7; white-space: pre-line; }
-.panel .trail-title {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--muted);
+.panel .live.detail {
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.7;
+  min-height: 1.7em;
+  white-space: pre-wrap;
+  cursor: text;
 }
+.panel .live.detail:focus { box-shadow: inset 0 -1px 0 var(--accent); }
 .panel-actions {
   display: flex;
   align-items: center;
@@ -466,20 +471,34 @@ a.ticket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   cursor: pointer;
 }
 .panel-actions button:hover { color: var(--ink); border-color: var(--muted); }
-.panel-actions button.danger:hover { color: var(--over); border-color: var(--over); }
-.panel-actions button.danger.strong {
-  color: var(--over);
-  border-color: var(--over);
-  font-weight: 500;
-}
 .panel-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.panel-actions .confirm-label { font-size: 12px; color: var(--over); }
 
-.trail { display: flex; flex-direction: column; gap: 4px; }
-.trail-row { font-size: 12.5px; color: var(--ink-soft); display: flex; gap: 8px; align-items: baseline; }
-.trail-row time { font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
-.trail-row .why { color: var(--muted); }
-.trail-row.unexplained .why { color: var(--near); }
+/* Removing sits apart, below a rule of its own: it is the one action that
+   repeating does not undo, so it does not share a row with the rest. */
+.panel-danger {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
+}
+.danger-slot { display: inline-flex; align-items: center; gap: 8px; }
+.panel-danger button {
+  appearance: none;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.panel-danger button:hover { color: var(--over); border-color: var(--over); }
+.panel-danger button.strong { color: var(--over); border-color: var(--over); font-weight: 500; }
+.panel-danger button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.panel-danger .confirm-label { font-size: 12px; color: var(--over); margin-right: auto; }
 
 .due {
   font-family: var(--mono);
@@ -544,6 +563,19 @@ button.due-edit:focus-visible { outline: 2px solid var(--accent); outline-offset
 }
 /* A reload that happened on its own is news, not a failure. */
 .err.notice { background: var(--accent-soft); color: var(--accent); }
+.undo-link {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.undo-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 @media (prefers-reduced-motion: no-preference) {
   .task { transition: background .15s ease, border-color .15s ease; }

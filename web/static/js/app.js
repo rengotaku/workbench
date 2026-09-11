@@ -10,7 +10,7 @@
     scope: '7',
     showOut: false,
     board: null,
-    open: {},
+    openId: null, // only one row is open at a time; another row closes it
     doneOpen: false, // the completed list is a record, not a queue
     busy: false, // a drag or a date field is in progress; do not redraw under it
   };
@@ -55,7 +55,7 @@
       request('GET', '/api/revision')
         .then(function (r) {
           if (r.revision !== state.board.revision) {
-            load().then(function () { flash('外で変更があったので読み直した'); });
+            load().then(function () { flash('外で変更があったので読み直した', false); });
           }
         })
         .catch(function () { /* a blip: the next tick tries again */ });
@@ -98,14 +98,37 @@
     el.err.hidden = false;
   }
 
-  // flash says what just happened without looking like a failure.
-  function flash(text) {
+  // flash says what just happened without looking like a failure, and offers
+  // to take it back. Undo is where a mis-click gets fixed, so it belongs next
+  // to the message about the click.
+  function flash(text, undoable) {
     el.err.classList.add('notice');
     el.err.textContent = text;
+    if (undoable !== false) {
+      var link = document.createElement('button');
+      link.type = 'button';
+      link.className = 'undo-link';
+      link.textContent = '元に戻す';
+      link.addEventListener('click', undo);
+      el.err.appendChild(document.createTextNode('  '));
+      el.err.appendChild(link);
+    }
     el.err.hidden = false;
     window.setTimeout(function () {
       if (el.err.classList.contains('notice')) el.err.hidden = true;
-    }, 4000);
+    }, 6000);
+  }
+
+  // undo reverses the last change, whoever made it — the page, the terminal or
+  // the assistant. Cmd/Ctrl+Z reaches the same call.
+  function undo() {
+    request('POST', '/api/undo')
+      .then(function (data) {
+        var done = data.undone || {};
+        state.openId = null;
+        return load().then(function () { flash(done.summary || '取り消した', false); });
+      })
+      .catch(showError);
   }
 
   // ---- rendering ----
@@ -190,7 +213,8 @@
     if (opts.hasPanel) {
       li.classList.add('openable');
       li.tabIndex = 0;
-      li.setAttribute('aria-expanded', String(!!state.open[opts.task.id]));
+      li.setAttribute('aria-expanded', String(isOpen(opts.task.id)));
+      if (isOpen(opts.task.id)) li.classList.add('row-open');
     }
 
     var grip = document.createElement('span');
@@ -219,13 +243,26 @@
     name.className = 'name';
     var txt = document.createElement('span');
     txt.className = 'txt';
-    txt.title = opts.task.name;
-    linkify(txt, opts.task.name);
+
+    if (opts.hasPanel && isOpen(opts.task.id)) {
+      // An open row is the editable one. The name is the same text in the same
+      // place, so there is no second copy of it inside the panel. Ticket keys
+      // stop being links while editing: a link inside an editable line fights
+      // the caret.
+      txt.classList.add('live');
+      txt.contentEditable = 'true';
+      txt.spellcheck = false;
+      txt.textContent = opts.task.name;
+      wireLiveField(txt, opts.task, 'name', { single: true });
+    } else {
+      txt.title = opts.task.name;
+      linkify(txt, opts.task.name);
+    }
     name.appendChild(txt);
 
     body.appendChild(name);
 
-    if (opts.hasPanel && state.open[opts.task.id]) {
+    if (opts.hasPanel && isOpen(opts.task.id)) {
       body.appendChild(panelFor(opts.task));
     }
     li.appendChild(body);
@@ -313,35 +350,27 @@
     var panel = document.createElement('div');
     panel.className = 'panel';
 
-    // The panel is where a task is edited: opening it is the one place that
-    // has room for a name and a body without pushing the row past one line.
-    var nameField = field('名前', 'input', t.name);
-    var detailField = field('詳細', 'textarea', t.detail || '');
-    panel.appendChild(nameField.wrap);
-    panel.appendChild(detailField.wrap);
+    // The detail is edited where it is read: no label, no box, no save button.
+    var detail = document.createElement('div');
+    detail.className = 'live detail';
+    detail.contentEditable = 'true';
+    detail.spellcheck = false;
+    detail.dataset.placeholder = '詳細を書く（任意）';
+    detail.textContent = t.detail || '';
+    wireLiveField(detail, t, 'detail', { single: false });
+    panel.appendChild(detail);
 
     var actions = document.createElement('div');
     actions.className = 'panel-actions';
 
-    var save = document.createElement('button');
-    save.type = 'button';
-    save.className = 'primary';
-    save.textContent = '保存';
-    save.addEventListener('click', function () {
-      var body = {};
-      if (nameField.input.value.trim() && nameField.input.value !== t.name) {
-        body.name = nameField.input.value.trim();
-      }
-      if (detailField.input.value !== (t.detail || '')) {
-        body.detail = detailField.input.value;
-      }
-      if (!Object.keys(body).length) { flash('変更なし'); return; }
-      save.disabled = true;
-      request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), body)
-        .then(function () { return load().then(function () { flash('保存した'); }); })
-        .catch(function (err) { save.disabled = false; showError(err); });
-    });
-    actions.appendChild(save);
+    var saved = document.createElement('span');
+    saved.className = 'save-state';
+    saved.dataset.save = '1';
+    actions.appendChild(saved);
+
+    var spacer = document.createElement('span');
+    spacer.className = 'spacer';
+    actions.appendChild(spacer);
 
     if (t.state === 'waiting') {
       var resume = document.createElement('button');
@@ -359,36 +388,100 @@
       actions.appendChild(waitControl(t));
     }
 
-    var spacer = document.createElement('span');
-    spacer.className = 'spacer';
-    actions.appendChild(spacer);
-    panel.appendChild(actions);
+    // The trail is one line: a link whose tooltip holds the whole history.
+    // Listing it would push the row open by as many lines as the task has
+    // events, and it is read rarely.
+    var trailLink = document.createElement('span');
+    trailLink.className = 'trail-link';
+    trailLink.textContent = '経緯';
+    actions.appendChild(trailLink);
+
+    var reasonLink = document.createElement('span');
+    reasonLink.className = 'reason-link';
+    reasonLink.hidden = true;
+    actions.appendChild(reasonLink);
 
     if (t.state === 'waiting' && t.handed_to) {
-      var handoff = document.createElement('div');
-      handoff.className = 'detail';
+      var handoff = document.createElement('span');
+      handoff.className = 'handoff-note';
       handoff.textContent = t.handed_on + ' に ' + t.handed_to + ' へ渡した'
         + (t.wait_note ? ' · ' + t.wait_note : '');
-      panel.appendChild(handoff);
+      actions.appendChild(handoff);
     }
 
-    var title = document.createElement('div');
-    title.className = 'trail-title';
-    title.textContent = '経緯';
-    panel.appendChild(title);
+    panel.appendChild(actions);
 
-    var trail = document.createElement('div');
-    trail.className = 'trail';
-    trail.dataset.for = t.id;
-    trail.textContent = '読み込み中…';
-    panel.appendChild(trail);
+    // Removing sits on its own below a rule: it is the one thing that cannot
+    // be undone by repeating it, so it does not share a row with the everyday
+    // buttons.
+    var danger = document.createElement('div');
+    danger.className = 'panel-danger';
+    danger.appendChild(removeControl(t));
+    panel.appendChild(danger);
 
     request('GET', '/api/tasks/' + encodeURIComponent(t.id) + '/context')
-      .then(function (data) { fillTrail(trail, data.events || []); })
-      .catch(function (err) { trail.textContent = err.message; });
+      .then(function (data) { fillTrail(trailLink, reasonLink, data.events || []); })
+      .catch(function (err) {
+        trailLink.textContent = '経緯を読めない';
+        trailLink.title = err.message;
+      });
 
-    actions.appendChild(removeControl(t));
     return panel;
+  }
+
+  function isOpen(id) { return state.openId === id; }
+
+  // wireLiveField makes a piece of text save itself: a pause in typing writes
+  // it, and so does leaving the field. There is no save button to forget.
+  function wireLiveField(node, t, key, opts) {
+    var last = t[key] || '';
+    var timer = null;
+
+    function save(reload) {
+      var value = node.textContent;
+      if (opts.single) value = value.replace(/\s+/g, ' ').trim();
+      if (value === last) return;
+      if (opts.single && !value) { node.textContent = last; return; } // a name cannot be empty
+
+      var body = {};
+      body[key] = value;
+      mark(node, '保存中…');
+      request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), body)
+        .then(function () {
+          last = value;
+          t[key] = value;
+          mark(node, '保存した', true);
+          if (reload) load();
+        })
+        .catch(function (err) { showError(err); node.textContent = last; });
+    }
+
+    node.addEventListener('focus', function () { state.busy = true; });
+    node.addEventListener('input', function () {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(function () { save(false); }, 900);
+    });
+    node.addEventListener('blur', function () {
+      window.clearTimeout(timer);
+      state.busy = false;
+      save(true);
+    });
+    node.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && opts.single) { e.preventDefault(); node.blur(); }
+      if (e.key === 'Escape') { e.stopPropagation(); node.blur(); }
+    });
+  }
+
+  // mark shows what happened to the save, next to the task it happened to.
+  function mark(node, text, done) {
+    var panel = node.closest('.panel') || (node.closest('.task') || document).querySelector('.panel');
+    var slot = panel && panel.querySelector('[data-save]');
+    if (!slot) return;
+    slot.textContent = text;
+    slot.className = 'save-state on' + (done ? ' saved' : '');
+    if (done) {
+      window.setTimeout(function () { slot.className = 'save-state saved'; }, 1600);
+    }
   }
 
   // linkify writes text into el, turning ticket keys into links. Text is added
@@ -489,12 +582,11 @@
   // a second click. Anything reachable in one click from the list would be too
   // easy to hit by accident.
   function removeControl(t) {
-    var wrap = document.createElement('div');
-    wrap.className = 'panel-actions';
+    var wrap = document.createElement('span');
+    wrap.className = 'danger-slot';
 
     var ask = document.createElement('button');
     ask.type = 'button';
-    ask.className = 'danger';
     ask.textContent = '削除';
     ask.title = 'このタスクを取り除く（戻せない）';
 
@@ -507,13 +599,13 @@
 
       var yes = document.createElement('button');
       yes.type = 'button';
-      yes.className = 'danger strong';
+      yes.className = 'strong';
       yes.textContent = '削除する';
       yes.addEventListener('click', function () {
         yes.disabled = true;
         request('DELETE', '/api/tasks/' + encodeURIComponent(t.id))
           .then(function () {
-            delete state.open[t.id];
+            state.openId = null;
             return load().then(function () { flash('削除した: ' + t.name); });
           })
           .catch(function (err) { yes.disabled = false; showError(err); });
@@ -546,47 +638,37 @@
     detail_edited: '詳細を編集',
   };
 
-  function fillTrail(trail, events) {
-    trail.textContent = '';
+  // fillTrail puts the history into the link's tooltip and, when something is
+  // still unexplained, offers to write the reason for the latest one.
+  function fillTrail(trailLink, reasonLink, events) {
     if (events.length === 0) {
-      trail.textContent = '記録なし';
+      trailLink.textContent = '経緯なし';
       return;
     }
-    events.slice().reverse().forEach(function (e) {
-      var line = document.createElement('div');
-      line.className = 'trail-row';
 
-      var at = document.createElement('time');
+    trailLink.textContent = '経緯 ' + events.length + '件';
+    trailLink.title = events.slice().reverse().map(function (e) {
       var d = new Date(e.at);
-      at.dateTime = e.at;
-      at.textContent = (d.getMonth() + 1) + '/' + d.getDate();
-      line.appendChild(at);
+      var when = (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
+        ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+      var what = (KIND_LABEL[e.kind] || e.kind) + changeOf(e) + (e.actor === 'ai' ? '（AI）' : '');
+      var why = e.reason ? '\n    理由: ' + e.reason : (needsReason(e) ? '\n    理由なし' : '');
+      return when + '  ' + what + why;
+    }).join('\n');
 
-      var what = document.createElement('span');
-      what.textContent = (KIND_LABEL[e.kind] || e.kind) + changeOf(e)
-        + (e.actor === 'ai' ? '（AI）' : '');
-      line.appendChild(what);
+    var unexplained = events.filter(needsReason);
+    if (unexplained.length === 0) return;
 
-      var why = document.createElement('span');
-      why.className = 'why';
-      if (e.reason) {
-        why.textContent = '— ' + e.reason;
-      } else if (needsReason(e)) {
-        why.textContent = '— 理由を書く';
-        why.classList.add('ask');
-        why.title = '押すとここに理由を書ける';
-        line.classList.add('unexplained');
-        why.addEventListener('click', function () { openReasonEditor(line, e); });
-      }
-      line.appendChild(why);
-
-      trail.appendChild(line);
-    });
+    var target = unexplained[unexplained.length - 1];
+    reasonLink.hidden = false;
+    reasonLink.textContent = '理由を書く' + (unexplained.length > 1 ? '（' + unexplained.length + '件）' : '');
+    reasonLink.title = (KIND_LABEL[target.kind] || target.kind) + changeOf(target) + ' の理由';
+    reasonLink.addEventListener('click', function () { openReasonEditor(reasonLink, target); });
   }
 
   // openReasonEditor is the human side of `todo ask`: the question can be
   // answered where it is asked, instead of only from the terminal.
-  function openReasonEditor(line, e) {
+  function openReasonEditor(anchor, e) {
     var input = document.createElement('input');
     input.type = 'text';
     input.placeholder = 'なぜそうしたか';
@@ -611,8 +693,7 @@
     input.addEventListener('blur', function () { finish(true); });
 
     state.busy = true;
-    line.textContent = '';
-    line.appendChild(input);
+    anchor.replaceWith(input);
     input.focus();
   }
 
@@ -653,32 +734,50 @@
       return;
     }
 
-    // Anything else inside an openable row toggles its detail. The checkbox,
-    // the due chip and the panel itself are excluded: those are their own
-    // actions, and a click inside an open panel (selecting text) must not
-    // close it.
+    // How opening and editing live together:
+    //   closed row, anywhere        → open it (the name is not editable yet)
+    //   open row, the name          → put the caret in it; do not close
+    //   open row, panel / checkbox  → that action only
+    //   open row, anywhere else     → close it
+    //   another row                 → that one opens, this one closes
     var row = ev.target.closest('.task.openable');
     if (!row) return;
     if (ev.target.closest('.check') || ev.target.closest('.due-input') ||
         ev.target.closest('.panel')) {
       return;
     }
-    toggleRow(row);
-  });
 
-  function toggleRow(row) {
     var id = row.dataset.id;
-    state.open[id] = !state.open[id];
+    if (!isOpen(id)) {
+      state.openId = id; // opening does not place a caret: opening is reading
+      render();
+      return;
+    }
+    if (ev.target.closest('.txt')) return; // the name is being edited
+
+    state.openId = null;
     render();
-  }
+  });
 
   // Enter / Space open a row from the keyboard.
   document.addEventListener('keydown', function (ev) {
+    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z' && !state.busy) {
+      ev.preventDefault();
+      undo();
+      return;
+    }
+    if (ev.key === 'Escape') {
+      // First Escape leaves the field (which saves it); the second closes the
+      // row. The field's own handler stops the event while it has focus.
+      if (state.openId) { state.openId = null; render(); }
+      return;
+    }
     if (ev.key !== 'Enter' && ev.key !== ' ') return;
     var row = ev.target.closest && ev.target.closest('.task.openable');
     if (!row || row !== ev.target) return;
     ev.preventDefault();
-    toggleRow(row);
+    state.openId = isOpen(row.dataset.id) ? null : row.dataset.id;
+    render();
   });
 
   document.addEventListener('change', function (ev) {
@@ -944,6 +1043,10 @@
   }
 
   // ---- boot ----
+
+  // A link can name the task to open: http://127.0.0.1:8085/#T007
+  var fromHash = (location.hash || '').replace('#', '');
+  if (/^T\d+$/.test(fromHash)) state.openId = fromHash;
 
   try {
     state.doneOpen = localStorage.getItem(DONE_KEY) === '1';

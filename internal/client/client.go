@@ -73,6 +73,7 @@ type Board struct {
 	} `json:"counts"`
 	ScopeDays int `json:"scope_days"`
 	Revision  int `json:"revision"`
+	Undoable  int `json:"undoable"`
 }
 
 // List fetches the board for a scope ("7", "14", "all", or "").
@@ -165,6 +166,15 @@ func (c *Client) Import(items []task.ImportItem) (int, []byte, error) {
 		"items": items, "actor": actor(),
 	}, &wrap)
 	return wrap.Imported, raw, err
+}
+
+// Undo reverses the last change and says what it put back.
+func (c *Client) Undo() (task.Undone, []byte, error) {
+	var wrap struct {
+		Undone task.Undone `json:"undone"`
+	}
+	raw, err := c.do(http.MethodPost, "/api/undo?actor="+actor(), nil, &wrap)
+	return wrap.Undone, raw, err
 }
 
 // Context returns one task with its whole event history.

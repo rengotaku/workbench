@@ -66,13 +66,14 @@ type Task struct {
 type Event struct {
 	At        time.Time    `json:"at"`
 	ReasonAt  *time.Time   `json:"reason_at,omitempty"`
-	ID        string       `json:"id"`
-	TaskID    string       `json:"task_id"`
+	Snapshot  *Task        `json:"snapshot,omitempty"`
+	FromValue string       `json:"from_value,omitempty"`
 	Actor     Actor        `json:"actor"`
 	Kind      Kind         `json:"kind"`
-	FromValue string       `json:"from_value,omitempty"`
+	TaskID    string       `json:"task_id"`
 	ToValue   string       `json:"to_value,omitempty"`
 	Reason    string       `json:"reason,omitempty"`
+	ID        string       `json:"id"`
 	Jumped    []JumpedTask `json:"jumped,omitempty"`
 	FromOrder int          `json:"from_order,omitempty"`
 	ToOrder   int          `json:"to_order,omitempty"`

@@ -27,10 +27,11 @@ var ErrStale = errors.New("the list changed since it was read")
 
 // state is the on-disk shape of tasks.json.
 type state struct {
-	Tasks     []Task `json:"tasks"`
-	NextTask  int    `json:"next_task"`  // next T number; never reuses a removed one
-	NextEvent int    `json:"next_event"` // next E number
-	Revision  int    `json:"revision"`   // bumped on every write; readers poll it
+	Tasks     []Task   `json:"tasks"`
+	Undone    []string `json:"undone,omitempty"`
+	NextTask  int      `json:"next_task"`
+	NextEvent int      `json:"next_event"`
+	Revision  int      `json:"revision"`
 }
 
 // Store keeps the current tasks in tasks.json and every change in
@@ -271,10 +272,8 @@ func (s *Store) Remove(id string, actor Actor) (Task, error) {
 	s.st.Tasks = append(s.st.Tasks[:i], s.st.Tasks[i+1:]...)
 	s.renumber()
 
-	ev := Event{TaskID: id, Kind: KindRemoved, Actor: actor, ToValue: removed.Name}
-	if removed.Due != "" {
-		ev.FromValue = "due:" + removed.Due
-	}
+	snapshot := removed
+	ev := Event{TaskID: id, Kind: KindRemoved, Actor: actor, ToValue: removed.Name, Snapshot: &snapshot}
 	if err := s.record(ev); err != nil {
 		return Task{}, err
 	}
@@ -385,10 +384,11 @@ func (s *Store) SetDetail(id, detail string, actor Actor) (Task, error) {
 		return Task{}, err
 	}
 	t := s.st.Tasks[i]
+	from := t.Detail
 	t.Detail = detail
 	s.st.Tasks[i] = t
 
-	if err := s.record(Event{TaskID: id, Kind: KindDetail, Actor: actor}); err != nil {
+	if err := s.record(Event{TaskID: id, Kind: KindDetail, Actor: actor, FromValue: from, ToValue: detail}); err != nil {
 		return Task{}, err
 	}
 	if err := s.persist(); err != nil {
@@ -663,10 +663,20 @@ func (s *Store) renumber() {
 
 // record stamps an event with an ID and time, then appends it.
 func (s *Store) record(e Event) error {
+	_, err := s.recordID(e)
+	return err
+}
+
+// recordID is record, returning the ID it assigned. Undo needs it so the
+// reversal it writes can be marked as already spent.
+func (s *Store) recordID(e Event) (string, error) {
 	e.ID = fmt.Sprintf("E%04d", s.st.NextEvent)
 	s.st.NextEvent++
 	e.At = s.now()
-	return s.appendEvent(e)
+	if err := s.appendEvent(e); err != nil {
+		return "", err
+	}
+	return e.ID, nil
 }
 
 func (s *Store) appendEvent(e Event) error {

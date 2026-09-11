@@ -44,8 +44,8 @@ func rootCmd() *cobra.Command {
 	root.Flags().String("detail", "", "detail text")
 
 	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), removeCmd(), waitCmd(), resumeCmd(),
-		orderCmd(), dueCmd(), detailCmd(), renameCmd(), askCmd(), whyCmd(), contextCmd(),
-		importCmd())
+		orderCmd(), dueCmd(), detailCmd(), renameCmd(), undoCmd(), askCmd(), whyCmd(),
+		contextCmd(), importCmd())
 	return root
 }
 
@@ -159,6 +159,31 @@ func doneCmd() *cobra.Command {
 				}
 				fmt.Printf("完了 %s  %s\n", t.ID, t.Name)
 			}
+			return nil
+		},
+	}
+}
+
+func undoCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "undo",
+		Short: "直前の変更を取り消す（繰り返すとさらに前へ）",
+		Long: "直前の変更を取り消す。画面からの操作も端末からの操作も同じ順で戻せる。\n" +
+			"取り消し自体もイベントとして残るので、履歴は消えない。",
+		Args: cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			cl, err := newClient()
+			if err != nil {
+				return err
+			}
+			done, raw, err := cl.Undo()
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return printRaw(raw)
+			}
+			fmt.Println(done.Summary)
 			return nil
 		},
 	}
