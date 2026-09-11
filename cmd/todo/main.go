@@ -44,8 +44,8 @@ func rootCmd() *cobra.Command {
 	root.Flags().String("detail", "", "detail text")
 
 	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), removeCmd(), waitCmd(), resumeCmd(),
-		orderCmd(), dueCmd(), detailCmd(), renameCmd(), undoCmd(), askCmd(), whyCmd(),
-		contextCmd(), importCmd())
+		orderCmd(), dueCmd(), detailCmd(), renameCmd(), focusCmd(true), focusCmd(false),
+		undoCmd(), askCmd(), whyCmd(), contextCmd(), importCmd())
 	return root
 }
 
@@ -107,6 +107,12 @@ func printBoard(b client.Board) {
 	fmt.Printf("着手順  %s  スコープ %d日  超過 %d / 期限内 %d / 外 %d\n",
 		b.Today, b.ScopeDays, b.Counts.Over, b.Counts.Near, b.Counts.Rest)
 
+	if len(b.Focus) > 0 {
+		fmt.Println("\n[フォーカス]")
+		for _, t := range b.Focus {
+			fmt.Printf("  ◎ %-6s %s%s\n", t.ID, t.Name, dueSuffix(t))
+		}
+	}
 	if len(b.Queue) > 0 {
 		fmt.Println("\n[着手順]")
 		for i, t := range b.Queue {
@@ -158,6 +164,44 @@ func doneCmd() *cobra.Command {
 					continue
 				}
 				fmt.Printf("完了 %s  %s\n", t.ID, t.Name)
+			}
+			return nil
+		},
+	}
+}
+
+// focusCmd builds both `focus` and `unfocus`: the same call with the flag
+// flipped, so the two cannot drift apart.
+func focusCmd(on bool) *cobra.Command {
+	use, short := "unfocus <ID>...", "フォーカスから外す"
+	if on {
+		use, short = "focus <ID>...", "フォーカス（画面上部の一覧）に入れる"
+	}
+	return &cobra.Command{
+		Use:   use,
+		Short: short,
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			cl, err := newClient()
+			if err != nil {
+				return err
+			}
+			for _, id := range args {
+				t, raw, err := cl.Focus(id, on)
+				if err != nil {
+					return err
+				}
+				if asJSON {
+					if err := printRaw(raw); err != nil {
+						return err
+					}
+					continue
+				}
+				if on {
+					fmt.Printf("フォーカス %s  %s\n", t.ID, t.Name)
+				} else {
+					fmt.Printf("フォーカス解除 %s  %s\n", t.ID, t.Name)
+				}
 			}
 			return nil
 		},

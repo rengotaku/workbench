@@ -33,6 +33,9 @@
     over: document.getElementById('c-over'),
     near: document.getElementById('c-near'),
     rest: document.getElementById('c-rest'),
+    focusBand: document.getElementById('focus-band'),
+    focusList: document.getElementById('focus-list'),
+    focusCount: document.getElementById('focus-count'),
     addSlot: document.getElementById('add-slot'),
     addTrigger: document.getElementById('add-trigger'),
     doneFold: document.getElementById('done-fold'),
@@ -148,6 +151,13 @@
     setTitle('.count.near', '黄: ' + within + 'に期限がある（いまのスコープ）— ' + b.counts.near + '件');
     setTitle('.count.rest', '灰: 期限なし、または ' + within + 'より先 — ' + b.counts.rest + '件。'
       + '期限が先のものは末尾に畳まれ、期限なしは常に出る');
+
+    // The band is hidden when empty: an empty band would only take space.
+    var focus = b.focus || [];
+    el.focusBand.hidden = focus.length === 0;
+    el.focusCount.textContent = focus.length;
+    el.focusList.textContent = '';
+    focus.forEach(function (t) { el.focusList.appendChild(focusItem(t)); });
 
     var queue = b.queue || [];
     el.queue.textContent = '';
@@ -289,6 +299,56 @@
     return li;
   }
 
+  // focusItem is one line in the band: finish it, open it, or drop it out.
+  function focusItem(t) {
+    var li = document.createElement('li');
+    li.className = 'focus-item';
+
+    var check = document.createElement('input');
+    check.type = 'checkbox';
+    check.className = 'check';
+    check.setAttribute('aria-label', '完了にする');
+    check.addEventListener('change', function () {
+      check.disabled = true;
+      request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/done')
+        .then(function () { return load().then(function () { flash('完了にした: ' + t.name); }); })
+        .catch(function (err) { check.checked = false; check.disabled = false; showError(err); });
+    });
+
+    var name = document.createElement('span');
+    name.className = 'fname';
+    name.title = t.name + '（押すと着手順の行が開く）';
+    name.textContent = t.name;
+    name.addEventListener('click', function () {
+      state.openId = t.id;
+      render();
+      var row = document.querySelector('.task[data-id="' + t.id + '"]');
+      if (row) row.scrollIntoView({ block: 'center' });
+    });
+
+    var due = document.createElement('span');
+    due.className = 'due' + (t.due_class === 'over' || t.due_class === 'near' ? ' ' + t.due_class : '');
+    due.textContent = t.due_label;
+
+    var drop = document.createElement('button');
+    drop.type = 'button';
+    drop.className = 'drop';
+    drop.textContent = '✕';
+    drop.title = 'フォーカスから外す';
+    drop.addEventListener('click', function () {
+      drop.disabled = true;
+      request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/focus', { on: false })
+        .then(function () { return load().then(function () { flash('フォーカスから外した'); }); })
+        .catch(function (err) { drop.disabled = false; showError(err); });
+    });
+
+    li.appendChild(check);
+    li.appendChild(name);
+    li.appendChild(due);
+    li.appendChild(drop);
+    return li;
+  }
+
   function queueRow(t, inScope) {
     var cls = t.overdue ? 'overdue' : (inScope ? 'in-window' : 'out');
     var li = row({
@@ -297,8 +357,9 @@
       // The position is not shown. The order is what the list is for, and the
       // row above/below already says it; a number only adds a value that goes
       // stale the moment anything moves. It is still kept server-side, and
-      // `todo order` uses it.
-      mark: '',
+      // `todo order` uses it. The column carries ◎ when the task is focused.
+      mark: t.focused ? '◎' : '',
+      markClass: t.focused ? 'mark-focus' : '',
       dueLabel: t.due_label,
       dueClass: t.due_class === 'plain' || t.due_class === 'none' ? '' : t.due_class,
       hasPanel: true,
@@ -362,6 +423,26 @@
 
     var actions = document.createElement('div');
     actions.className = 'panel-actions';
+
+    if (t.state !== 'done') {
+      var focusBtn = document.createElement('button');
+      focusBtn.type = 'button';
+      focusBtn.className = t.focused ? 'focus-on' : '';
+      focusBtn.textContent = t.focused ? 'フォーカスを外す' : 'フォーカス';
+      focusBtn.title = t.focused ? '上部の一覧から外す' : '上部の一覧に入れる（着手順の位置は動かない）';
+      focusBtn.addEventListener('click', function () {
+        focusBtn.disabled = true;
+        var was = t.focused;
+        request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/focus', { on: !was })
+          .then(function () {
+            return load().then(function () {
+              flash(was ? 'フォーカスから外した' : 'フォーカスに入れた');
+            });
+          })
+          .catch(function (err) { focusBtn.disabled = false; showError(err); });
+      });
+      actions.appendChild(focusBtn);
+    }
 
     var saved = document.createElement('span');
     saved.className = 'save-state';
@@ -629,6 +710,8 @@
   var KIND_LABEL = {
     created: '追加',
     renamed: '名前を変更',
+    focused: 'フォーカスに入れた',
+    unfocused: 'フォーカスから外した',
     reordered: '順序変更',
     due_set: '期限',
     waiting: '待ちへ',

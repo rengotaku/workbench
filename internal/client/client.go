@@ -64,6 +64,7 @@ type Task struct {
 type Board struct {
 	Today   string `json:"today"`
 	Queue   []Task `json:"queue"`
+	Focus   []Task `json:"focus"`
 	Waiting []Task `json:"waiting"`
 	Done    []Task `json:"done"`
 	Counts  struct {
@@ -112,6 +113,12 @@ func (c *Client) Remove(id string) (Task, []byte, error) {
 // Reopen puts a completed task back into the queue.
 func (c *Client) Reopen(id string) (Task, []byte, error) {
 	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/reopen?actor="+actor(), nil)
+}
+
+// Focus lifts a task into the band at the top of the page, or takes it out.
+func (c *Client) Focus(id string, on bool) (Task, []byte, error) {
+	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/focus?actor="+actor(),
+		map[string]any{"on": on})
 }
 
 // Wait hands a task to someone else.
@@ -180,8 +187,8 @@ func (c *Client) Undo() (task.Undone, []byte, error) {
 // Context returns one task with its whole event history.
 func (c *Client) Context(id string) (task.Task, []task.Event, []byte, error) {
 	var wrap struct {
-		Task   task.Task    `json:"task"`
 		Events []task.Event `json:"events"`
+		Task   task.Task    `json:"task"`
 	}
 	raw, err := c.do(http.MethodGet, "/api/tasks/"+url.PathEscape(id)+"/context", nil, &wrap)
 	return wrap.Task, wrap.Events, raw, err

@@ -180,6 +180,60 @@ body {
 .more:hover { color: var(--accent); }
 .more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* ---- focus band: the working set, above the queue ---- */
+/* Focused tasks appear here and stay in the queue, marked with ◎ — the queue
+   position is the point of the app, so focusing must not hide it. */
+.focus-band {
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--line);
+  padding: 10px 22px 12px;
+}
+.focus-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.focus-head .n {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--accent);
+  background: var(--surface);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.focus-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.focus-item { display: grid; grid-template-columns: 18px 1fr auto auto; gap: 8px; align-items: center; }
+.focus-item .check { margin-top: 0; }
+.focus-item .fname {
+  font-size: 14.5px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.focus-item .drop {
+  appearance: none;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 2px;
+}
+.focus-item .drop:hover { color: var(--over); }
+.focus-item .drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.num.mark-focus { color: var(--accent); font-size: 11px; text-align: center; }
+.panel-actions button.focus-on { color: var(--accent); border-color: var(--accent); }
+
 /* ---- sections: same left baseline in all three ---- */
 .sec { padding: 18px 22px 20px; }
 /* The queue has no heading, so the section's own top padding would read as a

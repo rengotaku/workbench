@@ -78,7 +78,8 @@ func (s *Store) recordSpent(e Event) error {
 func undoable(k Kind) bool {
 	switch k {
 	case KindCreated, KindRemoved, KindRenamed, KindDetail, KindDueSet,
-		KindDone, KindReopened, KindWaiting, KindResumed, KindReordered:
+		KindDone, KindReopened, KindWaiting, KindResumed, KindReordered,
+		KindFocused, KindUnfocused:
 		return true
 	default:
 		return false
@@ -217,6 +218,25 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("待ちに戻した: %s %s → %s", t.ID, t.Name, t.HandedTo), nil
+
+	case KindFocused, KindUnfocused:
+		on := e.Kind == KindUnfocused
+		if t.Focused == on {
+			return "", errSkipUndo
+		}
+		t.Focused = on
+		s.st.Tasks[i] = t
+		back := KindUnfocused
+		if on {
+			back = KindFocused
+		}
+		if err := s.recordSpent(Event{TaskID: t.ID, Kind: back, Actor: actor}); err != nil {
+			return "", err
+		}
+		if on {
+			return fmt.Sprintf("フォーカスに戻した: %s %s", t.ID, t.Name), nil
+		}
+		return fmt.Sprintf("フォーカスを外した: %s %s", t.ID, t.Name), nil
 
 	case KindReordered:
 		if t.State != StateOpen {

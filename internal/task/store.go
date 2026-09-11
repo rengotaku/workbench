@@ -171,6 +171,7 @@ func (s *Store) Done(id string, actor Actor) (Task, error) {
 	t := s.st.Tasks[i]
 	t.State = StateDone
 	t.CompletedAt = &now
+	t.Focused = false // finishing it takes it out of the focus band
 	s.st.Tasks[i] = t
 	s.renumber()
 
@@ -306,6 +307,39 @@ func (s *Store) Reopen(id string, actor Actor) (Task, error) {
 	s.renumber()
 
 	if err := s.record(Event{TaskID: id, Kind: KindReopened, Actor: actor}); err != nil {
+		return Task{}, err
+	}
+	if err := s.persist(); err != nil {
+		return Task{}, err
+	}
+	return s.mustGet(id), nil
+}
+
+// SetFocus lifts a task into the focus band, or takes it out. The task keeps
+// its place in the queue either way: focusing is about attention, not order.
+func (s *Store) SetFocus(id string, on bool, actor Actor) (Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	i, err := s.indexOf(id)
+	if err != nil {
+		return Task{}, err
+	}
+	t := s.st.Tasks[i]
+	if t.Focused == on {
+		return t, nil
+	}
+	if on && t.State == StateDone {
+		return Task{}, fmt.Errorf("%s is done", id)
+	}
+	t.Focused = on
+	s.st.Tasks[i] = t
+
+	kind := KindUnfocused
+	if on {
+		kind = KindFocused
+	}
+	if err := s.record(Event{TaskID: id, Kind: kind, Actor: actor}); err != nil {
 		return Task{}, err
 	}
 	if err := s.persist(); err != nil {

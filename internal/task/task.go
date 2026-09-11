@@ -43,6 +43,8 @@ const (
 	KindDetail    Kind = "detail_edited"
 	KindRemoved   Kind = "removed"
 	KindRenamed   Kind = "renamed"
+	KindFocused   Kind = "focused"
+	KindUnfocused Kind = "unfocused"
 )
 
 // Task is the current state of one entry. Callers never mutate a Task in
@@ -59,6 +61,9 @@ type Task struct {
 	HandedOn    string     `json:"handed_on,omitempty"`
 	WaitNote    string     `json:"wait_note,omitempty"`
 	Order       int        `json:"order"`
+	// Focused lifts a task into the band at the top of the page. It is a
+	// working set, not a state: the task keeps its place in the queue.
+	Focused bool `json:"focused,omitempty"`
 }
 
 // Event is one entry in the append-only log for a task. Reason is empty until

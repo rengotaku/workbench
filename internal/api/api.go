@@ -41,6 +41,7 @@ func (a *API) Mount(r gin.IRouter) {
 	g.PATCH("/tasks/:id", a.patchTask)
 	g.DELETE("/tasks/:id", a.removeTask)
 	g.POST("/tasks/:id/done", a.doneTask)
+	g.POST("/tasks/:id/focus", a.focusTask)
 	g.POST("/tasks/:id/reopen", a.reopenTask)
 	g.POST("/tasks/:id/wait", a.waitTask)
 	g.POST("/tasks/:id/resume", a.resumeTask)
@@ -67,6 +68,7 @@ type View struct {
 type listResponse struct {
 	Today   string `json:"today"`
 	Queue   []View `json:"queue"`
+	Focus   []View `json:"focus"`
 	Waiting []View `json:"waiting"`
 	Done    []View `json:"done"`
 	Counts  struct {
@@ -109,6 +111,9 @@ func (a *API) build(scope int) listResponse {
 		switch t.State {
 		case task.StateWaiting:
 			res.Waiting = append(res.Waiting, v)
+			if t.Focused {
+				res.Focus = append(res.Focus, v)
+			}
 		case task.StateDone:
 			if t.CompletedAt != nil && t.CompletedAt.In(a.loc).Before(weekStart) {
 				continue
@@ -116,6 +121,9 @@ func (a *API) build(scope int) listResponse {
 			res.Done = append(res.Done, v)
 		default:
 			res.Queue = append(res.Queue, v)
+			if t.Focused {
+				res.Focus = append(res.Focus, v)
+			}
 			switch {
 			case v.Overdue:
 				res.Counts.Over++
@@ -272,6 +280,26 @@ func (a *API) doneTask(c *gin.Context) {
 // event, so the trail still shows it was finished and then put back.
 func (a *API) reopenTask(c *gin.Context) {
 	t, err := a.store.Reopen(c.Param("id"), actorOf(c.Query("actor")))
+	a.respond(c, t, err)
+}
+
+type focusRequest struct {
+	On *bool `json:"on"`
+}
+
+// focusTask lifts a task into the band at the top, or takes it out. Focus is a
+// working set: the task keeps its place in the queue either way.
+func (a *API) focusTask(c *gin.Context) {
+	var req focusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	if req.On == nil {
+		badRequest(c, errors.New("pass on: true or false"))
+		return
+	}
+	t, err := a.store.SetFocus(c.Param("id"), *req.On, actorOf(c.Query("actor")))
 	a.respond(c, t, err)
 }
 
