@@ -13,15 +13,20 @@ import (
 
 // Handler serves the one page and mounts the API beside it.
 type Handler struct {
-	templates map[string]*template.Template
-	staticFS  fs.FS
-	api       *api.API
+	templates     map[string]*template.Template
+	staticFS      fs.FS
+	api           *api.API
+	ticketURLBase string
 }
 
 // NewHandler wires the page and the API together. api may be nil in tests that
 // only exercise the page.
-func NewHandler(templates map[string]*template.Template, staticFS fs.FS, a *api.API) *Handler {
-	return &Handler{templates: templates, staticFS: staticFS, api: a}
+//
+// ticketURLBase turns a ticket key at the start of a task name into a link.
+// It is configuration rather than a constant: the app does not know about any
+// particular tracker, and an empty value simply leaves names as plain text.
+func NewHandler(templates map[string]*template.Template, staticFS fs.FS, a *api.API, ticketURLBase string) *Handler {
+	return &Handler{templates: templates, staticFS: staticFS, api: a, ticketURLBase: ticketURLBase}
 }
 
 // Routes returns the router: the page, the static bundle, health, and /api.
@@ -45,8 +50,9 @@ func (h *Handler) Routes() http.Handler {
 func (h *Handler) handleIndex(c *gin.Context) {
 	now := time.Now()
 	h.render(c, "index.html", http.StatusOK, gin.H{
-		"Title": "着手順",
-		"Today": now.Format("1/2") + " (" + weekdayJA(now.Weekday()) + ")",
+		"Title":         "着手順",
+		"Today":         now.Format("1/2") + " (" + weekdayJA(now.Weekday()) + ")",
+		"TicketURLBase": h.ticketURLBase,
 	})
 }
 

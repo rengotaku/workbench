@@ -6,6 +6,14 @@
   var SCOPE_KEY = 'todo-order.scope';
   var state = { scope: '7', showOut: false, board: null, open: {} };
 
+  // A ticket key at the start of a name becomes a link when a base URL is
+  // configured. The app itself knows nothing about any tracker; this is only
+  // presentation, and with no base URL the name stays plain text.
+  var TICKET_KEY = /\b([A-Z][A-Z0-9]*-\d+)\b/g;
+  var ticketBase = (document.querySelector('.wrap') || {}).dataset
+    ? document.querySelector('.wrap').dataset.ticketUrlBase || ''
+    : '';
+
   var el = {
     queue: document.getElementById('queue'),
     queueEmpty: document.getElementById('queue-empty'),
@@ -127,8 +135,8 @@
     name.className = 'name';
     var txt = document.createElement('span');
     txt.className = 'txt';
-    txt.textContent = opts.task.name;
     txt.title = opts.task.name;
+    linkify(txt, opts.task.name);
     name.appendChild(txt);
 
     if (opts.hasPanel) {
@@ -148,8 +156,21 @@
     }
     li.appendChild(body);
 
-    var due = document.createElement('span');
-    due.className = 'due' + (opts.dueClass ? ' ' + opts.dueClass : '');
+    // The due chip doubles as the way to set a due date: clicking it swaps in
+    // a date field. Keeping it in the chip avoids adding a column to a row
+    // that is meant to stay one line.
+    var due;
+    if (opts.editableDue) {
+      due = document.createElement('button');
+      due.type = 'button';
+      due.className = 'due due-edit';
+      due.title = '期限を設定する';
+      due.dataset.due = opts.task.due || '';
+    } else {
+      due = document.createElement('span');
+      due.className = 'due';
+    }
+    if (opts.dueClass) due.classList.add(opts.dueClass);
     due.textContent = opts.dueLabel;
     li.appendChild(due);
 
@@ -165,6 +186,7 @@
       dueLabel: t.due_label,
       dueClass: t.due_class === 'plain' || t.due_class === 'none' ? '' : t.due_class,
       hasPanel: true,
+      editableDue: true,
       extraClass: cls,
     });
     li.draggable = true;
@@ -210,7 +232,7 @@
     if (t.detail) {
       var detail = document.createElement('div');
       detail.className = 'detail';
-      detail.textContent = t.detail;
+      linkify(detail, t.detail);
       panel.appendChild(detail);
     }
     if (t.state === 'waiting' && t.handed_to) {
@@ -237,6 +259,37 @@
       .catch(function (err) { trail.textContent = err.message; });
 
     return panel;
+  }
+
+  // linkify writes text into el, turning ticket keys into links. Text is added
+  // as text nodes, never as HTML, so a task name cannot inject markup.
+  function linkify(el, text) {
+    el.textContent = '';
+    if (!ticketBase) {
+      el.textContent = text;
+      return;
+    }
+    var last = 0;
+    var m;
+    TICKET_KEY.lastIndex = 0;
+    while ((m = TICKET_KEY.exec(text)) !== null) {
+      if (m.index > last) {
+        el.appendChild(document.createTextNode(text.slice(last, m.index)));
+      }
+      var a = document.createElement('a');
+      a.className = 'ticket';
+      a.href = ticketBase + encodeURIComponent(m[1]);
+      a.textContent = m[1];
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.title = m[1] + ' を開く';
+      a.draggable = false; // dragging a row must not drag the link instead
+      el.appendChild(a);
+      last = m.index + m[1].length;
+    }
+    if (last < text.length) {
+      el.appendChild(document.createTextNode(text.slice(last)));
+    }
   }
 
   var KIND_LABEL = {
@@ -309,6 +362,14 @@
   // ---- interaction ----
 
   document.addEventListener('click', function (ev) {
+    if (ev.target.closest('a.ticket')) return; // let the link do its job
+
+    var chip = ev.target.closest('.due-edit');
+    if (chip) {
+      openDueEditor(chip);
+      return;
+    }
+
     var toggle = ev.target.closest('.detail-toggle');
     if (toggle) {
       var li = toggle.closest('.task');
@@ -332,6 +393,43 @@
       .then(load)
       .catch(function (err) { box.checked = false; box.disabled = false; showError(err); });
   });
+
+  // openDueEditor swaps the chip for a date field. Leaving it empty clears the
+  // due date, which is why the field is not marked required.
+  function openDueEditor(chip) {
+    var li = chip.closest('.task');
+    var input = document.createElement('input');
+    input.type = 'date';
+    input.className = 'due-input';
+    input.value = chip.dataset.due || '';
+    input.setAttribute('aria-label', '期限');
+
+    var done = false;
+    function finish(save) {
+      if (done) return;
+      done = true;
+      if (!save || input.value === (chip.dataset.due || '')) {
+        load(); // put the row back the way the server has it
+        return;
+      }
+      request('PATCH', '/api/tasks/' + encodeURIComponent(li.dataset.id), { due: input.value })
+        .then(load)
+        .catch(function (err) { showError(err); load(); });
+    }
+
+    input.addEventListener('change', function () { finish(true); });
+    input.addEventListener('blur', function () { finish(true); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { finish(false); }
+      if (e.key === 'Enter') { finish(true); }
+    });
+
+    chip.replaceWith(input);
+    input.focus();
+    if (input.showPicker) {
+      try { input.showPicker(); } catch (e) { /* not allowed without a gesture */ }
+    }
+  }
 
   scopeButtons.forEach(function (b) {
     b.addEventListener('click', function () {

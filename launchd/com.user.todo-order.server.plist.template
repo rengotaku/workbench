@@ -27,6 +27,8 @@
         <string>__HOME__/.local/share/todo-order</string>
         <key>APP_ENV</key>
         <string>production</string>
+        <key>TICKET_URL_BASE</key>
+        <string>__TICKET_URL_BASE__</string>
     </dict>
 
     <key>RunAtLoad</key>

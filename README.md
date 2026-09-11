@@ -23,6 +23,8 @@
 - 3 区画すべて同じ列構成なので、左端の基準線が揃う
 - 行の左端の色帯: 赤 = 期限超過 / 琥珀 = スコープ内に期限 / 無色 = 期限なし・スコープ外
 - **視界の制御はスコープだけ**（1 週間 / 2 週間 / すべて / 指定）。スコープから外れた分はリスト末尾に `＋ スコープ外 N件` として畳まれる
+- **期限はチップを押して設定する**。その場が日付欄に変わり、空のまま確定すると解除になる（列を増やさないため、表示と入力を同じ場所に置いた）
+- **チケットキーはリンクになる**。`TICKET_URL_BASE` を設定したときだけで、未設定なら素のテキストのまま。アプリはトラッカーを知らないので、これは表示だけの機能
 
 ## タスクごとの文脈
 
@@ -83,6 +85,7 @@ make ci        # lint + テスト（カバレッジ）
 | `LISTEN_ADDR` | `127.0.0.1` | ループバック固定。認証は無いので LAN へ出さない |
 | `PORT` | `8085` | ポート |
 | `DATA_DIR` | `~/.local/share/todo-order` | データの置き場 |
+| `TICKET_URL_BASE` | （空） | チケットキーのリンク先（例 `https://example.backlog.com/view/`）。空ならリンクにしない |
 
 ## データ
 
@@ -117,8 +120,11 @@ todo import --ledger <旧 TODO ファイル> --order <旧 順序ファイル>
 ## 常駐させる
 
 ```bash
-make install-agent   # ビルド → バイナリと plist を配置（load はしない）
+make install-agent                                              # ビルド → 配置（load はしない）
+./scripts/install-agent.sh --ticket-url-base https://example.backlog.com/view/   # リンク先も設定する
 ```
+
+チケットのリンク先は**生成した plist に入り、リポジトリには入らない**。再実行時に指定を省くと、既存の plist の値を引き継ぐ。
 
 `~/.local/bin/todo-order-server` と `~/.local/bin/todo`、`~/Library/LaunchAgents/com.user.todo-order.server.plist` を置く。**load は自分で行う**（login item の登録はこのマシンで監視対象のため、スクリプトからは実行しない）。コマンドは実行後に表示される。
 

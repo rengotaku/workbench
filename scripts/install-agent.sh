@@ -6,17 +6,31 @@
 # load the agent itself: registering a login item is watched on this machine,
 # so that step is left to a person who can say why it is happening.
 #
-# Usage: scripts/install-agent.sh [--port N]
+# Usage: scripts/install-agent.sh [--port N] [--ticket-url-base URL]
+#
+# --ticket-url-base makes a ticket key in a task name a link (for example
+# "https://example.backlog.com/view/"). It lives in the generated plist rather
+# than in this repository, so the tracker's address is not committed.
 set -eu
 
 PORT=8085
+TICKET_URL_BASE=${TICKET_URL_BASE:-}
 while [ $# -gt 0 ]; do
   case "$1" in
     --port) PORT="${2:-}"; shift 2 ;;
     --port=*) PORT="${1#*=}"; shift ;;
+    --ticket-url-base) TICKET_URL_BASE="${2:-}"; shift 2 ;;
+    --ticket-url-base=*) TICKET_URL_BASE="${1#*=}"; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+# An existing plist already carries the base URL; keep it unless a new one was
+# given, so re-running the installer does not quietly drop the links.
+PLIST_EXISTING="$HOME/Library/LaunchAgents/com.user.todo-order.server.plist"
+if [ -z "$TICKET_URL_BASE" ] && [ -r "$PLIST_EXISTING" ]; then
+  TICKET_URL_BASE=$(plutil -extract EnvironmentVariables.TICKET_URL_BASE raw -o - "$PLIST_EXISTING" 2>/dev/null || true)
+fi
 
 case "$PORT" in
   ''|*[!0-9]*) echo "--port must be a number: '$PORT'" >&2; exit 2 ;;
@@ -55,7 +69,8 @@ install_binary() {
 install_binary "$REPO_ROOT/bin/server" "$BIN_DIR/todo-order-server"
 install_binary "$REPO_ROOT/bin/todo" "$BIN_DIR/todo"
 
-sed -e "s|__HOME__|$HOME|g" -e "s|__PORT__|$PORT|g" "$TEMPLATE" > "$PLIST.tmp"
+sed -e "s|__HOME__|$HOME|g" -e "s|__PORT__|$PORT|g" \
+    -e "s|__TICKET_URL_BASE__|$TICKET_URL_BASE|g" "$TEMPLATE" > "$PLIST.tmp"
 mv -f "$PLIST.tmp" "$PLIST"
 chmod 644 "$PLIST"
 
@@ -67,6 +82,7 @@ placed:
   $BIN_DIR/todo-order-server
   $BIN_DIR/todo
   $PLIST        (port $PORT, loopback only)
+  ticket links: ${TICKET_URL_BASE:-（未設定。--ticket-url-base で指定する）}
   logs:  $LOG_DIR
   data:  $DATA_DIR
 

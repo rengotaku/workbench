@@ -23,7 +23,7 @@ func makeTestTemplates() map[string]*template.Template {
 		return template.Must(template.New("base").Parse(`{{define "base"}}` + src + `{{end}}`))
 	}
 	return map[string]*template.Template{
-		"index.html": parse(`<h1>着手順</h1><span>{{.Today}}</span>`),
+		"index.html": parse(`<h1>着手順</h1><span>{{.Today}}</span><div data-base="{{.TicketURLBase}}"></div>`),
 	}
 }
 
@@ -31,7 +31,7 @@ func setupHandler() *handler.Handler {
 	staticFS := fstest.MapFS{
 		"css/style.css": &fstest.MapFile{Data: []byte("body{color:#000}")},
 	}
-	return handler.NewHandler(makeTestTemplates(), fs.FS(staticFS), nil)
+	return handler.NewHandler(makeTestTemplates(), fs.FS(staticFS), nil, "")
 }
 
 func TestHandler_Index(t *testing.T) {
@@ -66,6 +66,30 @@ func TestHandler_Static(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "body{color:#000}")
+}
+
+// The ticket URL base reaches the page so a key in a task name can become a
+// link. With no base configured the attribute is empty and names stay plain.
+func TestHandler_TicketURLBaseReachesThePage(t *testing.T) {
+	staticFS := fstest.MapFS{"css/style.css": &fstest.MapFile{Data: []byte("")}}
+	h := handler.NewHandler(makeTestTemplates(), fs.FS(staticFS), nil, "https://example.test/view/")
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `data-base="https://example.test/view/"`)
+}
+
+func TestHandler_NoTicketURLBaseLeavesTheAttributeEmpty(t *testing.T) {
+	h := setupHandler()
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rec, req)
+
+	assert.Contains(t, rec.Body.String(), `data-base=""`)
 }
 
 // The API is optional so the page can be tested on its own; when it is absent
