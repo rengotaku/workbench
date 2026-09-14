@@ -447,7 +447,8 @@ func TestRemove_UnknownIDIsNotFound(t *testing.T) {
 }
 
 // Events belonging to a removed task are left in the log. Nothing downstream
-// may trip over them.
+// may trip over them. The removal itself is the exception: it is asked about,
+// reading the task from its own snapshot.
 func TestRemove_LeavesOrphanEventsThatAskIgnores(t *testing.T) {
 	s := newStore(t)
 	_, _ = s.Add("A", "", "", task.ActorHuman)
@@ -465,7 +466,9 @@ func TestRemove_LeavesOrphanEventsThatAskIgnores(t *testing.T) {
 
 	pending, err = s.Ask()
 	require.NoError(t, err)
-	assert.Empty(t, pending, "an event with no task left is skipped, not an error")
+	require.Len(t, pending, 1, "the reorder is dropped; only the removal itself is asked about")
+	assert.Equal(t, task.KindRemoved, pending[0].Event.Kind)
+	assert.Equal(t, "B", pending[0].Task.Name, "the name comes from the removal snapshot")
 }
 
 func TestReopen_PutsACompletedTaskBackAtTheEndOfTheQueue(t *testing.T) {
@@ -596,4 +599,95 @@ func TestParseDate(t *testing.T) {
 
 	_, err = task.ParseDate("10/09/2026", time.Local)
 	assert.Error(t, err)
+}
+
+// Dropped is the read side of removal: the task is gone from the list, so the
+// log and its snapshot are the only record of what was given up on.
+func TestDropped_ReadsRemovedTasksFromTheLog(t *testing.T) {
+	s := newStore(t)
+	keep, _ := s.Add("残す", "", "", task.ActorHuman)
+	gone, _ := s.Add("やめる", "", "2026-09-30", task.ActorHuman)
+
+	_, err := s.Remove(gone.ID, task.ActorHuman)
+	require.NoError(t, err)
+
+	drops, err := s.Dropped(time.Time{})
+	require.NoError(t, err)
+	require.Len(t, drops, 1)
+	assert.Equal(t, gone.ID, drops[0].TaskID)
+	assert.Equal(t, "やめる", drops[0].Name)
+	assert.Equal(t, "2026-09-30", drops[0].Due, "the due date survives in the snapshot")
+	assert.Empty(t, drops[0].Reason, "nothing is asked at the click; the reason comes later")
+
+	pending, err := s.Ask()
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	_, err = s.Why(pending[0].Event.ID, "全体設計と一緒にやる")
+	require.NoError(t, err)
+
+	drops, err = s.Dropped(time.Time{})
+	require.NoError(t, err)
+	require.Len(t, drops, 1)
+	assert.Equal(t, "全体設計と一緒にやる", drops[0].Reason)
+
+	tasks, _ := s.List()
+	require.Len(t, tasks, 1)
+	assert.Equal(t, keep.ID, tasks[0].ID)
+}
+
+// Undoing a removal puts the task back, so it was never given up on: it has to
+// leave the dropped list, or the page would show it in two places at once.
+func TestDropped_LeavesOutRemovalsThatWereUndone(t *testing.T) {
+	s := newStore(t)
+	a, _ := s.Add("戻す", "", "", task.ActorHuman)
+	b, _ := s.Add("やめたまま", "", "", task.ActorHuman)
+
+	_, err := s.Remove(b.ID, task.ActorHuman)
+	require.NoError(t, err)
+	_, err = s.Remove(a.ID, task.ActorHuman)
+	require.NoError(t, err)
+
+	drops, err := s.Dropped(time.Time{})
+	require.NoError(t, err)
+	require.Len(t, drops, 2)
+
+	_, err = s.Undo(task.ActorHuman) // takes back the removal of a
+	require.NoError(t, err)
+
+	drops, err = s.Dropped(time.Time{})
+	require.NoError(t, err)
+	require.Len(t, drops, 1)
+	assert.Equal(t, b.ID, drops[0].TaskID)
+
+	pending, err := s.Ask()
+	require.NoError(t, err)
+	require.Len(t, pending, 1, "the restored task is no longer worth asking about")
+	assert.Equal(t, b.ID, pending[0].Task.ID)
+}
+
+// Undoing an "added" writes a removal of its own. That is an artefact of undo,
+// not a decision to stop doing something, so it stays off the dropped list.
+func TestDropped_LeavesOutTheRemovalThatUndoingAnAddWrites(t *testing.T) {
+	s := newStore(t)
+	_, _ = s.Add("誤って足した", "", "", task.ActorHuman)
+
+	_, err := s.Undo(task.ActorHuman)
+	require.NoError(t, err)
+
+	drops, err := s.Dropped(time.Time{})
+	require.NoError(t, err)
+	assert.Empty(t, drops)
+}
+
+// The section on the page covers the current week, the same boundary the
+// completed list uses.
+func TestDropped_HonoursTheSinceCutoff(t *testing.T) {
+	s := newStore(t)
+	gone, _ := s.Add("やめる", "", "", task.ActorHuman)
+	_, err := s.Remove(gone.ID, task.ActorHuman)
+	require.NoError(t, err)
+
+	drops, err := s.Dropped(time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.Empty(t, drops, "removals before the cutoff drop off")
 }

@@ -66,11 +66,12 @@ type View struct {
 }
 
 type listResponse struct {
-	Today   string `json:"today"`
-	Queue   []View `json:"queue"`
-	Focus   []View `json:"focus"`
-	Waiting []View `json:"waiting"`
-	Done    []View `json:"done"`
+	Today   string      `json:"today"`
+	Queue   []View      `json:"queue"`
+	Focus   []View      `json:"focus"`
+	Waiting []View      `json:"waiting"`
+	Done    []View      `json:"done"`
+	Dropped []task.Drop `json:"dropped"`
 	Counts  struct {
 		Over int `json:"over"`
 		Near int `json:"near"`
@@ -102,6 +103,11 @@ func (a *API) build(scope int) listResponse {
 
 	tasks, rev := a.store.List()
 	res.Revision = rev
+	// Dropped tasks are read from the log, not the list: they are gone from
+	// tasks.json by the time anyone wants to see what was given up on.
+	if dropped, err := a.store.Dropped(weekStart); err == nil {
+		res.Dropped = dropped
+	}
 	if n, err := a.store.UndoableCount(); err == nil {
 		res.Undoable = n
 	}

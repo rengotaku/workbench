@@ -535,15 +535,27 @@ func (s *Store) Ask() ([]Pending, error) {
 	queueLen := len(s.openIndexes())
 	today := s.today()
 
+	undone := s.undoneSet()
+
 	var out []Pending
 	for _, e := range all {
+		if !e.NeedsReason(queueLen) {
+			continue
+		}
+		// A dropped task is no longer in the list, so its own snapshot is the
+		// only place left to read its name from.
+		if e.Kind == KindRemoved {
+			if undone[e.ID] || e.Snapshot == nil {
+				continue // put back again, or too old to carry a snapshot
+			}
+			out = append(out, Pending{Event: e, Task: *e.Snapshot, Trigger: e.AskReason(queueLen)})
+			continue
+		}
 		i, err := s.indexOf(e.TaskID)
 		if err != nil {
-			continue // task removed by hand; nothing to ask about
+			continue // task removed since; nothing to ask about
 		}
-		if e.NeedsReason(queueLen) {
-			out = append(out, Pending{Event: e, Task: s.st.Tasks[i], Trigger: e.AskReason(queueLen)})
-		}
+		out = append(out, Pending{Event: e, Task: s.st.Tasks[i], Trigger: e.AskReason(queueLen)})
 	}
 	for _, idx := range s.waitingIndexes() {
 		t := s.st.Tasks[idx]
@@ -562,6 +574,59 @@ func (s *Store) Ask() ([]Pending, error) {
 		})
 	}
 	return out, nil
+}
+
+// Drop is one task taken off the list, kept readable after the task itself is
+// gone. The name and due date come from the snapshot the removal wrote.
+type Drop struct {
+	At      time.Time `json:"at"`
+	EventID string    `json:"event_id"`
+	TaskID  string    `json:"task_id"`
+	Name    string    `json:"name"`
+	Due     string    `json:"due,omitempty"`
+	Reason  string    `json:"reason,omitempty"`
+	Actor   Actor     `json:"actor"`
+}
+
+// Dropped returns the tasks removed on or after since, most recent first.
+//
+// Removals that were undone are left out: the task is back on the list, so it
+// was never dropped. That also covers the removal an undone "created" writes,
+// which is an artefact of undo rather than a decision to stop doing something.
+func (s *Store) Dropped(since time.Time) ([]Drop, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	all, err := s.readEvents()
+	if err != nil {
+		return nil, err
+	}
+	undone := s.undoneSet()
+
+	var out []Drop
+	for _, e := range all {
+		if e.Kind != KindRemoved || undone[e.ID] || e.At.In(s.loc).Before(since) {
+			continue
+		}
+		d := Drop{At: e.At, EventID: e.ID, TaskID: e.TaskID, Name: e.ToValue, Reason: e.Reason, Actor: e.Actor}
+		if e.Snapshot != nil {
+			if d.Name == "" {
+				d.Name = e.Snapshot.Name
+			}
+			d.Due = e.Snapshot.Due
+		}
+		out = append(out, d)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At.After(out[j].At) })
+	return out, nil
+}
+
+func (s *Store) undoneSet() map[string]bool {
+	m := make(map[string]bool, len(s.st.Undone))
+	for _, id := range s.st.Undone {
+		m[id] = true
+	}
+	return m
 }
 
 // Why writes a reason onto one event. Rewriting an explanation that is already

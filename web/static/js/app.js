@@ -5,6 +5,7 @@
 
   var SCOPE_KEY = 'todo-order.scope';
   var DONE_KEY = 'todo-order.done-open';
+  var DROP_KEY = 'todo-order.drop-open';
   var POLL_MS = 4000;
   var state = {
     scope: '7',
@@ -12,6 +13,7 @@
     board: null,
     openId: null, // only one row is open at a time; another row closes it
     doneOpen: false, // the completed list is a record, not a queue
+    dropOpen: false, // so is the list of what was given up on
     busy: false, // a drag or a date field is in progress; do not redraw under it
     shownId: null, // the task the detail box is showing; the pointer moves it
   };
@@ -47,6 +49,8 @@
     waitList: document.getElementById('waitlist'),
     doneSec: document.getElementById('done-sec'),
     doneList: document.getElementById('donelist'),
+    dropSec: document.getElementById('drop-sec'),
+    dropList: document.getElementById('droplist'),
     more: document.getElementById('more'),
     over: document.getElementById('c-over'),
     near: document.getElementById('c-near'),
@@ -59,6 +63,8 @@
     detail: document.getElementById('detail'),
     doneFold: document.getElementById('done-fold'),
     doneCount: document.getElementById('done-count'),
+    dropFold: document.getElementById('drop-fold'),
+    dropCount: document.getElementById('drop-count'),
     untilWrap: document.getElementById('scope-until-wrap'),
     until: document.getElementById('scope-until'),
     err: document.getElementById('err'),
@@ -207,6 +213,15 @@
     el.doneList.hidden = !state.doneOpen;
     el.doneList.textContent = '';
     done.forEach(function (t) { el.doneList.appendChild(doneRow(t)); });
+
+    var dropped = b.dropped || [];
+    el.dropSec.hidden = dropped.length === 0;
+    el.dropCount.textContent = dropped.length;
+    el.dropFold.setAttribute('aria-expanded', String(state.dropOpen));
+    el.dropFold.querySelector('.caret').textContent = state.dropOpen ? '\u25bc' : '\u25b6';
+    el.dropList.hidden = !state.dropOpen;
+    el.dropList.textContent = '';
+    dropped.forEach(function (d) { el.dropList.appendChild(dropRow(d)); });
   }
 
   // After a reload the box holds an older copy of the task. Redraw it from the
@@ -481,6 +496,47 @@
       hasPanel: false,
       extraClass: 'done',
     });
+  }
+
+  // dropRow shows a task that is gone. It cannot reuse row(): there is no task
+  // left to tick, open, or drag — only the name it had and why it was dropped.
+  function dropRow(d) {
+    var li = document.createElement('li');
+    li.className = 'task drop';
+
+    ['grip empty', 'num', 'check empty'].forEach(function (cls) {
+      var span = document.createElement('span');
+      span.className = cls;
+      span.setAttribute('aria-hidden', 'true');
+      li.appendChild(span);
+    });
+
+    var body = document.createElement('div');
+    body.className = 'body';
+
+    var name = document.createElement('div');
+    name.className = 'name';
+    var txt = document.createElement('span');
+    txt.className = 'txt';
+    txt.title = d.name;
+    linkify(txt, d.name);
+    name.appendChild(txt);
+    body.appendChild(name);
+
+    var why = document.createElement('div');
+    why.className = 'drop-why' + (d.reason ? '' : ' none');
+    why.textContent = d.reason || '理由なし';
+    body.appendChild(why);
+    li.appendChild(body);
+
+    var when = document.createElement('span');
+    when.className = 'due';
+    var at = new Date(d.at);
+    when.textContent = (at.getMonth() + 1) + '/' + at.getDate();
+    when.title = when.textContent + ' にやめた。直近の月曜以降の分だけ残る';
+    li.appendChild(when);
+
+    return li;
   }
 
   // showDetail fills the box beside the list. It reads; every change is still
@@ -1133,6 +1189,12 @@
     render();
   });
 
+  el.dropFold.addEventListener('click', function () {
+    state.dropOpen = !state.dropOpen;
+    try { localStorage.setItem(DROP_KEY, state.dropOpen ? '1' : '0'); } catch (e) { /* private window */ }
+    render();
+  });
+
   scopeButtons.forEach(function (b) {
     b.addEventListener('click', function () {
       scopeButtons.forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
@@ -1249,6 +1311,7 @@
 
   try {
     state.doneOpen = localStorage.getItem(DONE_KEY) === '1';
+    state.dropOpen = localStorage.getItem(DROP_KEY) === '1';
   } catch (e) { /* storage unavailable; closed is the default */ }
 
   try {

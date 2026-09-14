@@ -96,9 +96,10 @@ type JumpedTask struct {
 // asking about (condition 4).
 const AskThresholdDays = 14
 
-// NeedsReason reports whether an event is one of the four changes agreed as
-// worth explaining. Everything else — swapping neighbours, setting a due date,
-// finishing — is left alone, so reordering stays cheap.
+// NeedsReason reports whether an event is one of the changes agreed as worth
+// explaining: the three reorder shapes, and dropping a task. Everything else —
+// swapping neighbours, setting a due date, finishing — is left alone, so
+// reordering stays cheap.
 //
 // queueLen is the number of open tasks at the time of the event.
 func (e Event) NeedsReason(queueLen int) bool {
@@ -114,6 +115,11 @@ func (e Event) NeedsReason(queueLen int) bool {
 			return true // dropped to the bottom
 		}
 		return len(e.Jumped) > 0 // overtook something with a due date in scope
+	case KindRemoved:
+		// Dropping a task is the one change that loses it. The reason is not
+		// asked for at the click — see ADR 0004 — but it is worth asking
+		// afterwards, the same way a reorder to the top is.
+		return true
 	case KindWaiting:
 		return false // asked about only once it has stalled; see StalledFor
 	default:
@@ -131,6 +137,8 @@ func (e Event) AskReason(queueLen int) string {
 		return "最下位へ落とした"
 	case e.Kind == KindReordered && len(e.Jumped) > 0:
 		return fmt.Sprintf("期限が近い %d 件を飛び越えた", len(e.Jumped))
+	case e.Kind == KindRemoved:
+		return "やめた（削除した）"
 	default:
 		return ""
 	}
