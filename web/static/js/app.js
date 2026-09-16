@@ -753,6 +753,7 @@
         .catch(function (err) { showError(err); node.textContent = last; });
     }
 
+    wirePaste(node, !!opts.single);
     node.addEventListener('focus', function () { state.busy = true; });
     node.addEventListener('input', function () {
       window.clearTimeout(timer);
@@ -811,6 +812,76 @@
     if (last < text.length) {
       el.appendChild(document.createTextNode(text.slice(last)));
     }
+  }
+
+  // A ticket link pasted into a name should land as the text the list already
+  // understands: "DSC-12546 チケットのタイトル". The browser puts the anchor on the
+  // clipboard as HTML, so the title survives only if we read that; the plain
+  // text fallback is usually the bare URL, which alone gives just the key.
+  var TICKET_IN_URL = /\/([A-Z][A-Z0-9]*-\d+)(?:[/?#]|$)/;
+
+  function ticketKeyFromURL(url) {
+    var m = TICKET_IN_URL.exec(String(url || '').split('#')[0]);
+    return m ? m[1] : '';
+  }
+
+  // ticketTextFromHTML returns "KEY title" for a pasted ticket link, or '' when
+  // the payload holds no ticket link and the plain text should be used as is.
+  function ticketTextFromHTML(html) {
+    if (!html) return '';
+    var doc;
+    try { doc = new DOMParser().parseFromString(html, 'text/html'); } catch (e) { return ''; }
+    var a = doc.querySelector('a[href]');
+    if (!a) return '';
+    var key = ticketKeyFromURL(a.getAttribute('href'));
+    if (!key) return '';
+    var label = (a.textContent || '').replace(/\s+/g, ' ').trim();
+    // Backlog's own link text already starts with the key; do not repeat it.
+    var title = label.indexOf(key) === 0
+      ? label.slice(key.length).replace(/^[\s:：|｜\-–—]+/, '')
+      : label;
+    return title ? key + ' ' + title : key;
+  }
+
+  // pastedText decides what a paste should insert: the ticket text when the
+  // clipboard carries a ticket link, otherwise the plain text it came with.
+  function pastedText(cb, single) {
+    var text = ticketTextFromHTML(cb.getData('text/html'));
+    if (!text) {
+      text = cb.getData('text/plain') || '';
+      var bare = text.trim();
+      var key = /^https?:\/\/\S+$/.test(bare) ? ticketKeyFromURL(bare) : '';
+      if (key) text = key;
+    }
+    if (single) text = text.replace(/\s+/g, ' ').trim();
+    return text;
+  }
+
+  function insertText(node, text) {
+    if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA') {
+      var start = node.selectionStart === null ? node.value.length : node.selectionStart;
+      var end = node.selectionEnd === null ? node.value.length : node.selectionEnd;
+      node.setRangeText(text, start, end, 'end');
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+      return;
+    }
+    if (document.execCommand && document.execCommand('insertText', false, text)) return;
+    node.textContent = node.textContent + text; // last resort: keep the paste
+    node.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  // wirePaste makes a paste land as plain text — a link pasted into an editable
+  // name would otherwise bring its markup with it — and turns a ticket link
+  // into the key plus its title.
+  function wirePaste(node, single) {
+    node.addEventListener('paste', function (e) {
+      var cb = e.clipboardData || window.clipboardData;
+      if (!cb) return;
+      var text = pastedText(cb, single);
+      if (!text) return;
+      e.preventDefault();
+      insertText(node, text);
+    });
   }
 
   function field(label, kind, value) {
@@ -1151,6 +1222,7 @@
         .catch(function (err) { name.disabled = false; showError(err); });
     }
 
+    wirePaste(name, true);
     name.addEventListener('keydown', function (e) {
       if (composing(e)) return;
       if (e.key === 'Enter') { e.preventDefault(); submit(); }
