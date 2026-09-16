@@ -1,8 +1,8 @@
 // Package task holds the task model and its append-only event log.
 //
 // A task carries only what the list needs: a name (the主), an optional detail,
-// its place in the order, and its state. Backlog keys such as "DSC-12546" are
-// plain text inside Name — nothing here treats them specially.
+// an optional URL it was pasted from, its place in the order, and its state.
+// Any ticket key inside Name is plain text — nothing here treats it specially.
 package task
 
 import (
@@ -43,6 +43,7 @@ const (
 	KindDetail    Kind = "detail_edited"
 	KindRemoved   Kind = "removed"
 	KindRenamed   Kind = "renamed"
+	KindLinked    Kind = "linked"
 	KindFocused   Kind = "focused"
 	KindUnfocused Kind = "unfocused"
 )
@@ -55,12 +56,21 @@ type Task struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
 	Detail      string     `json:"detail,omitempty"`
-	State       State      `json:"state"`
-	Due         string     `json:"due,omitempty"`
-	HandedTo    string     `json:"handed_to,omitempty"`
-	HandedOn    string     `json:"handed_on,omitempty"`
-	WaitNote    string     `json:"wait_note,omitempty"`
-	Order       int        `json:"order"`
+	// URL is the link the task came from, kept exactly as it was pasted. The
+	// app does not parse it: it has no idea which tracker, wiki or document a
+	// link points at, and nothing here reconstructs a URL from the name.
+	URL string `json:"url,omitempty"`
+	// LinkText is the part of Name that was the link where it was copied from.
+	// Keeping it means the link covers the same words it covered at the source
+	// — a tracker that links only the key leaves the title outside it — without
+	// this package knowing what a key looks like.
+	LinkText string `json:"link_text,omitempty"`
+	State    State  `json:"state"`
+	Due      string `json:"due,omitempty"`
+	HandedTo string `json:"handed_to,omitempty"`
+	HandedOn string `json:"handed_on,omitempty"`
+	WaitNote string `json:"wait_note,omitempty"`
+	Order    int    `json:"order"`
 	// Focused lifts a task into the band at the top of the page. It is a
 	// working set, not a state: the task keeps its place in the queue.
 	Focused bool `json:"focused,omitempty"`

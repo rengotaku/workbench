@@ -205,10 +205,12 @@ func (a *API) view(t task.Task, today time.Time, scope int) View {
 }
 
 type addRequest struct {
-	Name   string `json:"name"`
-	Detail string `json:"detail"`
-	Due    string `json:"due"`
-	Actor  string `json:"actor"`
+	Name     string `json:"name"`
+	Detail   string `json:"detail"`
+	URL      string `json:"url"`
+	LinkText string `json:"link_text"`
+	Due      string `json:"due"`
+	Actor    string `json:"actor"`
 }
 
 func (a *API) addTask(c *gin.Context) {
@@ -217,15 +219,21 @@ func (a *API) addTask(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	t, err := a.store.Add(req.Name, req.Detail, req.Due, actorOf(req.Actor))
+	actor := actorOf(req.Actor)
+	t, err := a.store.Add(req.Name, req.Detail, req.Due, actor)
+	if err == nil && req.URL != "" {
+		t, err = a.store.SetLink(t.ID, req.URL, req.LinkText, actor)
+	}
 	a.respond(c, t, err)
 }
 
 type patchRequest struct {
-	Name   *string `json:"name"`
-	Due    *string `json:"due"`
-	Detail *string `json:"detail"`
-	Actor  string  `json:"actor"`
+	Name     *string `json:"name"`
+	Due      *string `json:"due"`
+	Detail   *string `json:"detail"`
+	URL      *string `json:"url"`
+	LinkText string  `json:"link_text"`
+	Actor    string  `json:"actor"`
 }
 
 func (a *API) patchTask(c *gin.Context) {
@@ -259,8 +267,14 @@ func (a *API) patchTask(c *gin.Context) {
 			return
 		}
 	}
-	if req.Name == nil && req.Due == nil && req.Detail == nil {
-		badRequest(c, errors.New("nothing to change: pass name, due or detail"))
+	if req.URL != nil {
+		if t, err = a.store.SetLink(id, *req.URL, req.LinkText, actor); err != nil {
+			a.respond(c, t, err)
+			return
+		}
+	}
+	if req.Name == nil && req.Due == nil && req.Detail == nil && req.URL == nil {
+		badRequest(c, errors.New("nothing to change: pass name, due, detail or url"))
 		return
 	}
 	a.respond(c, t, nil)

@@ -458,3 +458,46 @@ func TestActor_IsRecordedSoAIChangesAreDistinguishable(t *testing.T) {
 	require.Len(t, events, 1)
 	assert.Equal(t, task.ActorAI, events[0].Actor)
 }
+
+// A task added from a pasted link carries the link through the API, and the
+// same field can be changed or cleared later.
+func TestAPI_AddAndPatchCarryTheURL(t *testing.T) {
+	_, h := setup(t)
+
+	code, body := call(t, h, http.MethodPost, "/api/tasks", map[string]any{
+		"name":      "ABC-1 踏み台 EIP を確保する",
+		"url":       "https://example.test/view/ABC-1",
+		"link_text": "ABC-1",
+	})
+	require.Equal(t, http.StatusOK, code)
+	got, ok := body["task"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "https://example.test/view/ABC-1", got["url"])
+	assert.Equal(t, "ABC-1", got["link_text"]) // only the words that were a link
+
+	id, _ := got["id"].(string)
+	require.NotEmpty(t, id)
+
+	code, body = call(t, h, http.MethodPatch, "/api/tasks/"+id, map[string]any{
+		"url": "https://example.test/pages/42",
+	})
+	require.Equal(t, http.StatusOK, code)
+	got, _ = body["task"].(map[string]any)
+	assert.Equal(t, "https://example.test/pages/42", got["url"])
+
+	code, body = call(t, h, http.MethodPatch, "/api/tasks/"+id, map[string]any{"url": ""})
+	require.Equal(t, http.StatusOK, code)
+	got, _ = body["task"].(map[string]any)
+	assert.NotContains(t, got, "url") // an empty link is omitted, not kept as ""
+	assert.NotContains(t, got, "link_text")
+}
+
+func TestAPI_PatchWithNothingToChangeIsRejected(t *testing.T) {
+	_, h := setup(t)
+
+	code, _ := call(t, h, http.MethodPost, "/api/tasks", map[string]any{"name": "何か"})
+	require.Equal(t, http.StatusOK, code)
+
+	code, _ = call(t, h, http.MethodPatch, "/api/tasks/T001", map[string]any{})
+	assert.Equal(t, http.StatusBadRequest, code)
+}

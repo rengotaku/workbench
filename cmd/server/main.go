@@ -31,7 +31,6 @@ type Config struct {
 	Port            string        `env:"PORT,default=8085"`
 	AppEnv          string        `env:"APP_ENV"`
 	DataDir         string        `env:"DATA_DIR"`
-	TicketURLBase   string        `env:"TICKET_URL_BASE"`
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT,default=10s"`
 }
 
@@ -99,7 +98,7 @@ func main() {
 	}
 	slog.Info("task store ready", "dir", dataDir)
 
-	h := handler.NewHandler(templates, staticFiles, api.New(store, time.Local), cfg.TicketURLBase)
+	h := handler.NewHandler(templates, staticFiles, api.New(store, time.Local))
 
 	srv := &http.Server{
 		Addr:         cfg.Listen + ":" + cfg.Port,

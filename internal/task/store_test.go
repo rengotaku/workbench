@@ -691,3 +691,37 @@ func TestDropped_HonoursTheSinceCutoff(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, drops, "removals before the cutoff drop off")
 }
+
+// A link belongs to the task that was pasted, so it is stored as given and
+// survives a reload; clearing it is an ordinary empty value, not a delete.
+func TestSetURL_KeepsTheLinkAsPastedAndRecordsIt(t *testing.T) {
+	s := newStore(t)
+
+	created, err := s.Add("踏み台 EIP を確保する", "", "", task.ActorHuman)
+	require.NoError(t, err)
+	require.Empty(t, created.URL)
+
+	url := "https://example.test/view/ABC-1?x=1#frag"
+	updated, err := s.SetLink(created.ID, url, "ABC-1", task.ActorHuman)
+	require.NoError(t, err)
+	require.Equal(t, url, updated.URL)
+	require.Equal(t, "ABC-1", updated.LinkText)
+
+	events, err := s.Events(created.ID)
+	require.NoError(t, err)
+	last := events[len(events)-1]
+	require.Equal(t, task.KindLinked, last.Kind)
+	require.Equal(t, url, last.ToValue)
+
+	cleared, err := s.SetLink(created.ID, "", "", task.ActorHuman)
+	require.NoError(t, err)
+	require.Empty(t, cleared.URL)
+	require.Empty(t, cleared.LinkText)
+}
+
+func TestSetURL_UnknownTaskIsAnError(t *testing.T) {
+	s := newStore(t)
+
+	_, err := s.SetLink("T999", "https://example.test/", "", task.ActorHuman)
+	require.Error(t, err)
+}

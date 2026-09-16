@@ -431,6 +431,35 @@ func (s *Store) SetDetail(id, detail string, actor Actor) (Task, error) {
 	return s.mustGet(id), nil
 }
 
+// SetLink records the link a task came from: the URL, and the part of the name
+// that was the link at the source. An empty url clears both. The values are
+// stored as given — the store never builds a URL or picks a range of its own.
+func (s *Store) SetLink(id, url, linkText string, actor Actor) (Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	i, err := s.indexOf(id)
+	if err != nil {
+		return Task{}, err
+	}
+	t := s.st.Tasks[i]
+	from := t.URL
+	t.URL = url
+	t.LinkText = linkText
+	if url == "" {
+		t.LinkText = ""
+	}
+	s.st.Tasks[i] = t
+
+	if err := s.record(Event{TaskID: id, Kind: KindLinked, Actor: actor, FromValue: from, ToValue: url}); err != nil {
+		return Task{}, err
+	}
+	if err := s.persist(); err != nil {
+		return Task{}, err
+	}
+	return s.mustGet(id), nil
+}
+
 // Reorder moves one open task to position to (0-based) in the queue and
 // records what it overtook. scopeDays sets the window that decides whether an
 // overtaken due date is close enough to be worth explaining.

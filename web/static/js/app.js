@@ -23,14 +23,6 @@
   // in use.
   var trailCache = {};
 
-  // A ticket key at the start of a name becomes a link when a base URL is
-  // configured. The app itself knows nothing about any tracker; this is only
-  // presentation, and with no base URL the name stays plain text.
-  var TICKET_KEY = /\b([A-Z][A-Z0-9]*-\d+)\b/g;
-  var ticketBase = (document.querySelector('.wrap') || {}).dataset
-    ? document.querySelector('.wrap').dataset.ticketUrlBase || ''
-    : '';
-
   // A key pressed while the IME is converting belongs to the IME, not to us.
   // In Japanese input, Enter confirms the conversion and Escape cancels it; if
   // we act on those, the first Enter submits a half-converted name. `isComposing`
@@ -317,7 +309,7 @@
       wireLiveField(txt, opts.task, 'name', { single: true });
     } else {
       txt.title = opts.task.name;
-      linkify(txt, opts.task.name);
+      writeName(txt, opts.task);
     }
     name.appendChild(txt);
 
@@ -519,7 +511,7 @@
     var txt = document.createElement('span');
     txt.className = 'txt';
     txt.title = d.name;
-    linkify(txt, d.name);
+    writeName(txt, d);
     name.appendChild(txt);
     body.appendChild(name);
 
@@ -559,7 +551,7 @@
 
     var name = document.createElement('p');
     name.className = 'd-name';
-    linkify(name, t.name);
+    writeName(name, t);
     el.detail.appendChild(name);
 
     var body = document.createElement('div');
@@ -742,6 +734,14 @@
 
       var body = {};
       body[key] = value;
+      // A link pasted into the name carries its URL with it; the same save
+      // stores both, so the row links where the paste came from.
+      if (key === 'name' && node.pastedURL) {
+        body.url = node.pastedURL;
+        body.link_text = node.pastedLinkText || '';
+        node.pastedURL = null;
+        node.pastedLinkText = null;
+      }
       mark(node, '保存中…');
       request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), body)
         .then(function () {
@@ -754,14 +754,17 @@
     }
 
     wirePaste(node, !!opts.single);
+    if (opts.single) paintLink(node, t);
     node.addEventListener('focus', function () { state.busy = true; });
     node.addEventListener('input', function () {
+      if (opts.single) paintLink(node, t);
       window.clearTimeout(timer);
       timer = window.setTimeout(function () { save(false); }, 900);
     });
     node.addEventListener('blur', function () {
       window.clearTimeout(timer);
       state.busy = false;
+      if (opts.single && window.CSS && CSS.highlights) CSS.highlights.delete(HIGHLIGHT_NAME);
       save(true);
     });
     node.addEventListener('keydown', function (e) {
@@ -783,78 +786,27 @@
     }
   }
 
-  // linkify writes text into el, turning ticket keys into links. Text is added
-  // as text nodes, never as HTML, so a task name cannot inject markup.
-  function linkify(el, text) {
-    el.textContent = '';
-    if (!ticketBase) {
-      el.textContent = text;
-      return;
-    }
-    var last = 0;
-    var m;
-    TICKET_KEY.lastIndex = 0;
-    while ((m = TICKET_KEY.exec(text)) !== null) {
-      if (m.index > last) {
-        el.appendChild(document.createTextNode(text.slice(last, m.index)));
-      }
-      var a = document.createElement('a');
-      a.className = 'ticket';
-      a.href = ticketBase + encodeURIComponent(m[1]);
-      a.textContent = m[1];
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.title = m[1] + ' を開く';
-      a.draggable = false; // dragging a row must not drag the link instead
-      el.appendChild(a);
-      last = m.index + m[1].length;
-    }
-    if (last < text.length) {
-      el.appendChild(document.createTextNode(text.slice(last)));
-    }
-  }
-
-  // A ticket link pasted into a name should land as the text the list already
-  // understands: "DSC-12546 チケットのタイトル". The browser puts the anchor on the
-  // clipboard as HTML, so the title survives only if we read that; the plain
-  // text fallback is usually the bare URL, which alone gives just the key.
-  var TICKET_IN_URL = /\/([A-Z][A-Z0-9]*-\d+)(?:[/?#]|$)/;
-
-  function ticketKeyFromURL(url) {
-    var m = TICKET_IN_URL.exec(String(url || '').split('#')[0]);
-    return m ? m[1] : '';
-  }
-
-  // ticketTextFromHTML returns "KEY title" for a pasted ticket link, or '' when
-  // the payload holds no ticket link and the plain text should be used as is.
-  function ticketTextFromHTML(html) {
-    if (!html) return '';
+  // A link pasted into a name keeps two things: the text it showed, and the URL
+  // it pointed at. The URL is stored with the task exactly as pasted — the app
+  // never inspects it, so a link to a tracker, a wiki or a document are all the
+  // same thing to it.
+  function pastedLink(cb) {
+    var html = cb.getData('text/html');
+    if (!html) return null;
     var doc;
-    try { doc = new DOMParser().parseFromString(html, 'text/html'); } catch (e) { return ''; }
+    try { doc = new DOMParser().parseFromString(html, 'text/html'); } catch (e) { return null; }
     var a = doc.querySelector('a[href]');
-    if (!a) return '';
-    var key = ticketKeyFromURL(a.getAttribute('href'));
-    if (!key) return '';
-    var label = (a.textContent || '').replace(/\s+/g, ' ').trim();
-    // Backlog's own link text already starts with the key; do not repeat it.
-    var title = label.indexOf(key) === 0
-      ? label.slice(key.length).replace(/^[\s:：|｜\-–—]+/, '')
-      : label;
-    return title ? key + ' ' + title : key;
-  }
-
-  // pastedText decides what a paste should insert: the ticket text when the
-  // clipboard carries a ticket link, otherwise the plain text it came with.
-  function pastedText(cb, single) {
-    var text = ticketTextFromHTML(cb.getData('text/html'));
-    if (!text) {
-      text = cb.getData('text/plain') || '';
-      var bare = text.trim();
-      var key = /^https?:\/\/\S+$/.test(bare) ? ticketKeyFromURL(bare) : '';
-      if (key) text = key;
-    }
-    if (single) text = text.replace(/\s+/g, ' ').trim();
-    return text;
+    if (!a) return null;
+    var href = a.getAttribute('href') || '';
+    if (!/^https?:\/\//i.test(href)) return null; // only links a browser can open
+    // The label can sit outside the anchor — a tracker that links the key alone
+    // leaves the title beside it — so the text comes from the whole fragment.
+    // \u00a0 is the non-breaking space such a paste separates them with.
+    var norm = function (v) { return (v || '').replace(/[\s\u00a0]+/g, ' ').trim(); };
+    var text = norm(doc.body ? doc.body.textContent : '');
+    var label = norm(a.textContent);
+    if (!text) { text = label || href; }
+    return { url: href, text: text, linkText: label || text };
   }
 
   function insertText(node, text) {
@@ -871,17 +823,91 @@
   }
 
   // wirePaste makes a paste land as plain text — a link pasted into an editable
-  // name would otherwise bring its markup with it — and turns a ticket link
-  // into the key plus its title.
+  // name would otherwise bring its markup with it — and remembers the URL on the
+  // node so whoever saves the field can send it along.
   function wirePaste(node, single) {
     node.addEventListener('paste', function (e) {
       var cb = e.clipboardData || window.clipboardData;
       if (!cb) return;
-      var text = pastedText(cb, single);
+      var link = pastedLink(cb);
+      var text = link ? link.text : (cb.getData('text/plain') || '');
       if (!text) return;
+      if (single) text = text.replace(/\s+/g, ' ').trim();
       e.preventDefault();
+      if (link) {
+        node.pastedURL = link.url;
+        node.pastedLinkText = link.linkText;
+      }
       insertText(node, text);
     });
+  }
+
+  // linkRange finds the part of a name that should carry the link: the words
+  // that were the link where it was copied from. A task with no link, or whose
+  // name no longer contains those words, has no range.
+  function linkRange(t) {
+    if (!t.url) return null;
+    var label = t.link_text || t.name;
+    var at = t.name.indexOf(label);
+    if (at === -1 || !label) return null;
+    return { start: at, end: at + label.length };
+  }
+
+  // writeName puts a task's name into el, with the link range as a link and the
+  // rest as plain text. Text goes in as text nodes, never as HTML.
+  function writeName(el, t) {
+    el.textContent = '';
+    var r = linkRange(t);
+    if (!r) {
+      el.textContent = t.name;
+      return;
+    }
+    if (r.start > 0) el.appendChild(document.createTextNode(t.name.slice(0, r.start)));
+    var a = document.createElement('a');
+    a.className = 'ticket';
+    a.href = t.url;
+    a.textContent = t.name.slice(r.start, r.end);
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = t.url;
+    a.draggable = false; // dragging a row must not drag the link instead
+    el.appendChild(a);
+    if (r.end < t.name.length) el.appendChild(document.createTextNode(t.name.slice(r.end)));
+  }
+
+  // markAddLink shows the link a paste brought into the add field. The field is
+  // an <input>, where the highlight API does not reach, so the link is named
+  // beside it instead of marked inside it.
+  function markAddLink(input, hint) {
+    if (!input.pastedURL) {
+      hint.hidden = true;
+      hint.textContent = '';
+      return;
+    }
+    hint.hidden = false;
+    hint.textContent = '🔗 ' + (input.pastedLinkText || input.value) + ' → ' + input.pastedURL;
+    hint.title = input.pastedURL;
+  }
+
+  // paintLink marks the link range inside an editable name. It uses the
+  // highlight API rather than wrapping the text in an element: the node keeps
+  // one text node, so repainting never moves the caret, and there is no anchor
+  // under the caret to fight with. Where the API is missing the name simply
+  // shows unmarked.
+  var HIGHLIGHT_NAME = 'link-part';
+  function paintLink(node, t) {
+    if (typeof Highlight !== 'function' || !window.CSS || !CSS.highlights) return;
+    CSS.highlights.delete(HIGHLIGHT_NAME);
+    var text = node.firstChild;
+    if (!text || text.nodeType !== 3) return;
+    var url = node.pastedURL || t.url;
+    var label = node.pastedURL ? node.pastedLinkText : t.link_text;
+    var r = linkRange({ url: url, name: text.data, link_text: label });
+    if (!r) return;
+    var range = document.createRange();
+    range.setStart(text, r.start);
+    range.setEnd(text, r.end);
+    CSS.highlights.set(HIGHLIGHT_NAME, new Highlight(range));
   }
 
   function field(label, kind, value) {
@@ -950,6 +976,7 @@
   var KIND_LABEL = {
     created: '追加',
     renamed: '名前を変更',
+    linked: 'リンクを設定',
     focused: 'フォーカスに入れた',
     unfocused: 'フォーカスから外した',
     reordered: '順序変更',
@@ -1177,6 +1204,10 @@
     name.setAttribute('aria-label', 'タスク名');
     name.autocomplete = 'off';
 
+    var hint = document.createElement('span');
+    hint.className = 'add-link';
+    hint.hidden = true;
+
     var due = document.createElement('input');
     due.type = 'date';
     due.id = 'add-due';
@@ -1209,6 +1240,10 @@
 
       var body = { name: value };
       if (due.value) body.due = due.value;
+      if (name.pastedURL) {
+        body.url = name.pastedURL;
+        body.link_text = name.pastedLinkText || '';
+      }
 
       name.disabled = true;
       request('POST', '/api/tasks', body)
@@ -1223,6 +1258,13 @@
     }
 
     wirePaste(name, true);
+    name.addEventListener('input', function () {
+      if (!name.value) { name.pastedURL = null; name.pastedLinkText = null; } // an emptied field has no link
+      markAddLink(name, hint);
+    });
+    name.addEventListener('paste', function () {
+      window.setTimeout(function () { markAddLink(name, hint); }, 0); // after the text lands
+    });
     name.addEventListener('keydown', function (e) {
       if (composing(e)) return;
       if (e.key === 'Enter') { e.preventDefault(); submit(); }
@@ -1249,6 +1291,7 @@
     slot.appendChild(document.createElement('span'));
     slot.appendChild(plusMark);
     slot.appendChild(name);
+    slot.appendChild(hint);
     slot.appendChild(due);
 
     state.busy = true; // typing must not be interrupted by the poll

@@ -243,3 +243,21 @@ func TestUndo_SurvivesAReload(t *testing.T) {
 	_, err = reloaded.Get(added.ID)
 	assert.ErrorIs(t, err, task.ErrNotFound)
 }
+
+// A pasted link is an ordinary change, so undo takes it back the way it takes
+// back a rename.
+func TestUndo_TakesBackAPastedLink(t *testing.T) {
+	s := newStore(t)
+
+	created, err := s.Add("踏み台 EIP を確保する", "", "", task.ActorHuman)
+	require.NoError(t, err)
+	_, err = s.SetLink(created.ID, "https://example.test/view/ABC-1", "ABC-1", task.ActorHuman)
+	require.NoError(t, err)
+
+	_, err = s.Undo(task.ActorHuman)
+	require.NoError(t, err)
+
+	back, err := s.Get(created.ID)
+	require.NoError(t, err)
+	require.Empty(t, back.URL)
+}
