@@ -222,8 +222,9 @@ func (s *Store) Wait(id, to, note string, actor Actor) (Task, error) {
 	return s.mustGet(id), nil
 }
 
-// Resume brings a waiting task back into the queue and clears the handoff, so
-// a future handoff starts its own count.
+// Resume brings a waiting or someday task back into the queue, at the end of
+// it. Clearing the handoff means a future chase starts its own count; clearing
+// Until means a future shelve starts its own.
 func (s *Store) Resume(id, note string, actor Actor) (Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -233,8 +234,8 @@ func (s *Store) Resume(id, note string, actor Actor) (Task, error) {
 		return Task{}, err
 	}
 	t := s.st.Tasks[i]
-	if t.State != StateWaiting {
-		return Task{}, fmt.Errorf("%s is not waiting", id)
+	if t.State != StateWaiting && t.State != StateSomeday {
+		return Task{}, fmt.Errorf("%s is not waiting or someday", id)
 	}
 
 	from := t.HandedTo
@@ -242,10 +243,56 @@ func (s *Store) Resume(id, note string, actor Actor) (Task, error) {
 	t.HandedTo = ""
 	t.HandedOn = ""
 	t.WaitNote = ""
+	t.Until = ""
+	t.Order = math.MaxInt32 // renumber puts it at the end of the queue
 	s.st.Tasks[i] = t
 	s.renumber()
 
 	if err := s.record(Event{TaskID: id, Kind: KindResumed, Actor: actor, FromValue: from, ToValue: note}); err != nil {
+		return Task{}, err
+	}
+	if err := s.persist(); err != nil {
+		return Task{}, err
+	}
+	return s.mustGet(id), nil
+}
+
+// Shelve moves an open or waiting task to someday: worth doing, not now.
+// Unlike Wait, nobody else holds it — until is a date worth revisiting, not a
+// promise, so it shares neither colour nor count with Due. Passing an empty
+// until sets it to a month out.
+func (s *Store) Shelve(id, until string, actor Actor) (Task, error) {
+	if until != "" {
+		if _, err := ParseDate(until, s.loc); err != nil {
+			return Task{}, err
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	i, err := s.indexOf(id)
+	if err != nil {
+		return Task{}, err
+	}
+	before := s.st.Tasks[i]
+	if before.State != StateOpen && before.State != StateWaiting {
+		return Task{}, fmt.Errorf("%s is %s: cannot shelve", id, before.State)
+	}
+
+	if until == "" {
+		until = s.now().AddDate(0, 1, 0).Format(DateLayout)
+	}
+	t := before
+	t.State = StateSomeday
+	t.Until = until
+	t.Focused = false // shelved out of the queue does not stay in the band
+	s.st.Tasks[i] = t
+	s.renumber()
+
+	snapshot := before
+	ev := Event{TaskID: id, Kind: KindShelved, Actor: actor, ToValue: until, Snapshot: &snapshot}
+	if err := s.record(ev); err != nil {
 		return Task{}, err
 	}
 	if err := s.persist(); err != nil {
@@ -741,6 +788,10 @@ func (s *Store) waitingIndexes() []int {
 	return s.indexesWithState(StateWaiting)
 }
 
+func (s *Store) somedayIndexes() []int {
+	return s.indexesWithState(StateSomeday)
+}
+
 func (s *Store) indexesWithState(st State) []int {
 	var idx []int
 	for i := range s.st.Tasks {
@@ -771,8 +822,9 @@ func (s *Store) move(open []int, storeIdx, to int) {
 	}
 }
 
-// renumber gives the queue positions 0..n-1 and pushes waiting and done tasks
-// past it, so Order alone sorts the whole list the way the page shows it.
+// renumber gives the queue positions 0..n-1 and pushes waiting, someday and
+// done tasks past it in that order, so Order alone sorts the whole list the
+// way the page shows it.
 func (s *Store) renumber() {
 	pos := 0
 	for _, i := range s.openIndexes() {
@@ -780,6 +832,10 @@ func (s *Store) renumber() {
 		pos++
 	}
 	for _, i := range s.waitingIndexes() {
+		s.st.Tasks[i].Order = pos
+		pos++
+	}
+	for _, i := range s.somedayIndexes() {
 		s.st.Tasks[i].Order = pos
 		pos++
 	}

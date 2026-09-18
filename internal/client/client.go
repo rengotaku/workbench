@@ -55,9 +55,10 @@ type Task struct {
 	DueLabel string `json:"due_label"`
 	DueClass string `json:"due_class"`
 	task.Task
-	StalledFor int  `json:"stalled_for"`
-	InScope    bool `json:"in_scope"`
-	Overdue    bool `json:"overdue"`
+	StalledFor   int  `json:"stalled_for"`
+	InScope      bool `json:"in_scope"`
+	Overdue      bool `json:"overdue"`
+	UntilReached bool `json:"until_reached"`
 }
 
 // Board is the whole list, split the way the page shows it.
@@ -66,6 +67,7 @@ type Board struct {
 	Queue   []Task `json:"queue"`
 	Focus   []Task `json:"focus"`
 	Waiting []Task `json:"waiting"`
+	Someday []Task `json:"someday"`
 	Done    []Task `json:"done"`
 	Counts  struct {
 		Over int `json:"over"`
@@ -128,10 +130,18 @@ func (c *Client) Wait(id, to, note string) (Task, []byte, error) {
 	})
 }
 
-// Resume brings a waiting task back into the queue.
+// Resume brings a waiting or someday task back into the queue.
 func (c *Client) Resume(id, note string) (Task, []byte, error) {
 	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/resume", map[string]any{
 		"note": note, "actor": actor(),
+	})
+}
+
+// Shelve moves an open or waiting task to someday. An empty until leaves the
+// date to the server, which sets it a month out.
+func (c *Client) Shelve(id, until string) (Task, []byte, error) {
+	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/someday", map[string]any{
+		"until": until, "actor": actor(),
 	})
 }
 

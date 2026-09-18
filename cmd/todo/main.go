@@ -44,7 +44,7 @@ func rootCmd() *cobra.Command {
 	root.Flags().String("detail", "", "detail text")
 
 	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), removeCmd(), waitCmd(), resumeCmd(),
-		orderCmd(), dueCmd(), detailCmd(), renameCmd(), focusCmd(true), focusCmd(false),
+		somedayCmd(), orderCmd(), dueCmd(), detailCmd(), renameCmd(), focusCmd(true), focusCmd(false),
 		undoCmd(), askCmd(), whyCmd(), contextCmd(), importCmd())
 	return root
 }
@@ -124,6 +124,22 @@ func printBoard(b client.Board) {
 		for _, t := range b.Waiting {
 			fmt.Printf("  ◷ %-6s %s  %s へ %s に渡した（%d日経過）\n",
 				t.ID, t.Name, t.HandedTo, t.HandedOn, t.StalledFor)
+		}
+	}
+	if len(b.Someday) > 0 {
+		fmt.Println("\n[いつか]")
+		// The API already sorts by Until with arrived dates first, so what to
+		// look at soonest sits at the top without the CLI re-sorting anything.
+		for _, t := range b.Someday {
+			mark := " "
+			if t.UntilReached {
+				mark = "●"
+			}
+			until := t.Until
+			if until == "" {
+				until = "?"
+			}
+			fmt.Printf(" %s %-6s %s  %s まで\n", mark, t.ID, t.Name, until)
 		}
 	}
 	if len(b.Done) > 0 {
@@ -326,7 +342,7 @@ func resumeCmd() *cobra.Command {
 	var note string
 	c := &cobra.Command{
 		Use:   "resume <ID>",
-		Short: "待ちから着手順へ戻す",
+		Short: "待ち／いつかから着手順へ戻す",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			cl, err := newClient()
@@ -345,6 +361,34 @@ func resumeCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&note, "note", "", "何が返ってきたか")
+	return c
+}
+
+func somedayCmd() *cobra.Command {
+	var until string
+	c := &cobra.Command{
+		Use:   "someday <ID>",
+		Short: "いつかへ棚上げする（着手順・待ちから外す）",
+		Long: "いつかへ棚上げする。いまは着手順に置かないが、いつか再開したいタスクの置き場で、\n" +
+			"--until を省略すると今日から1ヶ月後になる。着手順へ戻すのは `todo resume`。",
+		Args: cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			cl, err := newClient()
+			if err != nil {
+				return err
+			}
+			t, raw, err := cl.Shelve(args[0], until)
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return printRaw(raw)
+			}
+			fmt.Printf("いつか %s  %s（%s まで見なくていい）\n", t.ID, t.Name, t.Until)
+			return nil
+		},
+	}
+	c.Flags().StringVar(&until, "until", "", "この日まで見なくていい（YYYY-MM-DD、省略時は今日+1ヶ月）")
 	return c
 }
 

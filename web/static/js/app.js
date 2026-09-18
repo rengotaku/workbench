@@ -6,6 +6,7 @@
   var SCOPE_KEY = 'todo-order.scope';
   var DONE_KEY = 'todo-order.done-open';
   var DROP_KEY = 'todo-order.drop-open';
+  var SOMEDAY_KEY = 'todo-order.someday-open';
   var POLL_MS = 4000;
   var state = {
     scope: '7',
@@ -14,6 +15,7 @@
     openId: null, // only one row is open at a time; another row closes it
     doneOpen: false, // the completed list is a record, not a queue
     dropOpen: false, // so is the list of what was given up on
+    somedayOpen: false, // and so is the shelf: closed by default, like done
     busy: false, // a drag or a date field is in progress; do not redraw under it
     shownId: null, // the task the detail box is showing; the pointer moves it
   };
@@ -39,6 +41,10 @@
     queue: document.getElementById('queue'),
     waitSec: document.getElementById('waiting-sec'),
     waitList: document.getElementById('waitlist'),
+    somedaySec: document.getElementById('someday-sec'),
+    somedayList: document.getElementById('somedaylist'),
+    somedayFold: document.getElementById('someday-fold'),
+    somedayCount: document.getElementById('someday-count'),
     doneSec: document.getElementById('done-sec'),
     doneList: document.getElementById('donelist'),
     dropSec: document.getElementById('drop-sec'),
@@ -195,6 +201,19 @@
     el.waitList.textContent = '';
     waiting.forEach(function (t) { el.waitList.appendChild(waitRow(t)); });
 
+    // Server-sorted already: soonest until first, no-until last. Arrived rows
+    // sit ahead of the rest of that order because an earlier until means
+    // arrived, not because the client re-sorts anything.
+    var someday = b.someday || [];
+    el.somedaySec.hidden = someday.length === 0;
+    var reached = someday.filter(function (t) { return t.until_reached; }).length;
+    el.somedayCount.textContent = someday.length + (reached > 0 ? '（到来 ' + reached + '）' : '');
+    el.somedayFold.setAttribute('aria-expanded', String(state.somedayOpen));
+    el.somedayFold.querySelector('.caret').textContent = state.somedayOpen ? '▼' : '▶';
+    el.somedayList.hidden = !state.somedayOpen;
+    el.somedayList.textContent = '';
+    someday.forEach(function (t) { el.somedayList.appendChild(somedayRow(t)); });
+
     refreshDetail();
 
     var done = b.done || [];
@@ -223,7 +242,7 @@
     if (!el.detail) return;
     var b = state.board;
     if (!b) return;
-    var all = (b.queue || []).concat(b.waiting || [], b.done || []);
+    var all = (b.queue || []).concat(b.waiting || [], b.someday || [], b.done || []);
     if (all.length === 0) return;
     var still = null;
     all.forEach(function (t) { if (t.id === state.shownId) still = t; });
@@ -472,6 +491,26 @@
     });
   }
 
+  // somedayRow shows a shelved task. Arriving is not overdue — nothing was
+  // promised — so it borrows the same amber stripe waiting uses for "worth a
+  // look" rather than the red one, and the tooltip says why in words. The
+  // chip is not editable here: Until is not Due, and there is no editor for
+  // it in the row (only `todo someday --until` and the resume button).
+  function somedayRow(t) {
+    return row({
+      task: t,
+      mark: '◇',
+      markClass: 'mark-someday',
+      dueLabel: t.until ? t.until + ' まで' : '',
+      dueClass: t.until_reached ? 'near' : '',
+      dueTitle: t.until_reached
+        ? ('見る番が来た（' + t.until + ' までにしていた）')
+        : (t.until ? (t.until + ' まで見なくていい') : ''),
+      hasPanel: true,
+      extraClass: 'someday',
+    });
+  }
+
   function doneRow(t) {
     var label = '';
     if (t.completed_at) {
@@ -596,6 +635,9 @@
     if (t.state === 'waiting') {
       return (t.handed_to ? t.handed_to + ' 待ち' : '待ち') + ' ' + (t.stalled_for || 0) + '日';
     }
+    if (t.state === 'someday') {
+      return 'いつか' + (t.until ? '（' + t.until + ' まで）' : '');
+    }
     if (t.state === 'done') return '完了';
     return t.focused ? '着手順 ◎ フォーカス' : '着手順';
   }
@@ -669,11 +711,13 @@
     spacer.className = 'spacer';
     actions.appendChild(spacer);
 
-    if (t.state === 'waiting') {
+    if (t.state === 'waiting' || t.state === 'someday') {
       var resume = document.createElement('button');
       resume.type = 'button';
       resume.textContent = '着手順へ戻す';
-      resume.title = (t.handed_on || '?') + ' に ' + (t.handed_to || '?') + ' へ渡した分を戻す';
+      resume.title = t.state === 'waiting'
+        ? ((t.handed_on || '?') + ' に ' + (t.handed_to || '?') + ' へ渡した分を戻す')
+        : ((t.until || '?') + ' まで棚上げしていた分を戻す');
       resume.addEventListener('click', function () {
         resume.disabled = true;
         request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/resume', { note: '' })
@@ -681,8 +725,10 @@
           .catch(function (err) { resume.disabled = false; showError(err); });
       });
       actions.appendChild(resume);
+      if (t.state === 'waiting') actions.appendChild(somedayButton(t));
     } else if (t.state === 'open') {
       actions.appendChild(waitControl(t));
+      actions.appendChild(somedayButton(t));
     }
 
     // The trail is one line: a link whose tooltip holds the whole history.
@@ -929,6 +975,23 @@
     return { wrap: wrap, input: input };
   }
 
+  // somedayButton shelves a task with one click: unlike waitControl, nobody
+  // holds it, so there is nothing to ask before sending the request. The
+  // until date is left to the server, which sets it a month out.
+  function somedayButton(t) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'いつかにする';
+    btn.title = 'いまは着手順に置かず、いつか再開する（1ヶ月後に見る番が来る）';
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/someday', {})
+        .then(function () { return load().then(function () { flash('いつかへ棚上げした'); }); })
+        .catch(function (err) { btn.disabled = false; showError(err); });
+    });
+    return btn;
+  }
+
   // waitControl asks who holds the ball before moving a task out of the queue:
   // the elapsed count has no meaning without it.
   function waitControl(t) {
@@ -983,6 +1046,7 @@
     due_set: '期限',
     waiting: '待ちへ',
     resumed: '復帰',
+    shelved: '棚上げ',
     done: '完了',
     reopened: '再開',
     detail_edited: '詳細を編集',
@@ -1310,6 +1374,12 @@
     render();
   });
 
+  el.somedayFold.addEventListener('click', function () {
+    state.somedayOpen = !state.somedayOpen;
+    try { localStorage.setItem(SOMEDAY_KEY, state.somedayOpen ? '1' : '0'); } catch (e) { /* private window */ }
+    render();
+  });
+
   scopeButtons.forEach(function (b) {
     b.addEventListener('click', function () {
       scopeButtons.forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
@@ -1427,6 +1497,7 @@
   try {
     state.doneOpen = localStorage.getItem(DONE_KEY) === '1';
     state.dropOpen = localStorage.getItem(DROP_KEY) === '1';
+    state.somedayOpen = localStorage.getItem(SOMEDAY_KEY) === '1';
   } catch (e) { /* storage unavailable; closed is the default */ }
 
   try {

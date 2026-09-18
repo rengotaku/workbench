@@ -16,6 +16,7 @@ type State string
 const (
 	StateOpen    State = "open"
 	StateWaiting State = "waiting"
+	StateSomeday State = "someday"
 	StateDone    State = "done"
 )
 
@@ -38,6 +39,7 @@ const (
 	KindDueSet    Kind = "due_set"
 	KindWaiting   Kind = "waiting"
 	KindResumed   Kind = "resumed"
+	KindShelved   Kind = "shelved"
 	KindDone      Kind = "done"
 	KindReopened  Kind = "reopened"
 	KindDetail    Kind = "detail_edited"
@@ -67,6 +69,10 @@ type Task struct {
 	LinkText string `json:"link_text,omitempty"`
 	State    State  `json:"state"`
 	Due      string `json:"due,omitempty"`
+	// Until is a someday task's "don't look before this" date. It answers a
+	// different question than Due: Due is a promise, Until is a reminder to
+	// come back. The two never share a colour or a count.
+	Until    string `json:"until,omitempty"`
 	HandedTo string `json:"handed_to,omitempty"`
 	HandedOn string `json:"handed_on,omitempty"`
 	WaitNote string `json:"wait_note,omitempty"`

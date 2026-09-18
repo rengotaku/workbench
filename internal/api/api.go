@@ -5,6 +5,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -45,6 +46,7 @@ func (a *API) Mount(r gin.IRouter) {
 	g.POST("/tasks/:id/reopen", a.reopenTask)
 	g.POST("/tasks/:id/wait", a.waitTask)
 	g.POST("/tasks/:id/resume", a.resumeTask)
+	g.POST("/tasks/:id/someday", a.somedayTask)
 	g.POST("/tasks/:id/order", a.orderTask)
 	g.GET("/tasks/:id/context", a.taskContext)
 
@@ -60,9 +62,10 @@ type View struct {
 	DueLabel string `json:"due_label"`
 	DueClass string `json:"due_class"`
 	task.Task
-	StalledFor int  `json:"stalled_for,omitempty"`
-	InScope    bool `json:"in_scope"`
-	Overdue    bool `json:"overdue"`
+	StalledFor   int  `json:"stalled_for,omitempty"`
+	InScope      bool `json:"in_scope"`
+	Overdue      bool `json:"overdue"`
+	UntilReached bool `json:"until_reached,omitempty"`
 }
 
 type listResponse struct {
@@ -70,6 +73,7 @@ type listResponse struct {
 	Queue   []View      `json:"queue"`
 	Focus   []View      `json:"focus"`
 	Waiting []View      `json:"waiting"`
+	Someday []View      `json:"someday"`
 	Done    []View      `json:"done"`
 	Dropped []task.Drop `json:"dropped"`
 	Counts  struct {
@@ -120,6 +124,8 @@ func (a *API) build(scope int) listResponse {
 			if t.Focused {
 				res.Focus = append(res.Focus, v)
 			}
+		case task.StateSomeday:
+			res.Someday = append(res.Someday, v)
 		case task.StateDone:
 			if t.CompletedAt != nil && t.CompletedAt.In(a.loc).Before(weekStart) {
 				continue
@@ -140,6 +146,19 @@ func (a *API) build(scope int) listResponse {
 			}
 		}
 	}
+
+	// Someday reads as a shelf, not a queue: what to look at soonest comes
+	// first, and what has no date at all trails behind everything that does.
+	sort.SliceStable(res.Someday, func(i, j int) bool {
+		u, v := res.Someday[i].Until, res.Someday[j].Until
+		if u == "" {
+			return false
+		}
+		if v == "" {
+			return true
+		}
+		return u < v
+	})
 	return res
 }
 
@@ -169,6 +188,9 @@ func (a *API) view(t task.Task, today time.Time, scope int) View {
 
 	if days, ok := t.StalledFor(today); ok {
 		v.StalledFor = days
+	}
+	if t.State == task.StateSomeday {
+		v.UntilReached = untilReached(t.Until, today, a.loc)
 	}
 
 	if t.Due == "" {
@@ -354,6 +376,24 @@ func (a *API) resumeTask(c *gin.Context) {
 	a.respond(c, t, err)
 }
 
+type somedayRequest struct {
+	Until string `json:"until"`
+	Actor string `json:"actor"`
+}
+
+// somedayTask shelves an open or waiting task. Arrival day and count are
+// worked out here, the same as the due-date arithmetic, so the page and the
+// CLI never have to recompute either.
+func (a *API) somedayTask(c *gin.Context) {
+	var req somedayRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	t, err := a.store.Shelve(c.Param("id"), req.Until, actorOf(req.Actor))
+	a.respond(c, t, err)
+}
+
 type orderRequest struct {
 	ScopeDays *int   `json:"scope_days"`
 	Revision  *int   `json:"revision"`
@@ -506,6 +546,20 @@ func scopeDays(raw string) (int, error) {
 		return 0, errors.New(`scope must be a number of days or "all"`)
 	}
 	return n, nil
+}
+
+// untilReached reports whether a someday task's until date has come: today or
+// earlier. Coming true is not "overdue" — it just means it is time to look at
+// it again — so it is a field of its own rather than borrowing Overdue.
+func untilReached(until string, today time.Time, loc *time.Location) bool {
+	if until == "" {
+		return false
+	}
+	d, err := task.ParseDate(until, loc)
+	if err != nil {
+		return false
+	}
+	return !d.After(today)
 }
 
 // mondayOf returns the most recent Monday at midnight, which is where the
