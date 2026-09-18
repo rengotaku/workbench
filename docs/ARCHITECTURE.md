@@ -52,10 +52,11 @@ description: 着手順リストの構成・データの流れ・変更点の地�
    open           ◄──resume────────┴─ someday（いつか）
    open           ──shelve───────────► someday
    waiting        ──shelve───────────► someday
+   someday        ──shelve───────────► someday（Until を延ばすだけ）
    open / waiting / someday ──done──► done ──reopen──► open（着手順の末尾へ）
 ```
 
-`someday` は「いまは着手順に置かないが、いつか再開したい」タスクの置き場で、`waiting` とは意味が違う（相手にボールを渡していない）。`open` と `waiting` の両方から `shelve` で入り、`resume`（既存の待ち復帰と同じ口）で `open` の着手順の末尾へ戻る。`done` にもなれる（棚上げ中に片付いた場合）。`Task.Until` は「この日までは見なくていい」日付で、`Due`（約束した期限）とは別のフィールドに持ち、超過表示も共有しない（ADR 0009）。
+`someday` は「いまは着手順に置かないが、いつか再開したい」タスクの置き場で、`waiting` とは意味が違う（相手にボールを渡していない）。`open` と `waiting` の両方から `shelve` で入り、`resume`（既存の待ち復帰と同じ口）で `open` の着手順の末尾へ戻る。`done` にもなれる（棚上げ中に片付いた場合）。`Task.Until` は「この日までは見なくていい」日付で、`Due`（約束した期限）とは別のフィールドに持ち、超過表示も共有しない（ADR 0009）。`shelve` は `someday` のタスクにもう一度打つこともできる — 棚卸しで先送りを決めたときに `resume` を経由せず `Until` だけを延ばす口で、状態も `Order` も動かない。
 
 `Order` は 4 状態を通した通し番号で、着手順 → 待ち → いつか → 完了 の順に振り直される。画面と CLI は `Order` の昇順に並べるだけでよい。
 
@@ -131,7 +132,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 `GET /api/tasks` の `someday` は `Until`（この日までは見なくていい）の昇順で、`Until` が空のものは末尾に来る。並び順・`until_reached`（`Until` が今日以前か）の判定は `internal/api` が行い、画面と CLI は再計算しない。`Until` は `Due` とは別のフィールドで、超過表示の色も件数も共有しない（ADR 0009）。
 
-`shelve`（`POST /api/tasks/:id/someday`）は open か waiting のタスクを someday へ移し、`Focused` を落とす。`until` を省いた場合は今日 +1ヶ月をサーバが入れる。`someday` からの復帰は既存の `resume`（`POST /api/tasks/:id/resume`）をそのまま使い、着手順の末尾へ戻して `Until` をクリアする。
+`shelve`（`POST /api/tasks/:id/someday`）は open か waiting のタスクを someday へ移し、`Focused` を落とす。`until` を省いた場合は今日 +1ヶ月をサーバが入れる。すでに someday のタスクに打つと `Until` だけを置き換える（`State` も `Order` も動かない）。棚卸しで先送りを決めたとき、resume してから改めて shelve する二手を踏まずに済む。`someday` からの復帰は既存の `resume`（`POST /api/tasks/:id/resume`）をそのまま使い、着手順の末尾へ戻して `Until` をクリアする。
 
 ## 取り消し
 

@@ -261,6 +261,11 @@ func (s *Store) Resume(id, note string, actor Actor) (Task, error) {
 // Unlike Wait, nobody else holds it — until is a date worth revisiting, not a
 // promise, so it shares neither colour nor count with Due. Passing an empty
 // until sets it to a month out.
+//
+// Calling it again on a task already someday extends it in place: the state
+// and its place in Order do not move, only Until changes. Triage otherwise
+// needed a two-step detour — resume, then shelve again — to push a date back,
+// and that detour put the task through the queue for an instant.
 func (s *Store) Shelve(id, until string, actor Actor) (Task, error) {
 	if until != "" {
 		if _, err := ParseDate(until, s.loc); err != nil {
@@ -276,7 +281,7 @@ func (s *Store) Shelve(id, until string, actor Actor) (Task, error) {
 		return Task{}, err
 	}
 	before := s.st.Tasks[i]
-	if before.State != StateOpen && before.State != StateWaiting {
+	if before.State != StateOpen && before.State != StateWaiting && before.State != StateSomeday {
 		return Task{}, fmt.Errorf("%s is %s: cannot shelve", id, before.State)
 	}
 
@@ -288,10 +293,12 @@ func (s *Store) Shelve(id, until string, actor Actor) (Task, error) {
 	t.Until = until
 	t.Focused = false // shelved out of the queue does not stay in the band
 	s.st.Tasks[i] = t
-	s.renumber()
+	if before.State != StateSomeday {
+		s.renumber() // an extension keeps its place; a fresh shelve moves bands
+	}
 
 	snapshot := before
-	ev := Event{TaskID: id, Kind: KindShelved, Actor: actor, ToValue: until, Snapshot: &snapshot}
+	ev := Event{TaskID: id, Kind: KindShelved, Actor: actor, FromValue: before.Until, ToValue: until, Snapshot: &snapshot}
 	if err := s.record(ev); err != nil {
 		return Task{}, err
 	}

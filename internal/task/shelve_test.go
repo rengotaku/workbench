@@ -169,6 +169,96 @@ func TestShelve_NeedsReasonIsFalse(t *testing.T) {
 	assert.Empty(t, pending, "shelving is not worth asking about")
 }
 
+// 10. shelving a someday task again just moves its until — the state stays
+// someday, so a push-back does not take a lap through the queue.
+func TestShelve_ASomedayTaskWithAnExplicitUntilExtendsInPlace(t *testing.T) {
+	s := newStore(t)
+	added, _ := s.Add("いつか延ばす", "", "", task.ActorHuman)
+	_, err := s.Shelve(added.ID, dateIn(10), task.ActorHuman)
+	require.NoError(t, err)
+
+	extended, err := s.Shelve(added.ID, dateIn(40), task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, task.StateSomeday, extended.State)
+	assert.Equal(t, dateIn(40), extended.Until)
+}
+
+// 11. omitting --until on an already-someday task extends it to a month from
+// today, the same default as a fresh shelve.
+func TestShelve_ASomedayTaskWithoutUntilExtendsByOneMonthFromToday(t *testing.T) {
+	s := newStore(t)
+	added, _ := s.Add("いつか延ばす（既定）", "", "", task.ActorHuman)
+	_, err := s.Shelve(added.ID, dateIn(3), task.ActorHuman)
+	require.NoError(t, err)
+
+	expect := today().AddDate(0, 1, 0).Format(task.DateLayout)
+	extended, err := s.Shelve(added.ID, "", task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, expect, extended.Until)
+}
+
+// 12. extending a someday task does not touch Order — it never leaves the
+// someday band, so open → waiting → someday → done stays intact.
+func TestShelve_ExtendingASomedayTaskDoesNotChangeOrder(t *testing.T) {
+	s := newStore(t)
+	open, _ := s.Add("着手順", "", "", task.ActorHuman)
+	waiting, _ := s.Add("待ち", "", "", task.ActorHuman)
+	someday, _ := s.Add("いつか", "", "", task.ActorHuman)
+	done, _ := s.Add("完了", "", "", task.ActorHuman)
+
+	_, err := s.Wait(waiting.ID, "相手", "", task.ActorHuman)
+	require.NoError(t, err)
+	_, err = s.Shelve(someday.ID, dateIn(10), task.ActorHuman)
+	require.NoError(t, err)
+	_, err = s.Done(done.ID, task.ActorHuman)
+	require.NoError(t, err)
+
+	_, err = s.Shelve(someday.ID, dateIn(50), task.ActorHuman)
+	require.NoError(t, err)
+
+	order := map[string]int{}
+	tasks, _ := s.List()
+	for _, tk := range tasks {
+		order[tk.ID] = tk.Order
+	}
+	assert.Equal(t, 0, order[open.ID])
+	assert.Equal(t, 1, order[waiting.ID])
+	assert.Equal(t, 2, order[someday.ID])
+	assert.Equal(t, 3, order[done.ID])
+}
+
+// 13. undoing an extension puts the until back where it was, without leaving
+// someday — that is not what was undone.
+func TestUndo_ReversesAShelveExtensionWithoutLeavingSomeday(t *testing.T) {
+	s := newStore(t)
+	added, _ := s.Add("いつか延ばす", "", "", task.ActorHuman)
+	_, err := s.Shelve(added.ID, dateIn(10), task.ActorHuman)
+	require.NoError(t, err)
+
+	_, err = s.Shelve(added.ID, dateIn(40), task.ActorHuman)
+	require.NoError(t, err)
+
+	_, err = s.Undo(task.ActorHuman)
+	require.NoError(t, err)
+
+	got, err := s.Get(added.ID)
+	require.NoError(t, err)
+	assert.Equal(t, task.StateSomeday, got.State, "undoing the extension stays someday")
+	assert.Equal(t, dateIn(10), got.Until, "until goes back to what it was before the extension")
+}
+
+// 14. a done task still cannot be shelved — someday only reaches from open or
+// waiting, in place or extending someday itself.
+func TestShelve_ADoneTaskCannotBeShelved(t *testing.T) {
+	s := newStore(t)
+	added, _ := s.Add("完了済み", "", "", task.ActorHuman)
+	_, err := s.Done(added.ID, task.ActorHuman)
+	require.NoError(t, err)
+
+	_, err = s.Shelve(added.ID, dateIn(10), task.ActorHuman)
+	require.Error(t, err)
+}
+
 // 9. the waiting 14-day rule does not pick up a someday task that used to be
 // waiting.
 func TestAsk_DoesNotStallASomedayTaskThatWasOnceWaiting(t *testing.T) {

@@ -256,6 +256,16 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 		}
 		back := *e.Snapshot
 		back.ID = t.ID
+		if back.State == StateSomeday {
+			// Extending someday only moved Until; undoing it only moves Until
+			// back — the task stays someday, not a resume it never asked for.
+			s.st.Tasks[i] = back
+			if err := s.recordSpent(Event{TaskID: t.ID, Kind: KindShelved, Actor: actor,
+				FromValue: e.ToValue, ToValue: back.Until}); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("いつかの期限を戻した: %s %s（%s）", t.ID, t.Name, back.Until), nil
+		}
 		s.st.Tasks[i] = back
 		s.renumber()
 		if err := s.recordSpent(Event{TaskID: t.ID, Kind: KindResumed, Actor: actor, FromValue: back.HandedTo}); err != nil {

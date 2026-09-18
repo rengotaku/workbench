@@ -370,13 +370,20 @@ func somedayCmd() *cobra.Command {
 		Use:   "someday <ID>",
 		Short: "いつかへ棚上げする（着手順・待ちから外す）",
 		Long: "いつかへ棚上げする。いまは着手順に置かないが、いつか再開したいタスクの置き場で、\n" +
-			"--until を省略すると今日から1ヶ月後になる。着手順へ戻すのは `todo resume`。",
+			"--until を省略すると今日から1ヶ月後になる。着手順へ戻すのは `todo resume`。\n" +
+			"すでにいつかのタスクに打つと、着手順を経由せず期限だけを延ばす。",
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			cl, err := newClient()
 			if err != nil {
 				return err
 			}
+			before, _, _, err := cl.Context(args[0])
+			if err != nil {
+				return err
+			}
+			wasSomeday := before.State == task.StateSomeday
+
 			t, raw, err := cl.Shelve(args[0], until)
 			if err != nil {
 				return err
@@ -384,11 +391,15 @@ func somedayCmd() *cobra.Command {
 			if asJSON {
 				return printRaw(raw)
 			}
-			fmt.Printf("いつか %s  %s（%s まで見なくていい）\n", t.ID, t.Name, t.Until)
+			if wasSomeday {
+				fmt.Printf("いつか %s  %s（%s へ延ばした）\n", t.ID, t.Name, t.Until)
+			} else {
+				fmt.Printf("いつか %s  %s（%s まで見なくていい）\n", t.ID, t.Name, t.Until)
+			}
 			return nil
 		},
 	}
-	c.Flags().StringVar(&until, "until", "", "この日まで見なくていい（YYYY-MM-DD、省略時は今日+1ヶ月）")
+	c.Flags().StringVar(&until, "until", "", "この日まで見なくていい（YYYY-MM-DD、省略時は今日+1ヶ月）。すでにいつかのタスクに打つと期限を延ばす")
 	return c
 }
 

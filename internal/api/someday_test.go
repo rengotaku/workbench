@@ -148,6 +148,28 @@ func TestSomeday_WithoutUntilDefaultsToOneMonthOut(t *testing.T) {
 	assert.NotEmpty(t, back.Until)
 }
 
+// 13. POST /api/tasks/{id}/someday on an already-someday task extends it —
+// the API is where a postpone during triage lands, and it must not need the
+// two-step resume-then-shelve detour.
+func TestSomeday_OnAnAlreadySomedayTaskExtendsIt(t *testing.T) {
+	store, h := setup(t)
+	added, _ := store.Add("いつか延ばす（API）", "", "", task.ActorHuman)
+	_, err := store.Shelve(added.ID, dateIn(5), task.ActorHuman)
+	require.NoError(t, err)
+
+	code, body := call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/someday",
+		map[string]any{"until": dateIn(20)})
+	require.Equal(t, http.StatusOK, code)
+	got := taskOf(t, body)
+	assert.Equal(t, "someday", got["state"])
+	assert.Equal(t, dateIn(20), got["until"])
+
+	back, err := store.Get(added.ID)
+	require.NoError(t, err)
+	assert.Equal(t, task.StateSomeday, back.State)
+	assert.Equal(t, dateIn(20), back.Until)
+}
+
 // The API also accepts an explicit until, and resume still reaches a shelved
 // task through the API the way it reaches a waiting one.
 func TestSomeday_AnExplicitUntilIsKeptAndResumeReachesIt(t *testing.T) {
