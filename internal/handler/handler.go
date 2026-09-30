@@ -32,6 +32,7 @@ func (h *Handler) Routes() http.Handler {
 	r.StaticFS("/static", http.FS(h.staticFS))
 
 	r.GET("/", h.handleIndex)
+	r.GET("/add", h.handleAdd)
 	r.GET("/healthz", h.handleHealthz)
 
 	if h.api != nil {
@@ -46,7 +47,16 @@ func (h *Handler) handleIndex(c *gin.Context) {
 	now := time.Now()
 	h.render(c, "index.html", http.StatusOK, gin.H{
 		"Title": "着手順",
-		"Today": now.Format("1/2") + " (" + weekdayJA(now.Weekday()) + ")",
+		"Today": today(now),
+	})
+}
+
+// handleAdd serves the page that is nothing but the add field, which a bare
+// `todo` opens.
+func (h *Handler) handleAdd(c *gin.Context) {
+	h.render(c, "add.html", http.StatusOK, gin.H{
+		"Title": "着手順に追加",
+		"Today": today(time.Now()),
 	})
 }
 
@@ -65,6 +75,10 @@ func (h *Handler) render(c *gin.Context, name string, status int, data any) {
 	if err := t.ExecuteTemplate(c.Writer, "base", data); err != nil {
 		c.String(http.StatusInternalServerError, "Template error")
 	}
+}
+
+func today(now time.Time) string {
+	return now.Format("1/2") + " (" + weekdayJA(now.Weekday()) + ")"
 }
 
 func weekdayJA(d time.Weekday) string {

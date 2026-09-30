@@ -119,6 +119,13 @@ func (s *Store) Get(id string) (Task, error) {
 
 // Add appends a task to the end of the queue.
 func (s *Store) Add(name, detail, due string, actor Actor) (Task, error) {
+	return s.AddLinked(name, detail, due, "", "", actor)
+}
+
+// AddLinked appends a task that already carries the link it was pasted with.
+// Adding and linking are one change, so a single undo takes the task back out
+// instead of leaving it behind without its link.
+func (s *Store) AddLinked(name, detail, due, url, linkText string, actor Actor) (Task, error) {
 	if name == "" {
 		return Task{}, errors.New("name is required")
 	}
@@ -136,9 +143,13 @@ func (s *Store) Add(name, detail, due string, actor Actor) (Task, error) {
 		Name:      name,
 		Detail:    detail,
 		Due:       due,
+		URL:       url,
 		State:     StateOpen,
 		Order:     len(s.openIndexes()),
 		CreatedAt: s.now(),
+	}
+	if url != "" {
+		t.LinkText = linkText
 	}
 	s.st.NextTask++
 	s.st.Tasks = append(s.st.Tasks, t)

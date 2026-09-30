@@ -35,7 +35,7 @@ func rootCmd() *cobra.Command {
 		Short: "着手順で持つ TODO リスト",
 		Long: "着手順で持つ TODO リスト。\n\n" +
 			"引数にタスク名を渡すと末尾に追加する。順序は人が決めるもので、期限からは導出しない。\n" +
-			"端末から引数なしで実行すると、ブラウザで画面を開き追加欄に入力できる状態にする。",
+			"端末から引数なしで実行すると、ブラウザで追加画面を開く。",
 		Args:         cobra.ArbitraryArgs,
 		SilenceUsage: true,
 		RunE:         runAdd,
@@ -106,9 +106,8 @@ func openAddPage() error {
 	return nil
 }
 
-// addPageURL is the page URL whose #add fragment makes the page open the add
-// field on load.
-func addPageURL(base string) string { return strings.TrimRight(base, "/") + "/#add" }
+// addPageURL is the page that is nothing but the add field.
+func addPageURL(base string) string { return strings.TrimRight(base, "/") + "/add" }
 
 // ---- list ----
 

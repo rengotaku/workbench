@@ -242,10 +242,7 @@ func (a *API) addTask(c *gin.Context) {
 		return
 	}
 	actor := actorOf(req.Actor)
-	t, err := a.store.Add(req.Name, req.Detail, req.Due, actor)
-	if err == nil && req.URL != "" {
-		t, err = a.store.SetLink(t.ID, req.URL, req.LinkText, actor)
-	}
+	t, err := a.store.AddLinked(req.Name, req.Detail, req.Due, req.URL, req.LinkText, actor)
 	a.respond(c, t, err)
 }
 

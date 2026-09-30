@@ -24,6 +24,7 @@ func makeTestTemplates() map[string]*template.Template {
 	}
 	return map[string]*template.Template{
 		"index.html": parse(`<h1>着手順</h1><span>{{.Today}}</span>`),
+		"add.html":   parse(`<h1>{{.Title}}</h1><span>{{.Today}}</span>`),
 	}
 }
 
@@ -44,6 +45,18 @@ func TestHandler_Index(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
 	assert.Contains(t, rec.Body.String(), "着手順")
+}
+
+func TestHandler_Add(t *testing.T) {
+	h := setupHandler()
+
+	req := httptest.NewRequest(http.MethodGet, "/add", nil)
+	rec := httptest.NewRecorder()
+	h.Routes().ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+	assert.Contains(t, rec.Body.String(), "着手順に追加")
 }
 
 func TestHandler_Healthz(t *testing.T) {

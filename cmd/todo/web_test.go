@@ -9,8 +9,8 @@ import (
 )
 
 func TestAddPageURL(t *testing.T) {
-	assert.Equal(t, "http://127.0.0.1:8085/#add", addPageURL("http://127.0.0.1:8085"))
-	assert.Equal(t, "http://127.0.0.1:8085/#add", addPageURL("http://127.0.0.1:8085/"))
+	assert.Equal(t, "http://127.0.0.1:8085/add", addPageURL("http://127.0.0.1:8085"))
+	assert.Equal(t, "http://127.0.0.1:8085/add", addPageURL("http://127.0.0.1:8085/"))
 }
 
 func TestOpenAddPage_OpensServerURL(t *testing.T) {
@@ -22,7 +22,7 @@ func TestOpenAddPage_OpensServerURL(t *testing.T) {
 	serverURL = "http://127.0.0.1:18085"
 
 	require.NoError(t, openAddPage())
-	assert.Equal(t, "http://127.0.0.1:18085/#add", opened)
+	assert.Equal(t, "http://127.0.0.1:18085/add", opened)
 }
 
 func TestOpenAddPage_ReportsOpenFailure(t *testing.T) {
@@ -34,7 +34,7 @@ func TestOpenAddPage_ReportsOpenFailure(t *testing.T) {
 
 	err := openAddPage()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "http://127.0.0.1:18085/#add")
+	assert.Contains(t, err.Error(), "http://127.0.0.1:18085/add")
 }
 
 // Without a terminal (pipe, script, assistant) a bare `todo` must print help

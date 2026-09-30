@@ -138,6 +138,7 @@ func main() {
 func loadTemplates() (map[string]*template.Template, error) {
 	pages := []struct{ name, path string }{
 		{"index.html", "templates/index.html"},
+		{"add.html", "templates/add.html"},
 	}
 
 	m := make(map[string]*template.Template, len(pages))

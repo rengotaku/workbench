@@ -3,6 +3,11 @@
 (function () {
   'use strict';
 
+  var shared = window.todoShared;
+  var composing = shared.composing;
+  var request = shared.request;
+  var wirePaste = shared.wirePaste;
+
   var SCOPE_KEY = 'todo-order.scope';
   var DONE_KEY = 'todo-order.done-open';
   var DROP_KEY = 'todo-order.drop-open';
@@ -24,14 +29,6 @@
   // pointer leaves the list would blank it mid-read, which is when it is most
   // in use.
   var trailCache = {};
-
-  // A key pressed while the IME is converting belongs to the IME, not to us.
-  // In Japanese input, Enter confirms the conversion and Escape cancels it; if
-  // we act on those, the first Enter submits a half-converted name. `isComposing`
-  // covers current browsers, keyCode 229 covers the ones that omit it.
-  function composing(e) {
-    return e.isComposing === true || e.keyCode === 229;
-  }
 
   var TRASH_SVG = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">'
     + '<path d="M2.5 4.5h11M6 4.5V2.8h4v1.7M4.2 4.5l.7 8.7h6.2l.7-8.7M6.6 6.8v4.6M9.4 6.8v4.6"'
@@ -90,20 +87,6 @@
     // Coming back to the window is the moment a stale list is most visible.
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden && !state.busy) load();
-    });
-  }
-
-  function request(method, path, body) {
-    var opts = { method: method, headers: {} };
-    if (body) {
-      opts.headers['Content-Type'] = 'application/json';
-      opts.body = JSON.stringify(body);
-    }
-    return fetch(path, opts).then(function (res) {
-      return res.json().catch(function () { return {}; }).then(function (data) {
-        if (!res.ok) throw new Error(data.error || ('server returned ' + res.status));
-        return data;
-      });
     });
   }
 
@@ -832,62 +815,6 @@
     }
   }
 
-  // A link pasted into a name keeps two things: the text it showed, and the URL
-  // it pointed at. The URL is stored with the task exactly as pasted — the app
-  // never inspects it, so a link to a tracker, a wiki or a document are all the
-  // same thing to it.
-  function pastedLink(cb) {
-    var html = cb.getData('text/html');
-    if (!html) return null;
-    var doc;
-    try { doc = new DOMParser().parseFromString(html, 'text/html'); } catch (e) { return null; }
-    var a = doc.querySelector('a[href]');
-    if (!a) return null;
-    var href = a.getAttribute('href') || '';
-    if (!/^https?:\/\//i.test(href)) return null; // only links a browser can open
-    // The label can sit outside the anchor — a tracker that links the key alone
-    // leaves the title beside it — so the text comes from the whole fragment.
-    // \u00a0 is the non-breaking space such a paste separates them with.
-    var norm = function (v) { return (v || '').replace(/[\s\u00a0]+/g, ' ').trim(); };
-    var text = norm(doc.body ? doc.body.textContent : '');
-    var label = norm(a.textContent);
-    if (!text) { text = label || href; }
-    return { url: href, text: text, linkText: label || text };
-  }
-
-  function insertText(node, text) {
-    if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA') {
-      var start = node.selectionStart === null ? node.value.length : node.selectionStart;
-      var end = node.selectionEnd === null ? node.value.length : node.selectionEnd;
-      node.setRangeText(text, start, end, 'end');
-      node.dispatchEvent(new Event('input', { bubbles: true }));
-      return;
-    }
-    if (document.execCommand && document.execCommand('insertText', false, text)) return;
-    node.textContent = node.textContent + text; // last resort: keep the paste
-    node.dispatchEvent(new Event('input', { bubbles: true }));
-  }
-
-  // wirePaste makes a paste land as plain text — a link pasted into an editable
-  // name would otherwise bring its markup with it — and remembers the URL on the
-  // node so whoever saves the field can send it along.
-  function wirePaste(node, single) {
-    node.addEventListener('paste', function (e) {
-      var cb = e.clipboardData || window.clipboardData;
-      if (!cb) return;
-      var link = pastedLink(cb);
-      var text = link ? link.text : (cb.getData('text/plain') || '');
-      if (!text) return;
-      if (single) text = text.replace(/\s+/g, ' ').trim();
-      e.preventDefault();
-      if (link) {
-        node.pastedURL = link.url;
-        node.pastedLinkText = link.linkText;
-      }
-      insertText(node, text);
-    });
-  }
-
   // linkRange finds the part of a name that should carry the link: the words
   // that were the link where it was copied from. A task with no link, or whose
   // name no longer contains those words, has no range.
@@ -1493,10 +1420,6 @@
   // A link can name the task to open: http://127.0.0.1:8085/#T007
   var fromHash = (location.hash || '').replace('#', '');
   if (/^T\d+$/.test(fromHash)) state.openId = fromHash;
-  // `todo` with no arguments opens http://127.0.0.1:8085/#add: start with the
-  // add field ready for typing. The fragment is dropped once used so a reload
-  // shows the plain list.
-  var startAdding = fromHash === 'add';
 
   try {
     state.doneOpen = localStorage.getItem(DONE_KEY) === '1';
@@ -1514,10 +1437,5 @@
     }
   } catch (e) { /* storage unavailable; the default scope still applies */ }
 
-  load().then(function () {
-    if (startAdding) {
-      history.replaceState(null, '', location.pathname + location.search);
-      openAddEditor();
-    }
-  }).then(watch);
+  load().then(watch);
 })();

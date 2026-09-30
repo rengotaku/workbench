@@ -7,11 +7,12 @@
     <title>{{.Title}}</title>
     <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
-    <link rel="stylesheet" href="/static/css/style.css">
+    {{block "styles" .}}<link rel="stylesheet" href="/static/css/style.css">{{end}}
 </head>
 <body>
     {{template "content" .}}
-    <script src="/static/js/app.js" defer></script>
+    <script src="/static/js/shared.js" defer></script>
+    {{block "scripts" .}}<script src="/static/js/app.js" defer></script>{{end}}
 </body>
 </html>
 {{end}}
