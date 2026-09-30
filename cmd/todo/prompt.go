@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ergochat/readline"
+
 	"github.com/rengotaku/todo-order/internal/duedate"
 )
 
@@ -30,11 +32,17 @@ func isTerminal(f *os.File) bool {
 // promptAdd asks for the name (required), the due date and the detail in
 // turn, asking again until the name is non-empty and the due date parses.
 func promptAdd(in io.Reader, out io.Writer, today time.Time) (addInput, error) {
-	r := bufio.NewReader(in)
+	return promptWith(&plainReader{r: bufio.NewReader(in), out: out}, out, today)
+}
+
+// promptWith runs the questions over any lineReader. The terminal uses a line
+// editor so that Backspace erases a whole full-width character; tests and
+// non-terminal input use plainReader.
+func promptWith(r lineReader, out io.Writer, today time.Time) (addInput, error) {
 	var got addInput
 
 	for got.Name == "" {
-		line, eof, err := ask(r, out, "タスク名: ")
+		line, eof, err := ask(r, "タスク名: ")
 		if err != nil {
 			return addInput{}, err
 		}
@@ -45,7 +53,7 @@ func promptAdd(in io.Reader, out io.Writer, today time.Time) (addInput, error) {
 	}
 
 	for {
-		line, eof, err := ask(r, out, "期限 ("+duedate.Hint+"): ")
+		line, eof, err := ask(r, "期限 ("+duedate.Hint+"): ")
 		if err != nil {
 			return addInput{}, err
 		}
@@ -63,7 +71,7 @@ func promptAdd(in io.Reader, out io.Writer, today time.Time) (addInput, error) {
 		}
 	}
 
-	line, _, err := ask(r, out, "詳細・URL (空で無し): ")
+	line, _, err := ask(r, "詳細・URL (空で無し): ")
 	if err != nil {
 		return addInput{}, err
 	}
@@ -71,16 +79,64 @@ func promptAdd(in io.Reader, out io.Writer, today time.Time) (addInput, error) {
 	return got, nil
 }
 
-// ask prints prompt and reads one line. eof is true when input ended; a
-// final line without a trailing newline is still returned.
-func ask(r *bufio.Reader, out io.Writer, prompt string) (line string, eof bool, err error) {
-	_, _ = fmt.Fprint(out, prompt)
-	s, err := r.ReadString('\n')
+// lineReader shows prompt and returns one line without the newline. eof is
+// true when input ended; a final line without a trailing newline is still
+// returned.
+type lineReader interface {
+	ReadLine(prompt string) (line string, eof bool, err error)
+}
+
+func ask(r lineReader, prompt string) (string, bool, error) {
+	line, eof, err := r.ReadLine(prompt)
+	return strings.TrimSpace(line), eof, err
+}
+
+// plainReader reads lines as-is, leaving echo and erase to whatever is on the
+// other side. Used by tests.
+type plainReader struct {
+	r   *bufio.Reader
+	out io.Writer
+}
+
+func (p *plainReader) ReadLine(prompt string) (string, bool, error) {
+	_, _ = fmt.Fprint(p.out, prompt)
+	s, err := p.r.ReadString('\n')
 	if errors.Is(err, io.EOF) {
-		return strings.TrimSpace(s), true, nil
+		return s, true, nil
 	}
 	if err != nil {
 		return "", false, err
 	}
-	return strings.TrimSpace(s), false, nil
+	return s, false, nil
 }
+
+// termReader edits the line itself instead of relying on the kernel's
+// canonical mode, which erases one column per Backspace and so leaves half of
+// a full-width character on screen.
+type termReader struct {
+	rl *readline.Instance
+}
+
+func newTermReader() (*termReader, error) {
+	rl, err := readline.NewFromConfig(&readline.Config{DisableAutoSaveHistory: true})
+	if err != nil {
+		return nil, err
+	}
+	return &termReader{rl: rl}, nil
+}
+
+func (t *termReader) ReadLine(prompt string) (string, bool, error) {
+	t.rl.SetPrompt(prompt)
+	s, err := t.rl.Readline()
+	switch {
+	case errors.Is(err, io.EOF):
+		return s, true, nil
+	case errors.Is(err, readline.ErrInterrupt):
+		return "", false, errors.New("中断しました")
+	case err != nil:
+		return "", false, err
+	}
+	return s, false, nil
+}
+
+func (t *termReader) Close() error { return t.rl.Close() }

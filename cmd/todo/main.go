@@ -64,7 +64,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if !isTerminal(os.Stdin) {
 			return cmd.Help()
 		}
-		in, err := promptAdd(os.Stdin, os.Stdout, time.Now())
+		tr, err := newTermReader()
+		if err != nil {
+			return err
+		}
+		in, err := promptWith(tr, os.Stdout, time.Now())
+		_ = tr.Close()
 		if err != nil {
 			return err
 		}
