@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -32,7 +33,8 @@ func rootCmd() *cobra.Command {
 		Use:   "todo",
 		Short: "着手順で持つ TODO リスト",
 		Long: "着手順で持つ TODO リスト。\n\n" +
-			"引数にタスク名を渡すと末尾に追加する。順序は人が決めるもので、期限からは導出しない。",
+			"引数にタスク名を渡すと末尾に追加する。順序は人が決めるもので、期限からは導出しない。\n" +
+			"端末から引数なしで実行すると、タスク名・期限・詳細を順に聞いて追加する。",
 		Args:         cobra.ArbitraryArgs,
 		SilenceUsage: true,
 		RunE:         runAdd,
@@ -54,17 +56,26 @@ func newClient() (*client.Client, error) { return client.New(serverURL) }
 // ---- add ----
 
 func runAdd(cmd *cobra.Command, args []string) error {
-	if len(args) == 0 {
-		return cmd.Help()
-	}
 	due, _ := cmd.Flags().GetString("due")
 	detail, _ := cmd.Flags().GetString("detail")
+	name := strings.Join(args, " ")
+
+	if len(args) == 0 {
+		if !isTerminal(os.Stdin) {
+			return cmd.Help()
+		}
+		in, err := promptAdd(os.Stdin, os.Stdout, time.Now())
+		if err != nil {
+			return err
+		}
+		name, due, detail = in.Name, in.Due, in.Detail
+	}
 
 	c, err := newClient()
 	if err != nil {
 		return err
 	}
-	t, raw, err := c.Add(strings.Join(args, " "), detail, due)
+	t, raw, err := c.Add(name, detail, due)
 	if err != nil {
 		return err
 	}
