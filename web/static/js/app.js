@@ -1493,6 +1493,10 @@
   // A link can name the task to open: http://127.0.0.1:8085/#T007
   var fromHash = (location.hash || '').replace('#', '');
   if (/^T\d+$/.test(fromHash)) state.openId = fromHash;
+  // `todo` with no arguments opens http://127.0.0.1:8085/#add: start with the
+  // add field ready for typing. The fragment is dropped once used so a reload
+  // shows the plain list.
+  var startAdding = fromHash === 'add';
 
   try {
     state.doneOpen = localStorage.getItem(DONE_KEY) === '1';
@@ -1510,5 +1514,10 @@
     }
   } catch (e) { /* storage unavailable; the default scope still applies */ }
 
-  load().then(watch);
+  load().then(function () {
+    if (startAdding) {
+      history.replaceState(null, '', location.pathname + location.search);
+      openAddEditor();
+    }
+  }).then(watch);
 })();

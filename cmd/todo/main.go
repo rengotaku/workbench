@@ -6,10 +6,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/rengotaku/todo-order/internal/client"
 	"github.com/rengotaku/todo-order/internal/legacy"
@@ -34,7 +35,7 @@ func rootCmd() *cobra.Command {
 		Short: "着手順で持つ TODO リスト",
 		Long: "着手順で持つ TODO リスト。\n\n" +
 			"引数にタスク名を渡すと末尾に追加する。順序は人が決めるもので、期限からは導出しない。\n" +
-			"端末から引数なしで実行すると、タスク名・期限・詳細を順に聞いて追加する。",
+			"端末から引数なしで実行すると、ブラウザで画面を開き追加欄に入力できる状態にする。",
 		Args:         cobra.ArbitraryArgs,
 		SilenceUsage: true,
 		RunE:         runAdd,
@@ -56,25 +57,15 @@ func newClient() (*client.Client, error) { return client.New(serverURL) }
 // ---- add ----
 
 func runAdd(cmd *cobra.Command, args []string) error {
-	due, _ := cmd.Flags().GetString("due")
-	detail, _ := cmd.Flags().GetString("detail")
-	name := strings.Join(args, " ")
-
 	if len(args) == 0 {
 		if !isTerminal(os.Stdin) {
 			return cmd.Help()
 		}
-		tr, err := newTermReader()
-		if err != nil {
-			return err
-		}
-		in, err := promptWith(tr, os.Stdout, time.Now())
-		_ = tr.Close()
-		if err != nil {
-			return err
-		}
-		name, due, detail = in.Name, in.Due, in.Detail
+		return openAddPage()
 	}
+	due, _ := cmd.Flags().GetString("due")
+	detail, _ := cmd.Flags().GetString("detail")
+	name := strings.Join(args, " ")
 
 	c, err := newClient()
 	if err != nil {
@@ -90,6 +81,34 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	fmt.Printf("追加 %s  %s%s\n", t.ID, t.Name, dueSuffix(t))
 	return nil
 }
+
+// isTerminal reports whether f is attached to a terminal. Only then does a
+// bare `todo` open the browser; from a pipe or a script it keeps printing help
+// so a non-interactive caller never launches a window.
+// A character-device check is not enough: /dev/null is one too, and it is
+// what cron, launchd and tool runners hand a process as stdin.
+func isTerminal(f *os.File) bool { return term.IsTerminal(int(f.Fd())) }
+
+// openBrowser is swapped out in tests so they never launch a real window.
+var openBrowser = func(url string) error { return exec.Command("open", url).Run() }
+
+// openAddPage opens the web page with the add field ready for typing.
+func openAddPage() error {
+	c, err := newClient()
+	if err != nil {
+		return err
+	}
+	url := addPageURL(c.BaseURL())
+	if err := openBrowser(url); err != nil {
+		return fmt.Errorf("ブラウザを開けませんでした (%s): %w", url, err)
+	}
+	fmt.Println("ブラウザで開きました:", url)
+	return nil
+}
+
+// addPageURL is the page URL whose #add fragment makes the page open the add
+// field on load.
+func addPageURL(base string) string { return strings.TrimRight(base, "/") + "/#add" }
 
 // ---- list ----
 
