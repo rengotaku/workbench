@@ -63,16 +63,39 @@ func (f Filter) match(n Note) bool {
 	return !f.Pending || n.Pending()
 }
 
-var urlPattern = regexp.MustCompile(`https?://[A-Za-z0-9\-._~:/?#\[\]@!$&()*+,;=%]+`)
+var urlPattern = regexp.MustCompile(`https?://[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+`)
 
 // A link is ASCII only, so Japanese text glued to it ("…/x。次") ends it. These
-// trailing characters belong to the sentence around a link, not to it.
-const urlTrailing = ".,;:!?)]"
+// trailing characters usually belong to the sentence around a link, not to it.
+const urlTrailing = ".,;:!?')]"
+
+// trimURL drops sentence punctuation from the end of a matched link. A closing
+// bracket stays when the link itself opened it, as in
+// https://en.wikipedia.org/wiki/Go_(programming_language).
+// The bracket counts are taken once and kept up to date, so a long run of
+// closers is trimmed in linear time.
+func trimURL(m string) string {
+	opens := map[byte]int{')': strings.Count(m, "("), ']': strings.Count(m, "[")}
+	closes := map[byte]int{')': strings.Count(m, ")"), ']': strings.Count(m, "]")}
+	for m != "" {
+		last := m[len(m)-1]
+		if !strings.ContainsRune(urlTrailing, rune(last)) {
+			break
+		}
+		if _, isCloser := closes[last]; isCloser {
+			if opens[last] >= closes[last] {
+				break
+			}
+			closes[last]--
+		}
+		m = m[:len(m)-1]
+	}
+	return m
+}
 
 // ExtractURL returns the first http(s) URL in text, or "" when there is none.
 func ExtractURL(text string) string {
-	m := urlPattern.FindString(text)
-	return strings.TrimRight(m, urlTrailing)
+	return trimURL(urlPattern.FindString(text))
 }
 
 // sourceHosts maps a host suffix to the label shown for it.
@@ -121,7 +144,7 @@ func SplitLinks(text string) []Segment {
 			out = append(out, Segment{Text: rest})
 			break
 		}
-		link := strings.TrimRight(rest[loc[0]:loc[1]], urlTrailing)
+		link := trimURL(rest[loc[0]:loc[1]])
 		if loc[0] > 0 {
 			out = append(out, Segment{Text: rest[:loc[0]]})
 		}

@@ -2,7 +2,9 @@ package note
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestExtractURL(t *testing.T) {
@@ -14,6 +16,11 @@ func TestExtractURL(t *testing.T) {
 		{"trailing punctuation", "(https://example.com/x). です", "https://example.com/x"},
 		{"japanese text glued on", "https://example.com/x。次の話", "https://example.com/x"},
 		{"not http", "ftp://example.com/x", ""},
+		{"brackets inside the link", "https://en.wikipedia.org/wiki/Go_(programming_language) 見て", "https://en.wikipedia.org/wiki/Go_(programming_language)"},
+		{"link with brackets inside brackets", "(https://en.wikipedia.org/wiki/Go_(programming_language))", "https://en.wikipedia.org/wiki/Go_(programming_language)"},
+		{"square brackets inside the link", "https://example.com/a?x[0]=1 です", "https://example.com/a?x[0]=1"},
+		{"apostrophe inside the link", "https://example.com/it's/here 見て", "https://example.com/it's/here"},
+		{"quoted link", "'https://example.com/x'", "https://example.com/x"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -46,6 +53,17 @@ func TestSourceLabel(t *testing.T) {
 	}
 }
 
+func TestExtractURLLongClosingRun(t *testing.T) {
+	text := "https://example.com/x" + strings.Repeat(")", 200000)
+	start := time.Now()
+	if got := ExtractURL(text); got != "https://example.com/x" {
+		t.Fatalf("ExtractURL = %q", got)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("trimming 200000 closers took %v; it should be linear", d)
+	}
+}
+
 func TestSplitLinks(t *testing.T) {
 	got := SplitLinks("前 https://a.example/x). 後 https://b.example/y")
 	want := []Segment{
@@ -56,6 +74,10 @@ func TestSplitLinks(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("SplitLinks = %#v, want %#v", got, want)
+	}
+	got = SplitLinks("https://en.wikipedia.org/wiki/Go_(programming_language) 見て")
+	if len(got) != 2 || got[0].URL != "https://en.wikipedia.org/wiki/Go_(programming_language)" {
+		t.Errorf("a bracket opened inside the link should stay in it, got %#v", got)
 	}
 	if got := SplitLinks("リンクなし"); len(got) != 1 || got[0].URL != "" {
 		t.Errorf("plain text should be one plain segment, got %#v", got)

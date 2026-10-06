@@ -18,7 +18,11 @@
 
   function chips() { return Array.prototype.slice.call(el.topics.querySelectorAll('.chip[data-topic]')); }
 
+  // selectionVersion counts selection changes, so a late reply can tell that
+  // the person chose something else while it was in flight.
+  var selectionVersion = 0;
   function select(name) {
+    selectionVersion++;
     selected = name;
     chips().forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.topic === name)); });
   }
@@ -57,7 +61,12 @@
     el.topics.insertBefore(input, el.addTopic);
     input.focus();
 
+    // done: the input is gone (saved or cancelled). sending: a POST is in
+    // flight, so another Enter must not send it again. A reply that arrives
+    // after done is stale: the person has moved on, so it must not touch the
+    // current selection.
     var done = false;
+    var sending = false;
     function close() {
       if (done) return;
       done = true;
@@ -70,11 +79,24 @@
       if (e.key === 'Escape') { e.stopPropagation(); close(); return; }
       if (e.key !== 'Enter') return;
       e.preventDefault();
+      if (sending) return;
       var name = input.value.trim();
       if (!name) { close(); return; }
+      sending = true;
+      var sentVersion = selectionVersion;
       shared.request('POST', '/api/topics', { name: name })
-        .then(function () { select(addChip(name).dataset.topic); close(); })
+        .then(function () {
+          sending = false;
+          // The topic exists on the server either way; show its chip, but only
+          // select it when the input is still open and nothing else was picked.
+          var chip = addChip(name);
+          if (done) return;
+          if (selectionVersion === sentVersion) select(chip.dataset.topic);
+          close();
+        })
         .catch(function (err) {
+          sending = false;
+          if (done) return;
           // A name that already exists is not a failure for the person: pick it.
           if (chips().some(function (b) { return b.dataset.topic === name; })) { select(name); close(); return; }
           show(failure('話題を追加できませんでした', err, 'もう一度 Enter を押してください'), true);
