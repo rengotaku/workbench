@@ -1,0 +1,42 @@
+{{template "base" .}}
+
+{{define "scripts"}}<script src="/static/js/timeline.js" defer></script>{{end}}
+
+{{define "content"}}
+<div class="frame">
+  <header class="hd">
+    <b>note</b>
+    <a href="/" id="to-add">＋ メモ <kbd>N</kbd></a>
+  </header>
+
+  <nav class="filters" aria-label="話題で絞り込む">
+    <span>話題:</span>
+    {{range .Chips}}<a class="chip{{if .On}} on{{end}}" href="{{.Href}}"{{if .On}} aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+    <span class="push">補足待ち {{.Pending}}</span>
+  </nav>
+
+  {{range .Days}}
+  <section>
+    <h2 class="day">{{.Heading}}</h2>
+    {{range .Notes}}
+    <article class="ev" id="note-{{.ID}}">
+      <div class="meta">
+        {{.Time}}{{if .Source}} · <span class="src">{{.Source}}</span>{{end}}{{if .Topic}} · <span class="topic">{{.Topic}}</span>{{end}} · <span class="nid">#{{.ID}}</span>
+      </div>
+      <p class="memo">{{range .Segments}}{{if .URL}}<a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Text}}</a>{{else}}{{.Text}}{{end}}{{end}}</p>
+      {{range .Annotations}}
+      <div class="add k-{{.Kind}}">
+        <div class="who">{{.Label}} · {{.Author}} · {{.When}}{{if .Source}} · {{.Source}}{{end}}</div>
+        {{if eq .Kind "quote"}}<blockquote class="body">{{.Body}}</blockquote>{{else}}<p class="body">{{.Body}}</p>{{end}}
+      </div>
+      {{else}}
+      <div class="pending">補足待ち</div>
+      {{end}}
+    </article>
+    {{end}}
+  </section>
+  {{else}}
+  <p class="empty">{{.Empty}}</p>
+  {{end}}
+</div>
+{{end}}

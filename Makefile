@@ -1,4 +1,4 @@
-.PHONY: install build run stop status lint test test-cov check ci clean tailwind-install tailwind-build migrate migrate-diff migrate-apply migrate-hash help
+.PHONY: install build run stop status install-agent lint test test-cov check ci clean help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -6,13 +6,7 @@
 # Variables
 BIN_DIR := bin
 COVERAGE_FILE := coverage.out
-PORT ?= 8082
-TAILWIND_VERSION ?= v4.1.5
-TAILWIND_BIN := $(BIN_DIR)/tailwindcss
-# OS/arch detection: linux-x64 / linux-arm64 / macos-x64 / macos-arm64
-TAILWIND_OS := $(shell uname -s | tr '[:upper:]' '[:lower:]' | sed 's/darwin/macos/')
-TAILWIND_ARCH := $(shell uname -m | sed -e 's/x86_64/x64/' -e 's/aarch64/arm64/')
-TAILWIND_TARGET ?= $(TAILWIND_OS)-$(TAILWIND_ARCH)
+PORT ?= 8086
 
 # Auto-discover entry points under cmd/<name>/. Adding cmd/foo/main.go is
 # sufficient — `make build` will produce bin/foo without further edits.
@@ -24,43 +18,30 @@ BINARIES := $(addprefix $(BIN_DIR)/,$(CMDS))
 install:
 	go mod download
 
-## tailwind-install: Download Tailwind CSS v4 standalone CLI (idempotent)
-tailwind-install:
-	@if [ -f $(TAILWIND_BIN) ]; then \
-		echo "tailwindcss already installed at $(TAILWIND_BIN)"; \
-	else \
-		mkdir -p $(BIN_DIR); \
-		echo "Downloading Tailwind CSS CLI $(TAILWIND_VERSION) for $(TAILWIND_TARGET)..."; \
-		curl -fsSL "https://github.com/tailwindlabs/tailwindcss/releases/download/$(TAILWIND_VERSION)/tailwindcss-$(TAILWIND_TARGET)" \
-			-o $(TAILWIND_BIN); \
-		chmod +x $(TAILWIND_BIN); \
-		echo "tailwindcss installed at $(TAILWIND_BIN)"; \
-	fi
+## build: Build all cmd/* binaries
+build: $(BINARIES)
 
-## tailwind-build: Build Tailwind CSS output (requires tailwind-install)
-tailwind-build: tailwind-install
-	$(TAILWIND_BIN) -i web/static/css/input.css -o web/static/css/output.css --minify
-
-## build: Build all cmd/* binaries and Tailwind CSS
-build: tailwind-build $(BINARIES)
-
-# Static pattern rule restricted to $(BINARIES) so it can't accidentally match
-# other files under bin/ (e.g. bin/tailwindcss, which is fetched by curl).
+# Static pattern rule restricted to $(BINARIES) so it only matches discovered
+# cmd/* entry points, not any other file that may live under bin/.
 $(BINARIES): $(BIN_DIR)/%:
 	@mkdir -p $(BIN_DIR)
 	go build -o $@ ./cmd/$*
 
-## run: Run the server (Tailwind CSS をビルドしてから起動)
-run: tailwind-build
+## run: Run the server
+run:
 	go run ./cmd/server
 
 ## stop: Stop the server
 stop:
-	@lsof -ti :$(PORT) | xargs kill 2>/dev/null || true
+	@lsof -ti :$(PORT) -sTCP:LISTEN | xargs kill 2>/dev/null || true
 
 ## status: Check if server is running
 status:
-	@lsof -i :$(PORT) >/dev/null 2>&1 && echo "note-stock: running (:$(PORT))" || echo "note-stock: stopped"
+	@lsof -ti :$(PORT) -sTCP:LISTEN >/dev/null 2>&1 && echo "note-stock: running (:$(PORT))" || echo "note-stock: stopped"
+
+## install-agent: Build, place the binaries and the launchd plist (does not load it)
+install-agent:
+	./scripts/install-agent.sh --port $(PORT)
 
 ## lint: Run golangci-lint
 lint:
@@ -81,25 +62,9 @@ check: lint test
 ## ci: Run lint + test with coverage
 ci: lint test-cov
 
-## migrate: Apply migrations via GORM AutoMigrate (no atlas required)
-migrate:
-	go run ./cmd/migrate
-
-## migrate-diff: Generate a new migration (requires atlas CLI)
-migrate-diff:
-	atlas migrate diff --env local
-
-## migrate-apply: Apply pending migrations (requires atlas CLI)
-migrate-apply:
-	atlas migrate apply --env local
-
-## migrate-hash: Rehash the migration directory (requires atlas CLI)
-migrate-hash:
-	atlas migrate hash --env local
-
 ## clean: Remove build artifacts
 clean:
-	rm -rf $(BIN_DIR)/ $(COVERAGE_FILE) app.db
+	rm -rf $(BIN_DIR)/ $(COVERAGE_FILE)
 
 ## help: Show this help
 help:

@@ -23,7 +23,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - note-stock
+        - github.com/rengotaku/note-stock
 
 run:
   timeout: 5m
