@@ -195,6 +195,12 @@ func (s *Store) add(name, detail, due, url, linkText string, noteID int, actor A
 	defer s.mu.Unlock()
 
 	if existing, ok := s.findBySourceNote(noteID); ok {
+		// It may be in memory only, if saving it failed the first time. Save
+		// again before saying it exists, so the caller never records a task
+		// that is not on disk.
+		if err := s.persist(); err != nil {
+			return Task{}, err
+		}
 		return existing, nil
 	}
 	t := Task{
@@ -556,6 +562,14 @@ func (s *Store) SetDetail(id, detail string, actor Actor) (Task, error) {
 	return s.mustGet(id), nil
 }
 
+// Limits on one annotation, in bytes. The event log is read line by line with
+// a 1 MiB limit per line; an annotation is logged with its body, so it must
+// stay far below that or every later read of the log fails.
+const (
+	MaxAnnotationBody   = 64 * 1024
+	MaxAnnotationSource = 200
+)
+
 // AnnotationInput is what a caller supplies; the store assigns id and time.
 type AnnotationInput struct {
 	Kind   string
@@ -573,6 +587,12 @@ func (s *Store) Annotate(id string, in AnnotationInput, actor Actor) (Annotation
 	}
 	if strings.TrimSpace(in.Body) == "" {
 		return Annotation{}, errors.New("body is required")
+	}
+	if len(in.Body) > MaxAnnotationBody {
+		return Annotation{}, fmt.Errorf("body is too long (%d bytes, limit %d); split it into several annotations", len(in.Body), MaxAnnotationBody)
+	}
+	if len(strings.TrimSpace(in.Source)) > MaxAnnotationSource {
+		return Annotation{}, fmt.Errorf("source is too long (limit %d bytes)", MaxAnnotationSource)
 	}
 
 	s.mu.Lock()

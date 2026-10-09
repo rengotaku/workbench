@@ -1,6 +1,7 @@
 package task_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -106,4 +107,25 @@ func TestAddFromNote_ReusesTheTaskForTheSameNote(t *testing.T) {
 	assert.Equal(t, first.ID, found.ID)
 	_, ok = s.FindBySourceNote(8)
 	assert.False(t, ok)
+}
+
+func TestAnnotate_RejectsOversizeAndLeavesTheLogReadable(t *testing.T) {
+	s := newStore(t)
+	added, err := s.Add("x", "", "", task.ActorHuman)
+	require.NoError(t, err)
+
+	big := strings.Repeat("a", task.MaxAnnotationBody+1)
+	_, err = s.Annotate(added.ID, task.AnnotationInput{Kind: task.AnnotationMemo, Body: big}, task.ActorAI)
+	assert.Error(t, err)
+	_, err = s.Annotate(added.ID, task.AnnotationInput{Kind: task.AnnotationMemo, Body: "ok", Source: strings.Repeat("s", task.MaxAnnotationSource+1)}, task.ActorAI)
+	assert.Error(t, err)
+
+	// The limit itself is accepted, and the log can still be read.
+	_, err = s.Annotate(added.ID, task.AnnotationInput{Kind: task.AnnotationMemo, Body: strings.Repeat("a", task.MaxAnnotationBody)}, task.ActorAI)
+	require.NoError(t, err)
+	events, err := s.Events(added.ID)
+	require.NoError(t, err)
+	assert.Len(t, events, 2)
+	_, err = s.Undo(task.ActorHuman)
+	require.NoError(t, err)
 }

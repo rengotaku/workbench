@@ -535,6 +535,7 @@ func TestOpenMigratesAnnotatedNotesToTriagedOnce(t *testing.T) {
 	if closeErr := s.Close(); closeErr != nil {
 		t.Fatal(closeErr)
 	}
+	makeOldFormat(t, dir)
 
 	s2, err := Open(dir, clock())
 	if err != nil {
@@ -570,6 +571,72 @@ func TestOpenMigratesAnnotatedNotesToTriagedOnce(t *testing.T) {
 	}
 	if got := countMigrateEvents(t, dir); got != logBefore {
 		t.Errorf("second start wrote %d more migrate events", got-logBefore)
+	}
+}
+
+// makeOldFormat rewrites notes.json as a version of the app before triage
+// wrote it: no schema_version.
+func makeOldFormat(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, "notes.json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if uerr := json.Unmarshal(b, &m); uerr != nil {
+		t.Fatal(uerr)
+	}
+	if _, ok := m["schema_version"]; !ok {
+		t.Fatal("a new store should have written schema_version")
+	}
+	delete(m, "schema_version")
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A memo annotated after the migration has run is not settled by a restart.
+func TestRestartDoesNotSettleANoteAnnotatedAfterMigration(t *testing.T) {
+	s, dir := openStore(t)
+	old := mustAdd(t, s, "old", "")
+	if _, err := s.Annotate(old.ID, AnnotationInput{Kind: KindMemo, Body: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	makeOldFormat(t, dir)
+
+	s2, err := Open(dir, clock()) // the one migration
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh := mustAdd(t, s2, "fresh", "")
+	if _, aerr := s2.Annotate(fresh.ID, AnnotationInput{Kind: KindMemo, Body: "y"}); aerr != nil {
+		t.Fatal(aerr)
+	}
+	if cerr := s2.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+
+	s3, err := Open(dir, clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s3.Close() }()
+	if g, _ := s3.Get(fresh.ID); !g.Pending() || g.Route != nil {
+		t.Errorf("annotated but not routed must stay pending after a restart: %+v", g)
+	}
+	if g, _ := s3.Get(old.ID); g.Pending() || g.Route.To != RouteRecord {
+		t.Errorf("old note should have been recorded once: %+v", g)
+	}
+	if got := countMigrateEvents(t, dir); got != 1 {
+		t.Errorf("migrate events = %d, want 1", got)
 	}
 }
 

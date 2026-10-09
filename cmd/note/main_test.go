@@ -407,3 +407,12 @@ func TestRouteCommand(t *testing.T) {
 		})
 	}
 }
+
+func TestAnnotateTooLongShowsTheServerError(t *testing.T) {
+	h := newHarness(t)
+	h.ok("a")
+	r := h.run("", true, "annotate", "1", "--kind", "memo", "--body", strings.Repeat("a", note.MaxAnnotationBody+1))
+	if r.code != 1 || !strings.Contains(r.errOut, "長すぎます") {
+		t.Errorf("result = %+v", r)
+	}
+}

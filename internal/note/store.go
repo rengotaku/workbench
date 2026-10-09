@@ -33,7 +33,20 @@ type state struct {
 	Topics         []string `json:"topics"`
 	NextNote       int      `json:"next_note"`
 	NextAnnotation int      `json:"next_annotation"`
+	// SchemaVersion is 0 (absent) for a file written before triage existed.
+	// Migrations run once, on such a file, and the current version is saved.
+	SchemaVersion int `json:"schema_version,omitempty"`
 }
+
+// Limits on one annotation, in bytes. They keep a single event-log line well
+// under the reader's line limit.
+const (
+	MaxAnnotationBody   = 64 * 1024
+	MaxAnnotationSource = 200
+)
+
+// schemaVersion is the shape notes.json is written in now.
+const schemaVersion = 1
 
 // Event is one line of the append-only log.
 type Event struct {
@@ -70,7 +83,7 @@ func Open(dir string, now func() time.Time) (*Store, error) {
 	case err != nil:
 		return nil, fmt.Errorf("ロックを取れません: %w", err)
 	}
-	s := &Store{dir: dir, now: now, lock: lock, st: state{NextNote: 1, NextAnnotation: 1}}
+	s := &Store{dir: dir, now: now, lock: lock, st: state{NextNote: 1, NextAnnotation: 1, SchemaVersion: schemaVersion}}
 
 	b, err := os.ReadFile(s.statePath())
 	switch {
@@ -80,25 +93,30 @@ func Open(dir string, now func() time.Time) (*Store, error) {
 		_ = s.Close()
 		return nil, fmt.Errorf("%s を読めません: %w", s.statePath(), err)
 	}
+	s.st = state{} // a file with no schema_version is the old format, not the current one
 	if err := json.Unmarshal(b, &s.st); err != nil {
 		_ = s.Close()
 		return nil, fmt.Errorf("%s を解釈できません: %w", s.statePath(), err)
 	}
 	s.st.NextNote = max(s.st.NextNote, 1)
 	s.st.NextAnnotation = max(s.st.NextAnnotation, 1)
-	if err := s.migrateTriage(); err != nil {
-		_ = s.Close()
-		return nil, err
+	if s.st.SchemaVersion < schemaVersion {
+		if err := s.migrateTriage(); err != nil {
+			_ = s.Close()
+			return nil, err
+		}
 	}
 	return s, nil
 }
 
 // migrateTriage settles memos from before triage existed: one that already has
 // an annotation was read by the AI, so it counts as picked up (recorded, at the
-// time of its first annotation). It saves only when something changed, so a
-// second start finds nothing to do.
+// time of its first annotation). It runs only on a file with no schema_version
+// and always saves, so the version is recorded and a later start skips it. (A
+// memo annotated after that must not be settled by a restart.)
 func (s *Store) migrateTriage() error {
 	next := s.st
+	next.SchemaVersion = schemaVersion
 	next.Notes = slices.Clone(s.st.Notes)
 	var events []Event
 	for i, n := range next.Notes {
@@ -110,9 +128,6 @@ func (s *Store) migrateTriage() error {
 		n.Route = &Route{To: RouteRecord}
 		next.Notes[i] = n
 		events = append(events, Event{At: s.now(), Op: "migrate_triage", NoteID: n.ID, Detail: n.Route})
-	}
-	if len(events) == 0 {
-		return nil
 	}
 	b, err := json.MarshalIndent(next, "", "  ")
 	if err != nil {
@@ -292,6 +307,12 @@ func (s *Store) Annotate(id int, in AnnotationInput) (Annotation, error) {
 	}
 	if strings.TrimSpace(in.Body) == "" {
 		return Annotation{}, InvalidError("body が空です。補足の本文を入れてください")
+	}
+	if len(in.Body) > MaxAnnotationBody {
+		return Annotation{}, InvalidError(fmt.Sprintf("body が長すぎます（%d バイト。上限は %d バイト）。分けて追記してください", len(in.Body), MaxAnnotationBody))
+	}
+	if len(strings.TrimSpace(in.Source)) > MaxAnnotationSource {
+		return Annotation{}, InvalidError(fmt.Sprintf("source が長すぎます。上限は %d バイトです", MaxAnnotationSource))
 	}
 	author := in.Author
 	if author == "" {

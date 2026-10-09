@@ -26,6 +26,7 @@ type rig struct {
 	tasks   *task.Store
 	h       http.Handler
 	noteDir string
+	taskDir string
 }
 
 func setup(t *testing.T) rig {
@@ -34,12 +35,13 @@ func setup(t *testing.T) rig {
 	ns, err := note.Open(noteDir, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ns.Close() })
-	ts, err := task.Open(t.TempDir(), time.Local)
+	taskDir := t.TempDir()
+	ts, err := task.Open(taskDir, time.Local)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ts.Close() })
 	r := gin.New()
 	noteroute.New(ns, ts, time.Local).Mount(r)
-	return rig{notes: ns, tasks: ts, h: r, noteDir: noteDir}
+	return rig{notes: ns, tasks: ts, h: r, noteDir: noteDir, taskDir: taskDir}
 }
 
 func (r rig) post(t *testing.T, id string, body any) (int, map[string]any) {
@@ -183,4 +185,52 @@ func TestRoute_Validation(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, code)
 	tasks, _ := r.tasks.List()
 	assert.Empty(t, tasks)
+}
+
+// Saving the new task fails, the task stays in memory only. The retry must save
+// it again before the memo points at it, so both survive a reopen.
+func TestRoute_RetryAfterTaskSaveFailureSavesTheTask(t *testing.T) {
+	r := setup(t)
+	_, err := r.notes.Add("memo", "")
+	require.NoError(t, err)
+
+	path := filepath.Join(r.taskDir, "tasks.json")
+	require.NoError(t, os.Mkdir(path, 0o700))
+	code, _ := r.post(t, "1", todoBody("やる"))
+	require.Equal(t, http.StatusInternalServerError, code)
+	got, _ := r.notes.Get(1)
+	require.True(t, got.Pending(), "the memo must not point at an unsaved task")
+	require.NoError(t, os.Remove(path))
+
+	code, out := r.post(t, "1", todoBody("やる"))
+	require.Equal(t, http.StatusOK, code, out)
+
+	require.NoError(t, r.notes.Close())
+	require.NoError(t, r.tasks.Close())
+	ns, err := note.Open(r.noteDir, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ns.Close() })
+	ts, err := task.Open(r.taskDir, time.Local)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ts.Close() })
+	n, _ := ns.Get(1)
+	require.NotNil(t, n.Route)
+	tk, err := ts.Get(n.Route.TaskID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, tk.SourceNoteID)
+}
+
+// The memo update failed after the task was made; a record request must not
+// turn the memo into a record while a task exists for it.
+func TestRoute_RecordIsRefusedWhenATaskAlreadyExistsForTheNote(t *testing.T) {
+	r := setup(t)
+	_, err := r.notes.Add("memo", "")
+	require.NoError(t, err)
+	_, err = r.tasks.AddFromNote("やる", "", "", 1, task.ActorAI)
+	require.NoError(t, err)
+
+	code, _ := r.post(t, "1", map[string]any{"to": "record"})
+	assert.Equal(t, http.StatusConflict, code)
+	got, _ := r.notes.Get(1)
+	assert.True(t, got.Pending())
 }

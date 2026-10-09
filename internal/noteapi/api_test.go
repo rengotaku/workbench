@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -268,5 +269,23 @@ func TestAddNoteWithLinks(t *testing.T) {
 	}
 	if got := len(store.List(note.Filter{})); got != 1 {
 		t.Errorf("rejected requests must store nothing; have %d memos", got)
+	}
+}
+
+func TestAnnotateRejectsOversize(t *testing.T) {
+	h, store := newServer(t)
+	n, _ := store.Add("a", "")
+	for name, body := range map[string]string{
+		"body":   `{"kind":"memo","body":"` + strings.Repeat("a", note.MaxAnnotationBody+1) + `"}`,
+		"source": `{"kind":"memo","body":"x","source":"` + strings.Repeat("s", note.MaxAnnotationSource+1) + `"}`,
+	} {
+		rec := call(t, h, http.MethodPost, "/api/notes/"+strconv.Itoa(n.ID)+"/annotations", body)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", name, rec.Code)
+		}
+	}
+	got, _ := store.Get(n.ID)
+	if len(got.Annotations) != 0 {
+		t.Error("a rejected annotation must not be stored")
 	}
 }

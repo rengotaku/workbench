@@ -117,6 +117,12 @@ func (a *API) route(c *gin.Context) {
 	}
 
 	if req.To == note.RouteRecord {
+		// A task made for this memo whose memo update failed: the memo belongs
+		// to todo, so a record request must not take it away.
+		if t, found := a.tasks.FindBySourceNote(id); found {
+			c.JSON(http.StatusConflict, errorBody{"このメモからはすでにタスク " + t.ID + " が作られています。記録にはできません。todo として再実行してください"})
+			return
+		}
 		n, err = a.notes.SetRoute(id, note.Route{To: note.RouteRecord})
 		if err != nil {
 			a.fail(c, err)
