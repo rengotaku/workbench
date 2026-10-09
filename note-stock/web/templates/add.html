@@ -1,0 +1,33 @@
+{{template "base" .}}
+
+{{define "scripts"}}<script src="/static/js/add.js" defer></script>{{end}}
+
+{{define "content"}}
+<div class="frame">
+  <header class="hd">
+    <b>note</b>
+    <a href="/timeline">タイムラインへ <kbd>Esc</kbd></a>
+  </header>
+
+  <label class="sr-only" for="memo">メモ</label>
+  <input class="big" id="memo" type="text" autofocus autocomplete="off" placeholder="リンクと一言を貼って Enter">
+
+  <div class="link-rows" id="links" role="group" aria-label="関連 URL（任意）"></div>
+  <button type="button" class="chip dashed link-add" id="link-add">＋ 関連 URL</button>
+
+  <div class="filters" id="topics" role="group" aria-label="話題（任意）">
+    <span>話題（任意）:</span>
+    {{range .Topics}}<button type="button" class="chip" aria-pressed="false" data-topic="{{.}}">{{.}}</button>{{end}}
+    <button type="button" class="chip dashed" id="topic-add">＋ 話題を追加</button>
+  </div>
+
+  <div class="hint">
+    <span>リンクと一言をそのまま貼る。関連 URL は本文で [1] [2] と書いて指せる。補足は後で AI が付ける</span>
+    <span><kbd>Enter</kbd> で保存</span>
+  </div>
+
+  <div class="status" id="status" role="status" aria-live="polite" hidden></div>
+
+  <ul class="recent" id="recent" aria-label="いま追加したメモ"></ul>
+</div>
+{{end}}
