@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="workbench">
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="#2F4A7D"/>
+  <!-- a note card and a ticked box resting on the bench top -->
+  <rect x="14" y="15" width="16" height="17" rx="2.5" fill="#F7F6F3"/>
+  <path d="M18 21.5 H26 M18 26 H23.5" stroke="#2F4A7D" stroke-width="2.4" stroke-linecap="round"/>
+  <rect x="34" y="17" width="16" height="15" rx="2.5" fill="#E8B04A"/>
+  <path d="M37.5 24.5 L41 28 L47 21.5" fill="none" stroke="#2F4A7D" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- the bench: top and two legs -->
+  <rect x="9" y="35" width="46" height="6" rx="2" fill="#F7F6F3"/>
+  <path d="M16 41 V51 M48 41 V51" stroke="#F7F6F3" stroke-width="5" stroke-linecap="round"/>
+</svg>

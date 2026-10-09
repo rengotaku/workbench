@@ -147,12 +147,15 @@
   }
 
   function undo(li, name) {
+    window.workbench.tell('busy');
     shared.request('POST', '/api/undo')
       .then(function () {
         li.classList.add('is-undone');
+        window.workbench.tell('changed');
         toast([text('取り消しました: ' + name)]);
       })
-      .catch(function (err) { toast([text('取り消せませんでした: ' + reason(err))], true); });
+      .catch(function (err) { toast([text('取り消せませんでした: ' + reason(err))], true); })
+      .then(function () { window.workbench.tell('idle'); });
   }
 
   function reset() {
@@ -179,10 +182,12 @@
 
     busy = true;
     el.name.disabled = true;
+    window.workbench.tell('busy');
     shared.request('POST', '/api/tasks', body)
       .then(function (data) {
         var t = data.task || body;
         var li = remember(t);
+        window.workbench.tell('changed');
         var again = document.createElement('button');
         again.type = 'button';
         again.textContent = '元に戻す';
@@ -197,7 +202,7 @@
         el.name.focus();
         toast([text('追加できませんでした: ' + reason(err))], true);
       })
-      .then(function () { busy = false; });
+      .then(function () { busy = false; window.workbench.tell('idle'); });
   }
 
   el.submit.addEventListener('click', submit);
@@ -211,7 +216,7 @@
     // ⌥+digit types a symbol on macOS (¡ ™ …), so read the physical key.
     var m = /^Digit([0-9])$/.exec(e.code || '');
     if (e.altKey && m) { e.preventDefault(); choose(Number(m[1])); return; }
-    if (e.key === 'Escape' && document.activeElement !== el.pick) { location.href = '/'; }
+    if (e.key === 'Escape' && document.activeElement !== el.pick) { window.workbench.leave('/'); }
   });
 
   renderChips();

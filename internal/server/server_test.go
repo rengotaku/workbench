@@ -154,6 +154,8 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 		assert.Equal(t, 1, strings.Count(nav, `aria-current="page"`), s.path)
 		assert.Contains(t, body, "/shared/css/tokens.css", s.path)
 		assert.Contains(t, body, "/shared/js/common.js", s.path)
+		// Every screen shows the one workbench icon.
+		assert.Contains(t, body, `<link rel="icon" href="/shared/icon.svg"`, s.path)
 		// No screen loads anything from a CDN (fonts included).
 		assert.NotContains(t, body, "https://fonts.", s.path)
 		assert.NotContains(t, body, "cdn.", s.path)
@@ -162,7 +164,7 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 
 func TestSharedStaticServedBehindGuard(t *testing.T) {
 	h := newServer(t)
-	for _, p := range []string{"/shared/css/tokens.css", "/shared/css/base.css", "/shared/js/common.js"} {
+	for _, p := range []string{"/shared/css/tokens.css", "/shared/css/base.css", "/shared/js/common.js", "/shared/js/modal.js", "/shared/icon.svg"} {
 		assert.Equal(t, http.StatusOK, do(h, http.MethodGet, p, "").Code, p)
 
 		req := httptest.NewRequest(http.MethodGet, p, nil)

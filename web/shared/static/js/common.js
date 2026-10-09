@@ -33,5 +33,32 @@
     });
   }
 
-  window.workbench = { composing: composing, request: request };
+  // An add screen also runs inside the add dialog (modal.js) as a framed page.
+  // There it has no site header, and leaving it closes the dialog instead of
+  // navigating the frame.
+  var embedded = window.parent !== window;
+  if (embedded) document.documentElement.classList.add('embedded');
+
+  // tell sends the dialog a message: 'busy' / 'idle' around a request that
+  // writes, 'changed' after something was added or undone, 'close' when the
+  // screen is left. Outside a dialog it does nothing.
+  function tell(type) {
+    if (embedded) window.parent.postMessage({ workbench: type }, location.origin);
+  }
+
+  // leave goes to href, or closes the dialog the screen is in.
+  function leave(href) {
+    if (embedded) { tell('close'); return; }
+    location.href = href;
+  }
+
+  // A link marked data-leave closes the dialog rather than open in the frame.
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[data-leave]');
+    if (!a || !embedded) return;
+    e.preventDefault();
+    tell('close');
+  });
+
+  window.workbench = { composing: composing, request: request, embedded: embedded, tell: tell, leave: leave };
 })();

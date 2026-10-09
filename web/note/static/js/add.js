@@ -241,14 +241,17 @@
     undo.className = 'linklike';
     undo.textContent = '元に戻す';
     undo.addEventListener('click', function () {
+      window.workbench.tell('busy');
       shared.request('DELETE', '/api/notes/' + n.id)
         .then(function () {
           li.classList.add('is-undone');
+          window.workbench.tell('changed');
           undo.remove();
           show('取り消しました: ' + n.text, false);
           el.memo.focus();
         })
-        .catch(function (err) { show(failure('取り消せませんでした', err, 'もう一度「元に戻す」を押してください'), true); });
+        .catch(function (err) { show(failure('取り消せませんでした', err, 'もう一度「元に戻す」を押してください'), true); })
+        .then(function () { window.workbench.tell('idle'); });
     });
     li.appendChild(t);
     li.appendChild(undo);
@@ -267,9 +270,11 @@
     busy = true;
     el.memo.disabled = true;
     lockLinks(true);
+    window.workbench.tell('busy');
     shared.request('POST', '/api/notes', body)
       .then(function (n) {
         remember(n);
+        window.workbench.tell('changed');
         show('✓ 保存しました（補足待ち）', false);
         el.memo.value = '';
         clearLinks();
@@ -283,6 +288,7 @@
         el.memo.disabled = false;
         lockLinks(false);
         el.memo.focus();
+        window.workbench.tell('idle');
       });
   }
 
@@ -293,7 +299,7 @@
 
   document.addEventListener('keydown', function (e) {
     if (shared.composing(e)) return;
-    if (e.key === 'Escape') { location.href = '/notes/timeline'; }
+    if (e.key === 'Escape') { window.workbench.leave('/notes/timeline'); }
   });
 
   el.memo.focus();
