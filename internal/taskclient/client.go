@@ -174,6 +174,17 @@ func (c *Client) SetDetail(id, detail string) (Task, []byte, error) {
 	})
 }
 
+// Annotate appends a supplement to a task. The author is the CLI's actor.
+func (c *Client) Annotate(id string, in task.AnnotationInput) (task.Annotation, []byte, error) {
+	var wrap struct {
+		Annotation task.Annotation `json:"annotation"`
+	}
+	raw, err := c.do(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/annotations", map[string]any{
+		"kind": in.Kind, "body": in.Body, "source": in.Source, "actor": actor(),
+	}, &wrap)
+	return wrap.Annotation, raw, err
+}
+
 // Import posts the migration plan built from the old ledgers.
 func (c *Client) Import(items []task.ImportItem) (int, []byte, error) {
 	var wrap struct {

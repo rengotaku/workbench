@@ -88,13 +88,14 @@ func TestSplitLinks(t *testing.T) {
 }
 
 func TestFilterMatch(t *testing.T) {
-	annotated := Note{ID: 1, Topic: "A", Annotations: []Annotation{{ID: 1}}}
+	at := time.Now()
+	annotated := Note{ID: 1, Topic: "A", Annotations: []Annotation{{ID: 1}}, TriagedAt: &at}
 	bare := Note{ID: 2}
 	if !(Filter{}).match(annotated) || !(Filter{}).match(bare) {
 		t.Error("zero filter should match everything")
 	}
 	if (Filter{Pending: true}).match(annotated) {
-		t.Error("pending filter should drop annotated memos")
+		t.Error("pending filter should drop memos the AI picked up")
 	}
 	if !(Filter{NoTopic: true}).match(bare) || (Filter{NoTopic: true}).match(annotated) {
 		t.Error("no-topic filter mismatch")

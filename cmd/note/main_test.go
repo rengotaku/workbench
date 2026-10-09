@@ -8,11 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/rengotaku/workbench/internal/note"
 	"github.com/rengotaku/workbench/internal/noteapi"
+	"github.com/rengotaku/workbench/internal/noteroute"
+	"github.com/rengotaku/workbench/internal/task"
 )
 
 type result struct {
@@ -36,8 +39,14 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	tasks, err := task.Open(t.TempDir(), time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tasks.Close(); _ = store.Close() })
 	r := gin.New()
 	noteapi.New(store).Mount(r)
+	noteroute.New(store, tasks, time.Local).Mount(r)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
 	t.Setenv("NOTE_SERVER", "")
@@ -160,6 +169,7 @@ func TestListAndShow(t *testing.T) {
 	}
 	h.ok("annotate", "1", "--kind", "quote", "--source", "slack", "--body-file", body)
 	h.ok("annotate", "#1", "--kind", "analysis", "--body", "考察です", "--author", "human")
+	h.ok("route", "1", "--record")
 
 	if got := h.ok("list", "--pending"); strings.Contains(got, "デプロイ") || !strings.Contains(got, "#2  ") {
 		t.Errorf("pending list = %q", got)
@@ -181,8 +191,8 @@ func TestListAndShow(t *testing.T) {
 			t.Errorf("show output should contain %q:\n%s", want, show)
 		}
 	}
-	if strings.Contains(show, "補足待ち") {
-		t.Errorf("annotated memo is not pending:\n%s", show)
+	if strings.Contains(show, "補足待ち") || !strings.Contains(show, "→ 記録") {
+		t.Errorf("a routed memo is not pending and shows where it went:\n%s", show)
 	}
 	if got := h.ok("show", "2"); !strings.Contains(got, "補足待ち") {
 		t.Errorf("show of a bare memo = %q", got)
@@ -220,7 +230,7 @@ func TestAnnotateErrors(t *testing.T) {
 			}
 		})
 	}
-	if got := h.ok("show", "1"); !strings.Contains(got, "補足待ち") {
+	if got := h.ok("show", "1"); strings.Contains(got, "---") {
 		t.Error("failed annotations must not be stored")
 	}
 }
@@ -349,5 +359,51 @@ func TestLinkWithoutTextFails(t *testing.T) {
 	r := h.run("", true, "--link", "https://x.example/")
 	if r.code != 1 || !strings.Contains(r.errOut, "本文も渡してください") || len(h.opened) != 0 {
 		t.Errorf("result = %+v, opened %v", r, h.opened)
+	}
+}
+
+func TestRouteCommand(t *testing.T) {
+	h := newHarness(t)
+	h.ok("確認する")
+	h.ok("あとで読む")
+
+	out := h.ok("route", "1", "--todo", "確認する", "--due", "2026-12-01", "--detail", "詳細")
+	if !strings.Contains(out, "note #1 → todo T001") {
+		t.Errorf("route --todo output = %q", out)
+	}
+	if again := h.ok("route", "#1", "--todo", "確認する"); !strings.Contains(again, "todo T001") {
+		t.Errorf("rerun should report the same task: %q", again)
+	}
+	if got := h.ok("route", "2", "--record"); !strings.Contains(got, "note #2 → 記録") {
+		t.Errorf("route --record output = %q", got)
+	}
+	if got := h.ok("list", "--pending"); strings.TrimSpace(got) != "" {
+		t.Errorf("nothing should be pending: %q", got)
+	}
+	if got := h.ok("show", "1"); !strings.Contains(got, "→ todo T001") {
+		t.Errorf("show = %q", got)
+	}
+	if got := h.ok("route", "1", "--todo", "x", "--json"); !strings.Contains(got, `"source_note_id": 1`) && !strings.Contains(got, `"source_note_id":1`) {
+		t.Errorf("--json = %q", got)
+	}
+
+	for _, tc := range []struct {
+		name string
+		want string
+		args []string
+	}{
+		{"neither", "どちらか一方", []string{"route", "1"}},
+		{"both", "どちらか一方", []string{"route", "1", "--todo", "x", "--record"}},
+		{"due with record", "--todo のときだけ", []string{"route", "1", "--record", "--due", "2026-12-01"}},
+		{"blank name", "名前を渡して", []string{"route", "1", "--todo", " "}},
+		{"conflict", "振り分け済み", []string{"route", "2", "--todo", "x"}},
+		{"unknown id", "見つかりません", []string{"route", "9", "--record"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := h.run("", true, tc.args...)
+			if r.code != 1 || !strings.Contains(r.errOut, tc.want) {
+				t.Errorf("result = %+v, want stderr containing %q", r, tc.want)
+			}
+		})
 	}
 }

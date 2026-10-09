@@ -581,6 +581,9 @@
     body.textContent = t.detail || '詳細なし';
     el.detail.appendChild(body);
 
+    var supplements = supplementsBlock(t);
+    if (supplements) el.detail.appendChild(supplements);
+
     var sec = document.createElement('div');
     sec.className = 'd-sec';
     var h = document.createElement('h2');
@@ -612,6 +615,51 @@
         oops.textContent = '経緯を読めない';
         list.appendChild(oops);
       });
+  }
+
+  var ANNOTATION_LABEL = { quote: '引用', analysis: '考察', memo: 'メモ' };
+
+  // supplementsBlock shows what was appended to a task (newest first, like the
+  // trail) and the link back to the memo it was made from. Every value goes in
+  // through textContent, so a body is shown as text and never read as HTML.
+  // It returns null when there is nothing to show.
+  function supplementsBlock(t) {
+    var anns = t.annotations || [];
+    if (anns.length === 0 && !t.source_note_id) return null;
+
+    var sec = document.createElement('div');
+    sec.className = 'd-sec d-ann';
+    if (t.source_note_id) {
+      var from = document.createElement('a');
+      from.className = 'd-from';
+      from.href = '/notes/timeline#note-' + encodeURIComponent(t.source_note_id);
+      from.textContent = '元のメモ #' + t.source_note_id;
+      sec.appendChild(from);
+    }
+    if (anns.length > 0) {
+      var h = document.createElement('h2');
+      h.textContent = '補足';
+      sec.appendChild(h);
+    }
+    anns.slice().reverse().forEach(function (a) {
+      var item = document.createElement('div');
+      item.className = 'd-ann-item k-' + String(a.kind).replace(/[^a-z]/g, '');
+      var who = document.createElement('div');
+      who.className = 'd-ann-who';
+      var d = new Date(a.created_at);
+      who.textContent = (ANNOTATION_LABEL[a.kind] || a.kind)
+        + ' · ' + (a.author === 'ai' ? 'AI' : '人')
+        + ' · ' + (d.getMonth() + 1) + '/' + d.getDate() + ' '
+        + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2)
+        + (a.source ? ' · ' + a.source : '');
+      var body = document.createElement('div');
+      body.className = 'd-ann-body';
+      body.textContent = a.body;
+      item.appendChild(who);
+      item.appendChild(body);
+      sec.appendChild(item);
+    });
+    return sec;
   }
 
   function detailState(t) {
@@ -661,6 +709,9 @@
     detail.textContent = t.detail || '';
     wireLiveField(detail, t, 'detail', { single: false });
     panel.appendChild(detail);
+
+    var supplements = supplementsBlock(t);
+    if (supplements) panel.appendChild(supplements);
 
     var actions = document.createElement('div');
     actions.className = 'panel-actions';
@@ -977,6 +1028,7 @@
     done: '完了',
     reopened: '再開',
     detail_edited: '詳細を編集',
+    annotated: '補足を追加',
   };
 
   // fillTrail puts the history into the link's tooltip and, when something is

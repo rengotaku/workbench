@@ -96,7 +96,7 @@ func TestListNotesFilters(t *testing.T) {
 	a, _ := store.Add("a", "X")
 	_, _ = store.Add("b", "")
 	c, _ := store.Add("c", "X")
-	if _, err := store.Annotate(a.ID, note.AnnotationInput{Kind: note.KindMemo, Body: "x"}); err != nil {
+	if _, err := store.SetRoute(a.ID, note.Route{To: note.RouteRecord}); err != nil {
 		t.Fatal(err)
 	}
 

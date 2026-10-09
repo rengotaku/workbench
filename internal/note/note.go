@@ -32,10 +32,26 @@ type Annotation struct {
 	ID        int       `json:"id"`
 }
 
+// Route destinations: where a triaged memo went. A memo that asks for an
+// action becomes a task; one that is only a record stays here.
+const (
+	RouteTodo   = "todo"
+	RouteRecord = "record"
+)
+
+// Route is the destination the AI chose for a memo when it picked it up.
+type Route struct {
+	To     string `json:"to"`                // RouteTodo | RouteRecord
+	TaskID string `json:"task_id,omitempty"` // the task made from the memo, when To is RouteTodo
+}
+
 // Note is a one-line memo: the text as typed, the first link in it, the
 // related links attached when it was added, and the annotations added since.
+// TriagedAt and Route are empty until the AI has picked the memo up.
 type Note struct {
 	CreatedAt   time.Time    `json:"created_at"`
+	TriagedAt   *time.Time   `json:"triaged_at,omitempty"`
+	Route       *Route       `json:"route,omitempty"`
 	Text        string       `json:"text"`
 	URL         string       `json:"url"`
 	Topic       string       `json:"topic"`
@@ -44,14 +60,14 @@ type Note struct {
 	ID          int          `json:"id"`
 }
 
-// Pending reports whether the memo is waiting for its first annotation.
-func (n Note) Pending() bool { return len(n.Annotations) == 0 }
+// Pending reports whether the AI has not picked the memo up yet.
+func (n Note) Pending() bool { return n.TriagedAt == nil }
 
 // Filter narrows a list. The zero value matches everything.
 type Filter struct {
 	Topic   string // only this topic
 	NoTopic bool   // only memos without a topic
-	Pending bool   // only memos without annotations
+	Pending bool   // only memos the AI has not picked up (no triaged_at)
 }
 
 func (f Filter) match(n Note) bool {

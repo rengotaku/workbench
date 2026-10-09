@@ -21,7 +21,7 @@
     {{range .Notes}}
     <article class="ev" id="note-{{.ID}}">
       <div class="meta">
-        {{.Time}}{{if .Source}} · <span class="src">{{.Source}}</span>{{end}}{{if .Topic}} · <span class="topic">{{.Topic}}</span>{{end}} · <span class="nid">#{{.ID}}</span>
+        {{.Time}}{{if .Source}} · <span class="src">{{.Source}}</span>{{end}}{{if .Topic}} · <span class="topic">{{.Topic}}</span>{{end}} · <span class="nid">#{{.ID}}</span>{{with .Route}} · {{if .Href}}<a class="route" href="{{.Href}}">{{.Label}}</a>{{else}}<span class="route">{{.Label}}</span>{{end}}{{end}}
       </div>
       <p class="memo">{{range .Segments}}{{if .Ref}}<a class="ref" href="{{.URL}}" target="_blank" rel="noopener noreferrer" title="{{.URL}}">{{.Text}}</a>{{else if .URL}}<a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Text}}</a>{{else}}{{.Text}}{{end}}{{end}}</p>
       {{if .Links}}
@@ -34,9 +34,8 @@
         <div class="who">{{.Label}} · {{.Author}} · {{.When}}{{if .Source}} · {{.Source}}{{end}}</div>
         {{if eq .Kind "quote"}}<blockquote class="body">{{.Body}}</blockquote>{{else}}<p class="body">{{.Body}}</p>{{end}}
       </div>
-      {{else}}
-      <div class="pending">補足待ち</div>
       {{end}}
+      {{if .Pending}}<div class="pending">補足待ち</div>{{end}}
     </article>
     {{end}}
   </section>

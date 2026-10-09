@@ -18,6 +18,7 @@ import (
 
 	"github.com/rengotaku/workbench/internal/note"
 	"github.com/rengotaku/workbench/internal/noteapi"
+	"github.com/rengotaku/workbench/internal/noteroute"
 )
 
 // DefaultBaseURL is where the server listens unless NOTE_SERVER says otherwise.
@@ -176,4 +177,24 @@ func (c *Client) Topics() ([]string, error) {
 func (c *Client) Delete(id int) error {
 	_, err := c.do(http.MethodDelete, "/api/notes/"+strconv.Itoa(id), nil)
 	return err
+}
+
+// RouteRecord marks a memo as picked up and kept only as a record.
+func (c *Client) RouteRecord(id int) (noteroute.Response, []byte, error) {
+	return c.route(id, noteroute.Request{To: note.RouteRecord})
+}
+
+// RouteTodo makes a task from a memo and marks the memo as picked up. Running
+// it again for the same memo returns the task it already made.
+func (c *Client) RouteTodo(id int, t noteroute.TaskInput) (noteroute.Response, []byte, error) {
+	return c.route(id, noteroute.Request{To: note.RouteTodo, Task: &t})
+}
+
+func (c *Client) route(id int, req noteroute.Request) (noteroute.Response, []byte, error) {
+	raw, err := c.do(http.MethodPost, "/api/notes/"+strconv.Itoa(id)+"/route", req)
+	if err != nil {
+		return noteroute.Response{}, nil, err
+	}
+	r, err := decode[noteroute.Response](raw)
+	return r, raw, err
 }

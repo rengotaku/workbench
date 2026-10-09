@@ -256,6 +256,7 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 		}
 		back := *e.Snapshot
 		back.ID = t.ID
+		back.Annotations = t.Annotations // supplements added since stay
 		if back.State == StateSomeday {
 			// Extending someday only moved Until; undoing it only moves Until
 			// back — the task stays someday, not a resume it never asked for.

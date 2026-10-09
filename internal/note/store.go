@@ -18,6 +18,9 @@ import (
 // ErrNotFound is returned for an id that does not exist.
 var ErrNotFound = errors.New("メモが見つかりません")
 
+// ErrRouteConflict is returned when a memo was already routed somewhere else.
+var ErrRouteConflict = errors.New("このメモはすでに別の行き先に振り分け済みです")
+
 // InvalidError is a rejected input. Its text is written for the person (or
 // the AI) who sent it, so callers can pass it on as is.
 type InvalidError string
@@ -83,7 +86,48 @@ func Open(dir string, now func() time.Time) (*Store, error) {
 	}
 	s.st.NextNote = max(s.st.NextNote, 1)
 	s.st.NextAnnotation = max(s.st.NextAnnotation, 1)
+	if err := s.migrateTriage(); err != nil {
+		_ = s.Close()
+		return nil, err
+	}
 	return s, nil
+}
+
+// migrateTriage settles memos from before triage existed: one that already has
+// an annotation was read by the AI, so it counts as picked up (recorded, at the
+// time of its first annotation). It saves only when something changed, so a
+// second start finds nothing to do.
+func (s *Store) migrateTriage() error {
+	next := s.st
+	next.Notes = slices.Clone(s.st.Notes)
+	var events []Event
+	for i, n := range next.Notes {
+		if n.TriagedAt != nil || len(n.Annotations) == 0 {
+			continue
+		}
+		at := n.Annotations[0].CreatedAt
+		n.TriagedAt = &at
+		n.Route = &Route{To: RouteRecord}
+		next.Notes[i] = n
+		events = append(events, Event{At: s.now(), Op: "migrate_triage", NoteID: n.ID, Detail: n.Route})
+	}
+	if len(events) == 0 {
+		return nil
+	}
+	b, err := json.MarshalIndent(next, "", "  ")
+	if err != nil {
+		return fmt.Errorf("保存内容を作れません: %w", err)
+	}
+	if err := store.WriteFileAtomic(s.statePath(), b); err != nil {
+		return err
+	}
+	s.st = next
+	for _, ev := range events {
+		if err := s.appendEvent(ev); err != nil {
+			slog.Error("event log append failed; state was saved", "op", ev.Op, "error", err)
+		}
+	}
+	return nil
 }
 
 // Close releases the data directory lock. The Store must not be used after.
@@ -212,7 +256,7 @@ func (s *Store) List(f Filter) []Note {
 	return out
 }
 
-// PendingCount is the number of memos with no annotation yet.
+// PendingCount is the number of memos the AI has not picked up yet.
 func (s *Store) PendingCount() int {
 	return len(s.List(Filter{Pending: true}))
 }
@@ -284,6 +328,47 @@ func (s *Store) Annotate(id int, in AnnotationInput) (Annotation, error) {
 		return Annotation{}, err
 	}
 	return a, nil
+}
+
+// SetRoute records where the AI sent a memo and when it picked it up. A memo
+// already routed to the same destination is returned as it is (so a retry is
+// harmless); one routed elsewhere is ErrRouteConflict.
+func (s *Store) SetRoute(id int, r Route) (Note, error) {
+	if r.To != RouteTodo && r.To != RouteRecord {
+		return Note{}, InvalidError(fmt.Sprintf("to は todo / record のどちらかにしてください（受け取った値: %q）", r.To))
+	}
+	if r.To == RouteTodo && r.TaskID == "" {
+		return Note{}, InvalidError("todo に振り分けるときは task_id が要ります")
+	}
+	if r.To == RouteRecord {
+		r.TaskID = ""
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := s.indexOf(id)
+	if i < 0 {
+		return Note{}, ErrNotFound
+	}
+	cur := s.st.Notes[i]
+	if cur.Route != nil {
+		if cur.Route.To != r.To {
+			return Note{}, ErrRouteConflict
+		}
+		return cur, nil
+	}
+	at := s.now()
+	updated := cur
+	updated.TriagedAt = &at
+	updated.Route = &r
+
+	next := s.st
+	next.Notes = slices.Clone(s.st.Notes)
+	next.Notes[i] = updated
+	if err := s.commit(next, Event{At: at, Op: "route", NoteID: id, Detail: r}); err != nil {
+		return Note{}, err
+	}
+	return updated, nil
 }
 
 // SetTopic sets a memo's topic; "" clears it. A topic that is not registered

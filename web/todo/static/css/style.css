@@ -131,6 +131,10 @@ body {
 .d-trail { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
 .d-trail li { font-size: 11.5px; color: var(--ink-soft); line-height: 1.6; }
 .d-trail time { font-family: var(--mono); color: var(--muted); margin-right: 6px; }
+.d-from { display: inline-block; margin-bottom: 6px; font-size: 11.5px; color: var(--muted); text-decoration: underline; }
+.d-ann-item { margin: 0 0 8px; }
+.d-ann-who { font-size: 11px; color: var(--muted); }
+.d-ann-body { font-size: 12px; line-height: 1.75; color: var(--ink-soft); white-space: pre-wrap; }
 .d-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.9; }
 
 .app {

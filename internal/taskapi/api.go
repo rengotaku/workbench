@@ -49,6 +49,7 @@ func (a *API) Mount(r gin.IRouter) {
 	g.POST("/tasks/:id/someday", a.somedayTask)
 	g.POST("/tasks/:id/order", a.orderTask)
 	g.GET("/tasks/:id/context", a.taskContext)
+	g.POST("/tasks/:id/annotations", a.annotateTask)
 
 	g.POST("/import", a.importTasks)
 
@@ -439,6 +440,33 @@ func (a *API) importTasks(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"tasks": tasks, "imported": len(tasks)})
+}
+
+type annotateRequest struct {
+	Kind   string `json:"kind"`
+	Body   string `json:"body"`
+	Source string `json:"source"`
+	Actor  string `json:"actor"`
+}
+
+// annotateTask appends a supplement. It never changes the task itself and is
+// not something undo reverses.
+func (a *API) annotateTask(c *gin.Context) {
+	var req annotateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	actor := req.Actor
+	if actor == "" {
+		actor = c.Query("actor")
+	}
+	an, err := a.store.Annotate(c.Param("id"), task.AnnotationInput{Kind: req.Kind, Body: req.Body, Source: req.Source}, actorOf(actor))
+	if err != nil {
+		a.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"annotation": an})
 }
 
 func (a *API) taskContext(c *gin.Context) {

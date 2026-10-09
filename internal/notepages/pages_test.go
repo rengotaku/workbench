@@ -104,10 +104,11 @@ func TestTimelineGroupsByDayNewestFirst(t *testing.T) {
 
 func TestBuildTimelineDayHeadings(t *testing.T) {
 	loc := time.FixedZone("JST", 9*3600)
+	triaged := time.Date(2026, 10, 2, 10, 20, 0, 0, loc)
 	notes := []note.Note{
 		{ID: 3, Text: "c", CreatedAt: time.Date(2026, 10, 6, 16, 45, 0, 0, loc)},
 		{ID: 2, Text: "b", CreatedAt: time.Date(2026, 10, 6, 11, 20, 0, 0, loc)},
-		{ID: 1, Text: "a", CreatedAt: time.Date(2026, 10, 2, 10, 5, 0, 0, loc), Annotations: []note.Annotation{{ID: 1, Kind: note.KindMemo, Author: note.AuthorAI, Body: "x", CreatedAt: time.Date(2026, 10, 2, 10, 20, 0, 0, loc)}}},
+		{ID: 1, Text: "a", CreatedAt: time.Date(2026, 10, 2, 10, 5, 0, 0, loc), TriagedAt: &triaged, Route: &note.Route{To: note.RouteTodo, TaskID: "T004"}, Annotations: []note.Annotation{{ID: 1, Kind: note.KindMemo, Author: note.AuthorAI, Body: "x", CreatedAt: time.Date(2026, 10, 2, 10, 20, 0, 0, loc)}}},
 	}
 	v := buildTimeline(notes, nil, "", false)
 	if len(v.Days) != 2 || len(v.Days[0].Notes) != 2 || len(v.Days[1].Notes) != 1 {
@@ -115,6 +116,9 @@ func TestBuildTimelineDayHeadings(t *testing.T) {
 	}
 	if v.Pending != 2 {
 		t.Errorf("Pending = %d, want 2", v.Pending)
+	}
+	if r := v.Days[1].Notes[0].Route; r == nil || r.Label != "→ todo T004" || r.Href != "/" {
+		t.Errorf("route view = %+v", r)
 	}
 	if v.Days[0].Notes[0].ID != 3 || v.Days[1].Notes[0].Annotations[0].Label != "メモ" || v.Days[1].Notes[0].Annotations[0].Author != "AI" {
 		t.Errorf("views = %+v", v.Days)
@@ -127,6 +131,9 @@ func TestTimelineShowsLinksSourceAndAnnotations(t *testing.T) {
 	_, _ = store.Annotate(n.ID, note.AnnotationInput{Kind: note.KindQuote, Body: "剣持: 変更します\n・deploy_staging", Source: "slack"})
 	_, _ = store.Annotate(n.ID, note.AnnotationInput{Kind: note.KindAnalysis, Body: "考察の本文", Author: note.AuthorHuman})
 	_, _ = store.Add("補足のないメモ", "")
+	_, _ = store.SetRoute(n.ID, note.Route{To: note.RouteTodo, TaskID: "T007"})
+	rec, _ := store.Add("記録にしたメモ", "")
+	_, _ = store.SetRoute(rec.ID, note.Route{To: note.RouteRecord})
 
 	_, body := get(t, h, "/notes/timeline")
 	mustContain(t, body,
@@ -136,6 +143,8 @@ func TestTimelineShowsLinksSourceAndAnnotations(t *testing.T) {
 		"引用 · AI", "考察 · 人", " · slack",
 		"補足待ち 1",
 		`<div class="pending">補足待ち</div>`,
+		`<a class="route" href="/">→ todo T007</a>`,
+		`<span class="route">記録</span>`,
 	)
 }
 
