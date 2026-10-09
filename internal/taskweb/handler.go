@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/rengotaku/workbench/internal/httpguard"
 	"github.com/rengotaku/workbench/internal/taskapi"
 )
 
@@ -17,31 +16,26 @@ type Handler struct {
 	templates map[string]*template.Template
 	staticFS  fs.FS
 	api       *taskapi.API
-	port      string
 }
 
 // NewHandler wires the page and the API together. api may be nil in tests that
-// only exercise the page. port is the one the server listens on; requests for
-// any other Host or Origin are refused.
-func NewHandler(templates map[string]*template.Template, staticFS fs.FS, a *taskapi.API, port string) *Handler {
-	return &Handler{templates: templates, staticFS: staticFS, api: a, port: port}
+// only exercise the page.
+func NewHandler(templates map[string]*template.Template, staticFS fs.FS, a *taskapi.API) *Handler {
+	return &Handler{templates: templates, staticFS: staticFS, api: a}
 }
 
-// Routes returns the router: the page, the static bundle, health, and /api.
-func (h *Handler) Routes() http.Handler {
-	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery(), httpguard.New(h.port))
-
+// Mount registers the pages, the static bundle and /api on r. The engine, its
+// middleware and /healthz belong to the caller, so that the todo and note
+// screens can share one server.
+func (h *Handler) Mount(r gin.IRouter) {
 	r.StaticFS("/static", http.FS(h.staticFS))
 
 	r.GET("/", h.handleIndex)
 	r.GET("/add", h.handleAdd)
-	r.GET("/healthz", h.handleHealthz)
 
 	if h.api != nil {
 		h.api.Mount(r)
 	}
-	return r
 }
 
 // handleIndex renders the shell. The list itself is fetched from the API on
@@ -61,10 +55,6 @@ func (h *Handler) handleAdd(c *gin.Context) {
 		"Title": "着手順に追加",
 		"Today": today(time.Now()),
 	})
-}
-
-func (h *Handler) handleHealthz(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func (h *Handler) render(c *gin.Context, name string, status int, data any) {

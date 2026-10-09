@@ -46,7 +46,7 @@ func TestNewBaseURL(t *testing.T) {
 	if err != nil || c.BaseURL() != "http://127.0.0.1:1" {
 		t.Errorf("explicit should beat env: %v, %v", c, err)
 	}
-	for _, bad := range []string{"127.0.0.1:8086", "ftp://x", "http://", "://"} {
+	for _, bad := range []string{"127.0.0.1:8085", "ftp://x", "http://", "://"} {
 		if _, err := New(bad); err == nil {
 			t.Errorf("New(%q) should fail", bad)
 		}

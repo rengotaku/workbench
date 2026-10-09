@@ -1,5 +1,5 @@
-// Package pages serves the two screens (add, timeline), the static bundle and
-// /healthz, and mounts the API beside them.
+// Package notepages serves the two screens (add at /notes, timeline at
+// /notes/timeline) and the static bundle, and mounts the API beside them.
 package notepages
 
 import (
@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/rengotaku/workbench/internal/httpguard"
 	"github.com/rengotaku/workbench/internal/note"
 	"github.com/rengotaku/workbench/internal/noteapi"
 )
@@ -23,7 +22,6 @@ type Pages struct {
 	staticFS  fs.FS
 	store     *note.Store
 	api       *noteapi.API
-	port      string
 }
 
 // LoadTemplates builds a per-page template set so each page gets its own
@@ -41,23 +39,26 @@ func LoadTemplates(fsys fs.FS) (map[string]*template.Template, error) {
 	return m, nil
 }
 
-// New wires the screens and the API together. port is the one the server
-// listens on; requests for any other Host or Origin are refused.
-func New(templates map[string]*template.Template, staticFS fs.FS, store *note.Store, port string) *Pages {
-	return &Pages{templates: templates, staticFS: staticFS, store: store, api: noteapi.New(store), port: port}
+// Paths of the screens and of the static bundle. They live under /notes so
+// they do not collide with the todo screens that share the server.
+const (
+	AddPath      = "/notes"
+	TimelinePath = "/notes/timeline"
+	StaticPath   = "/notes/static"
+)
+
+// New wires the screens and the API together.
+func New(templates map[string]*template.Template, staticFS fs.FS, store *note.Store) *Pages {
+	return &Pages{templates: templates, staticFS: staticFS, store: store, api: noteapi.New(store)}
 }
 
-// Routes returns the router.
-func (p *Pages) Routes() http.Handler {
-	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery(), httpguard.New(p.port))
-
-	r.StaticFS("/static", http.FS(p.staticFS))
-	r.GET("/", p.handleAdd)
-	r.GET("/timeline", p.handleTimeline)
-	r.GET("/healthz", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+// Mount registers the screens, the static bundle and /api on r. The engine,
+// its middleware and /healthz belong to the caller.
+func (p *Pages) Mount(r gin.IRouter) {
+	r.StaticFS(StaticPath, http.FS(p.staticFS))
+	r.GET(AddPath, p.handleAdd)
+	r.GET(TimelinePath, p.handleTimeline)
 	p.api.Mount(r)
-	return r
 }
 
 func (p *Pages) render(c *gin.Context, name string, data any) {
@@ -155,11 +156,11 @@ func (p *Pages) handleTimeline(c *gin.Context) {
 }
 
 func buildTimeline(notes []note.Note, topics []string, topic string, noTopic bool) timelineView {
-	chips := []chipView{{Label: "すべて", Href: "/timeline", On: topic == "" && !noTopic}}
+	chips := []chipView{{Label: "すべて", Href: TimelinePath, On: topic == "" && !noTopic}}
 	for _, t := range topics {
-		chips = append(chips, chipView{Label: t, Href: "/timeline?topic=" + url.QueryEscape(t), On: t == topic && !noTopic})
+		chips = append(chips, chipView{Label: t, Href: TimelinePath + "?topic=" + url.QueryEscape(t), On: t == topic && !noTopic})
 	}
-	chips = append(chips, chipView{Label: "話題なし", Href: "/timeline?no_topic=1", On: noTopic})
+	chips = append(chips, chipView{Label: "話題なし", Href: TimelinePath + "?no_topic=1", On: noTopic})
 
 	v := timelineView{Title: "note タイムライン", Chips: chips, Empty: "まだメモがありません。note と打って 1 行入れてください"}
 	if topic != "" || noTopic {

@@ -293,7 +293,7 @@
 
   document.addEventListener('keydown', function (e) {
     if (shared.composing(e)) return;
-    if (e.key === 'Escape') { location.href = '/timeline'; }
+    if (e.key === 'Escape') { location.href = '/notes/timeline'; }
   });
 
   el.memo.focus();

@@ -11,7 +11,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 ```
   人 ──┬─ ブラウザ  http://127.0.0.1:8085 ─┐
-       │                                    ├─ todo-order-server ─┬─ tasks.json
+       │                                    ├─ workbench-server ─┬─ tasks.json
   AI ──┴─ todo CLI ──── REST /api/… ────────┘   （唯一の書き手）    └─ events-YYYY-MM.jsonl
 ```
 
@@ -23,19 +23,20 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 | 場所 | 役割 |
 |---|---|
-| `cmd/todo-server/` | サーバの起動。設定読み込み・テンプレート読み込み・グレースフル停止 |
+| `cmd/server/` | note と共通のサーバの起動。設定読み込み・テンプレート読み込み・グレースフル停止 |
+| `internal/server/` | todo と note のルートを 1 つの gin エンジンにまとめる。httpguard と `/healthz` はここ |
 | `cmd/todo/` | CLI。サブコマンドの定義と人向けの出力整形だけを持つ |
 | `internal/task/` | タスクの型・イベントの型・保存（`store.go`）・旧台帳の取り込み（`import.go`） |
 | `internal/taskapi/` | REST ハンドラ。期限の日数計算と区画分けはここで行い、画面と CLI が再計算しない |
 | `internal/taskclient/` | CLI からサーバを叩く HTTP クライアント |
 | `internal/legacy/` | 旧台帳（テキストの TODO ファイルと順序 YAML）の読み取りと移行計画の組み立て |
-| `internal/taskweb/` | 画面の配信と `/api` のマウント |
+| `internal/taskweb/` | 画面（`/`・`/add`）と `/static` の配信、`/api` のマウント（`Mount`） |
 | `web/todo/` | テンプレート・CSS・JS。`embed` でバイナリに焼き込む |
 | `launchd/`, `scripts/` | 常駐させるための plist テンプレートと配置スクリプト |
 
 ## データ
 
-`DATA_DIR`（既定 `~/.local/share/todo-order`、権限 0700）に 2 種類。
+`TODO_DATA_DIR`（既定 `~/.local/share/todo-order`、権限 0700）に 2 種類。
 
 | ファイル | 性質 |
 |---|---|

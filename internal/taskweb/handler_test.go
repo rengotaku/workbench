@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/rengotaku/workbench/internal/httpguard"
 	"github.com/rengotaku/workbench/internal/task"
 	"github.com/rengotaku/workbench/internal/taskapi"
 	"github.com/rengotaku/workbench/internal/taskweb"
@@ -35,11 +36,19 @@ func makeTestTemplates() map[string]*template.Template {
 
 const testPort = "8085"
 
+// routes mounts h the way cmd/server does: behind the guard, on one engine.
+func routes(h *taskweb.Handler) http.Handler {
+	r := gin.New()
+	r.Use(httpguard.New(testPort))
+	h.Mount(r)
+	return r
+}
+
 func setupHandler() *taskweb.Handler {
 	staticFS := fstest.MapFS{
 		"css/style.css": &fstest.MapFile{Data: []byte("body{color:#000}")},
 	}
-	return taskweb.NewHandler(makeTestTemplates(), fs.FS(staticFS), nil, testPort)
+	return taskweb.NewHandler(makeTestTemplates(), fs.FS(staticFS), nil)
 }
 
 func TestHandler_Index(t *testing.T) {
@@ -48,7 +57,7 @@ func TestHandler_Index(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Host = "127.0.0.1:" + testPort
 	rec := httptest.NewRecorder()
-	h.Routes().ServeHTTP(rec, req)
+	routes(h).ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
@@ -61,23 +70,11 @@ func TestHandler_Add(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/add", nil)
 	req.Host = "127.0.0.1:" + testPort
 	rec := httptest.NewRecorder()
-	h.Routes().ServeHTTP(rec, req)
+	routes(h).ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
 	assert.Contains(t, rec.Body.String(), "着手順に追加")
-}
-
-func TestHandler_Healthz(t *testing.T) {
-	h := setupHandler()
-
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	req.Host = "127.0.0.1:" + testPort
-	rec := httptest.NewRecorder()
-	h.Routes().ServeHTTP(rec, req)
-
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.JSONEq(t, `{"status":"ok"}`, rec.Body.String())
 }
 
 func TestHandler_Static(t *testing.T) {
@@ -86,7 +83,7 @@ func TestHandler_Static(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/static/css/style.css", nil)
 	req.Host = "127.0.0.1:" + testPort
 	rec := httptest.NewRecorder()
-	h.Routes().ServeHTTP(rec, req)
+	routes(h).ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "body{color:#000}")
@@ -100,7 +97,7 @@ func TestHandler_NoAPIMounted(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
 	req.Host = "127.0.0.1:" + testPort
 	rec := httptest.NewRecorder()
-	h.Routes().ServeHTTP(rec, req)
+	routes(h).ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
@@ -125,8 +122,8 @@ func TestHandler_Guard(t *testing.T) {
 	added, err := store.Add("a", "", "", task.ActorHuman)
 	require.NoError(t, err)
 
-	h := taskweb.NewHandler(makeTestTemplates(), fs.FS(fstest.MapFS{}),
-		taskapi.New(store, time.Local), testPort).Routes()
+	h := routes(taskweb.NewHandler(makeTestTemplates(), fs.FS(fstest.MapFS{}),
+		taskapi.New(store, time.Local)))
 	good := "127.0.0.1:" + testPort
 	js := map[string]string{"Content-Type": "application/json"}
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  todo-order server as a login agent.
+  workbench server (todo + note) as a login agent.
 
   Placed by `make install-agent`, which fills in __HOME__ and __PORT__. The
   server binds loopback only and has no authentication, so LISTEN_ADDR is
@@ -10,11 +10,11 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.user.todo-order.server</string>
+    <string>com.user.workbench.server</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>__HOME__/.local/bin/todo-order-server</string>
+        <string>__HOME__/.local/bin/workbench-server</string>
     </array>
 
     <key>EnvironmentVariables</key>
@@ -23,8 +23,10 @@
         <string>127.0.0.1</string>
         <key>PORT</key>
         <string>__PORT__</string>
-        <key>DATA_DIR</key>
+        <key>TODO_DATA_DIR</key>
         <string>__HOME__/.local/share/todo-order</string>
+        <key>NOTE_DATA_DIR</key>
+        <string>__HOME__/.local/share/note-stock</string>
         <key>APP_ENV</key>
         <string>production</string>
     </dict>
@@ -38,9 +40,9 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>__HOME__/Library/Logs/todo-order/server.log</string>
+    <string>__HOME__/Library/Logs/workbench/server.log</string>
     <key>StandardErrorPath</key>
-    <string>__HOME__/Library/Logs/todo-order/server.err.log</string>
+    <string>__HOME__/Library/Logs/workbench/server.err.log</string>
 
     <key>ProcessType</key>
     <string>Background</string>

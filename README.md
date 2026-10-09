@@ -2,22 +2,27 @@
 
 個人用の小さなローカルツールを 1 つのリポジトリ・1 つの Go モジュールにまとめたもの。
 
-| ツール | 中身 | CLI / サーバ | ポート |
+サーバは `server` 1 本（ポート 8085）で、todo と note の画面・API を同じプロセスで配る。
+
+| ツール | 中身 | CLI | 画面 |
 |---|---|---|---|
-| todo-order | 着手順で持つ 1 人用の作業リスト | `todo` / `todo-server` | 8085 |
-| note-stock | 1 行メモを溜めて AI が補足するタイムライン | `note` / `note-server` | 8086 |
+| todo-order | 着手順で持つ 1 人用の作業リスト | `todo` | `/`、`/add` |
+| note-stock | 1 行メモを溜めて AI が補足するタイムライン | `note` | `/notes`、`/notes/timeline` |
+
+API は `/api/tasks…` `/api/undo` `/api/revision` `/api/import` `/api/ask` `/api/events/:id/why`（todo）と `/api/notes…` `/api/topics`（note）。`/healthz` は 1 つ。
 
 ## 共通の操作
 
 ```bash
-make build     # bin/ に 4 本（todo, todo-server, note, note-server）
+make build     # bin/ に 3 本（todo, note, server）
 make test      # go test ./...
 make ci        # lint + テスト（カバレッジ）
-make status    # 両サーバの起動確認
-make stop      # 両サーバの停止
+make run       # サーバを起動（既定 127.0.0.1:8085。PORT=N で変更）
+make status    # 起動確認
+make stop      # 停止
 ```
 
-配置: `cmd/` に 4 つのエントリ、`internal/task*` / `internal/legacy` が todo-order、`internal/note*` が note-stock、`web/todo` / `web/note` が各画面、`docs/` に設計メモと ADR（`todo-` / `note-` 接頭辞）。
+配置: `cmd/` に 3 つのエントリ（`server` / `todo` / `note`）、`internal/server` が両方を 1 つの gin エンジンにまとめる、`internal/task*` / `internal/legacy` が todo-order、`internal/note*` が note-stock、`web/todo` / `web/note` が各画面、`docs/` に設計メモと ADR（`todo-` / `note-` 接頭辞）。
 
 ## todo-order
 
@@ -113,20 +118,7 @@ todo rename T007 "直した名前"                          # 名前を変える
 
 ### サーバ
 
-```bash
-make install   # 依存取得
-make build     # bin/todo-server と bin/todo（note 側も含め 4 本を bin/ に出す）
-make run-todo  # 起動（既定 127.0.0.1:8085）
-make status    # 起動確認
-make stop-todo # 停止（make stop は todo / note の両方）
-make ci        # lint + テスト（カバレッジ）
-```
-
-| 変数 | 既定 | 用途 |
-|---|---|---|
-| `LISTEN_ADDR` | `127.0.0.1` | ループバック固定。認証は無いので LAN へ出さない |
-| `PORT` | `8085` | ポート |
-| `DATA_DIR` | `~/.local/share/todo-order` | データの置き場 |
+todo と note で共通。起動・環境変数は「サーバ（todo / note 共通）」節を参照。
 
 ### 消すこと
 
@@ -186,11 +178,7 @@ todo import --ledger <旧 TODO ファイル> --order <旧 順序ファイル>
 
 ### 常駐させる
 
-```bash
-make install-agent-todo   # ビルド → 配置（load はしない）
-```
-
-`~/.local/bin/todo-order-server` と `~/.local/bin/todo`、`~/Library/LaunchAgents/com.user.todo-order.server.plist` を置く。**load は自分で行う**（login item の登録はこのマシンで監視対象のため、スクリプトからは実行しない）。コマンドは実行後に表示される。
+「サーバ（todo / note 共通）」節の `make install-agent` を参照。
 
 ### 設計の記録
 
@@ -217,8 +205,8 @@ make install-agent-todo   # ビルド → 配置（load はしない）
 
 | URL | 中身 |
 |---|---|
-| `/` | 登録画面。大きな 1 行入力と話題チップだけ。Enter で保存して欄を空にし、直後なら「元に戻す」で消せる。Esc でタイムラインへ |
-| `/timeline` | 日付見出しごとに新しい順。話題チップ（すべて / 各話題 / 話題なし）で絞り込み、右上に補足待ちの件数。N で登録画面へ |
+| `/notes` | 登録画面。大きな 1 行入力と話題チップだけ。Enter で保存して欄を空にし、直後なら「元に戻す」で消せる。Esc でタイムラインへ |
+| `/notes/timeline` | 日付見出しごとに新しい順。話題チップ（すべて / 各話題 / 話題なし）で絞り込み、右上に補足待ちの件数。N で登録画面へ |
 
 - 話題は 1 つだけ選ぶ。選んだチップは保存後も残り、もう一度押すと外れる。「＋ 話題を追加」はその場で名前を打つ
 - 日本語入力の変換中の Enter / Esc は無視する
@@ -248,7 +236,7 @@ note help
 
 | 変数 | 既定 | 用途 |
 |---|---|---|
-| `NOTE_SERVER` | `http://127.0.0.1:8086` | CLI が叩くサーバ |
+| `NOTE_SERVER` | `http://127.0.0.1:8085` | CLI が叩くサーバ |
 
 ### AI が補足を付ける流れ
 
@@ -263,54 +251,51 @@ note topic 41 青分離                                   # 話題が空なら A
 - 補足が 1 件付くと補足待ちから外れる
 - あとで考え直したら `analysis` をもう 1 件足す。前の補足は残り、時刻つきで並ぶ
 
-### サーバ
-
-```bash
-make install   # 依存取得
-make build     # bin/note-server と bin/note（todo 側も含め 4 本を bin/ に出す）
-make run-note  # 起動（既定 127.0.0.1:8086）
-make status    # 起動確認
-make stop-note # 停止（make stop は todo / note の両方）
-make ci        # lint + テスト（カバレッジ）
-```
-
-| 変数 | 既定 | 用途 |
-|---|---|---|
-| `LISTEN_ADDR` | `127.0.0.1` | ループバック固定。認証は無いので LAN へ出さない |
-| `PORT` | `8086` | ポート |
-| `DATA_DIR` | `~/.local/share/note-stock` | データの置き場 |
-
-データディレクトリの中身:
+### データディレクトリの中身
 
 | ファイル | 中身 |
 |---|---|
 | `notes.json` | 現在の状態。一時ファイル + rename で原子的に書く |
 | `events-YYYY-MM.jsonl` | 操作ログ。追記だけで、月ごとに分かれる |
 
-### 常駐させる
+### サーバ（todo / note 共通）
 
 ```bash
-make install-agent-note   # bin を ~/.local/bin に、plist を ~/Library/LaunchAgents に置く（読み込みはしない）
+make install        # 依存取得
+make build          # bin/ に server / todo / note を出す
+make run            # 起動（既定 127.0.0.1:8085。PORT=N で変更）
+make status         # 起動確認
+make stop           # 停止
+make ci             # lint + テスト（カバレッジ）
+make install-agent  # ビルド → 配置（load はしない）
 ```
 
-置いたあと、ログイン項目として登録するのは人が行う。
+| 変数 | 既定 | 用途 |
+|---|---|---|
+| `LISTEN_ADDR` | `127.0.0.1` | ループバック固定。認証は無いので LAN へ出さない |
+| `PORT` | `8085` | ポート |
+| `TODO_DATA_DIR` | `~/.local/share/todo-order` | todo のデータの置き場 |
+| `NOTE_DATA_DIR` | `~/.local/share/note-stock` | note のデータの置き場 |
+| `APP_ENV` | なし | `production` で JSON ログ・gin リリースモード |
+| `SHUTDOWN_TIMEOUT` | `10s` | 停止時の待ち時間 |
+
+旧 `DATA_DIR` は廃止した。
+
+### 常駐させる
+
+`make install-agent` が `~/.local/bin/workbench-server`、`~/.local/bin/todo`、`~/.local/bin/note-stock`（dotfiles の `note` ラッパーが呼ぶ名前）と `~/Library/LaunchAgents/com.user.workbench.server.plist` を置く。**読み込みは自分で行う**（login item の登録はこのマシンで監視対象のため、スクリプトからは実行しない）。
 
 ```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.note-stock.server.plist
-launchctl kickstart -k gui/$(id -u)/com.user.note-stock.server
-curl -s http://127.0.0.1:8086/healthz
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.workbench.server.plist
+launchctl kickstart -k gui/$(id -u)/com.user.workbench.server
+curl -s http://127.0.0.1:8085/healthz
 ```
 
 外すとき:
 
 ```bash
-launchctl bootout gui/$(id -u)/com.user.note-stock.server
-rm ~/Library/LaunchAgents/com.user.note-stock.server.plist
+launchctl bootout gui/$(id -u)/com.user.workbench.server
+rm ~/Library/LaunchAgents/com.user.workbench.server.plist
 ```
 
-CLI は `~/.local/bin/note-stock` に置かれる。ログは `~/Library/Logs/note-stock/`。
-
-### 構成と経緯
-
-- 構成・データフロー・どこを触れば何が変わるか: [docs/note-ARCHITECTURE.md](docs/note-ARCHITECTURE.md)
-- 設計判断の経緯: [docs/adr/README.md](docs/adr/README.md)（note-0001 以降）
+旧 2 サーバ（`com.user.todo-order.server` / `com.user.note-stock.server`）から移るときは、旧エージェントを bootout してから新しい方を bootstrap する（同じ 8085 を使うため）。
