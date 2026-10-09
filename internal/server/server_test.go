@@ -154,6 +154,9 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 		assert.Equal(t, 1, strings.Count(nav, `aria-current="page"`), s.path)
 		assert.Contains(t, body, "/shared/css/tokens.css", s.path)
 		assert.Contains(t, body, "/shared/js/common.js", s.path)
+		// No screen loads anything from a CDN (fonts included).
+		assert.NotContains(t, body, "https://fonts.", s.path)
+		assert.NotContains(t, body, "cdn.", s.path)
 	}
 }
 
