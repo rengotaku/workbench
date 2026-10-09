@@ -47,7 +47,11 @@
 
     frame.addEventListener('load', function () {
       frame.style.visibility = '';
-      frame.focus(); // the page focuses its own field; the frame must hold focus for that to show
+      // The page focused its field while the frame was hidden, which does not
+      // take; focus it again now that it shows.
+      frame.focus();
+      var field = frame.contentDocument && frame.contentDocument.querySelector('[autofocus]');
+      if (field) field.focus();
     });
     close.addEventListener('click', requestClose);
     // A click on the backdrop (outside the box) closes it too.
