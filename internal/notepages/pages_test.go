@@ -12,11 +12,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/rengotaku/workbench/internal/httpguard"
 	"github.com/rengotaku/workbench/internal/note"
 	noteweb "github.com/rengotaku/workbench/web/note"
 )
 
-const testPort = "8086"
+const testPort = "8085"
+
+// routes mounts p the way cmd/server does: behind the guard, on one engine.
+func routes(p *Pages) http.Handler {
+	r := gin.New()
+	r.Use(httpguard.New(testPort))
+	p.Mount(r)
+	return r
+}
 
 func newPages(t *testing.T) (http.Handler, *note.Store) {
 	t.Helper()
@@ -33,7 +42,7 @@ func newPages(t *testing.T) (http.Handler, *note.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(templates, static, store, testPort).Routes(), store
+	return routes(New(templates, static, store)), store
 }
 
 func get(t *testing.T, h http.Handler, path string) (int, string) {
@@ -68,11 +77,11 @@ func TestAddPage(t *testing.T) {
 	_, _ = store.Add("a", "青分離")
 	_ = store.AddTopic("C&C")
 
-	code, body := get(t, h, "/")
+	code, body := get(t, h, "/notes")
 	if code != http.StatusOK {
 		t.Fatalf("status = %d", code)
 	}
-	mustContain(t, body, `id="memo"`, "autofocus", `data-topic="青分離"`, `data-topic="C&amp;C"`, "＋ 話題を追加", "/static/js/add.js")
+	mustContain(t, body, `id="memo"`, "autofocus", `data-topic="青分離"`, `data-topic="C&amp;C"`, "＋ 話題を追加", "/notes/static/js/add.js")
 	mustNotContain(t, body, "https://fonts.", "cdn.")
 }
 
@@ -82,7 +91,7 @@ func TestTimelineGroupsByDayNewestFirst(t *testing.T) {
 	_, _ = store.Add("古いメモ", "")
 	_, _ = store.Add("新しいメモ", "")
 
-	_, body := get(t, h, "/timeline")
+	_, body := get(t, h, "/notes/timeline")
 	if strings.Index(body, "新しいメモ") > strings.Index(body, "古いメモ") {
 		t.Error("newest memo should come first")
 	}
@@ -119,7 +128,7 @@ func TestTimelineShowsLinksSourceAndAnnotations(t *testing.T) {
 	_, _ = store.Annotate(n.ID, note.AnnotationInput{Kind: note.KindAnalysis, Body: "考察の本文", Author: note.AuthorHuman})
 	_, _ = store.Add("補足のないメモ", "")
 
-	_, body := get(t, h, "/timeline")
+	_, body := get(t, h, "/notes/timeline")
 	mustContain(t, body,
 		`<a href="https://fundinno-inc.slack.com/archives/C1/p1" target="_blank" rel="noopener noreferrer">`,
 		`<span class="src">Slack</span>`,
@@ -135,7 +144,7 @@ func TestTimelineEscapesUserContent(t *testing.T) {
 	n, _ := store.Add(`<script>alert(1)</script> https://example.com/?a=1&b="2"`, `<b>話題</b>`)
 	_, _ = store.Annotate(n.ID, note.AnnotationInput{Kind: note.KindAnalysis, Body: `<img src=x onerror=alert(2)>`})
 
-	_, body := get(t, h, "/timeline")
+	_, body := get(t, h, "/notes/timeline")
 	mustNotContain(t, body, "<script>alert(1)", "<img src=x", "<b>話題</b>")
 	mustContain(t, body, "&lt;script&gt;alert(1)&lt;/script&gt;", "&lt;img src=x onerror=alert(2)&gt;")
 }
@@ -146,37 +155,34 @@ func TestTimelineFilters(t *testing.T) {
 	_, _ = store.Add("CCのメモ", "C&C")
 	_, _ = store.Add("無印のメモ", "")
 
-	_, all := get(t, h, "/timeline")
-	mustContain(t, all, "青のメモ", "CCのメモ", "無印のメモ", `href="/timeline?topic=C%26C"`, `href="/timeline?no_topic=1"`)
-	mustContain(t, all, `class="chip on" href="/timeline" aria-current="page"`)
+	_, all := get(t, h, "/notes/timeline")
+	mustContain(t, all, "青のメモ", "CCのメモ", "無印のメモ", `href="/notes/timeline?topic=C%26C"`, `href="/notes/timeline?no_topic=1"`)
+	mustContain(t, all, `class="chip on" href="/notes/timeline" aria-current="page"`)
 
-	_, blue := get(t, h, "/timeline?topic=%E9%9D%92%E5%88%86%E9%9B%A2")
-	mustContain(t, blue, "青のメモ", `class="chip on" href="/timeline?topic=`)
+	_, blue := get(t, h, "/notes/timeline?topic=%E9%9D%92%E5%88%86%E9%9B%A2")
+	mustContain(t, blue, "青のメモ", `class="chip on" href="/notes/timeline?topic=`)
 	mustNotContain(t, blue, "CCのメモ", "無印のメモ")
 
-	_, none := get(t, h, "/timeline?no_topic=1")
+	_, none := get(t, h, "/notes/timeline?no_topic=1")
 	mustContain(t, none, "無印のメモ")
 	mustNotContain(t, none, "青のメモ", "CCのメモ")
 
-	_, nobody := get(t, h, "/timeline?topic=nope")
+	_, nobody := get(t, h, "/notes/timeline?topic=nope")
 	mustContain(t, nobody, "この絞り込みに合うメモはありません")
 }
 
 func TestTimelineEmpty(t *testing.T) {
 	h, _ := newPages(t)
-	_, body := get(t, h, "/timeline")
+	_, body := get(t, h, "/notes/timeline")
 	mustContain(t, body, "まだメモがありません", "補足待ち 0")
 }
 
-func TestStaticAndHealth(t *testing.T) {
+func TestStatic(t *testing.T) {
 	h, _ := newPages(t)
-	for _, p := range []string{"/static/css/style.css", "/static/js/shared.js", "/static/js/add.js", "/static/js/timeline.js", "/static/icon.svg"} {
+	for _, p := range []string{"/notes/static/css/style.css", "/notes/static/js/shared.js", "/notes/static/js/add.js", "/notes/static/js/timeline.js", "/notes/static/icon.svg"} {
 		if code, body := get(t, h, p); code != http.StatusOK || body == "" {
 			t.Errorf("%s: status %d, %d bytes", p, code, len(body))
 		}
-	}
-	if code, body := get(t, h, "/healthz"); code != http.StatusOK || !strings.Contains(body, "ok") {
-		t.Errorf("healthz = %d %s", code, body)
 	}
 	if code, _ := get(t, h, "/api/topics"); code != http.StatusOK {
 		t.Errorf("API should be mounted beside the pages, status %d", code)
@@ -191,15 +197,15 @@ func TestRenderErrors(t *testing.T) {
 	}
 
 	// No templates at all: the page says so instead of panicking.
-	h := New(map[string]*template.Template{}, fstest.MapFS{}, store, testPort).Routes()
-	if code, _ := get(t, h, "/"); code != http.StatusInternalServerError {
+	h := routes(New(map[string]*template.Template{}, fstest.MapFS{}, store))
+	if code, _ := get(t, h, "/notes"); code != http.StatusInternalServerError {
 		t.Errorf("missing template status = %d", code)
 	}
 
 	// A template that fails while executing ends in an error text, not a panic.
 	broken := template.Must(template.New("base").Parse(`{{.NoSuchField}}`))
-	h = New(map[string]*template.Template{"add.html": broken}, fstest.MapFS{}, store, testPort).Routes()
-	if _, body := get(t, h, "/"); !strings.Contains(body, "画面を描画できませんでした") {
+	h = routes(New(map[string]*template.Template{"add.html": broken}, fstest.MapFS{}, store))
+	if _, body := get(t, h, "/notes"); !strings.Contains(body, "画面を描画できませんでした") {
 		t.Errorf("body = %q", body)
 	}
 }
@@ -237,10 +243,10 @@ func TestGuard(t *testing.T) {
 		body   string
 		want   int
 	}{
-		{"loopback host", "GET", "/timeline", good, nil, "", 200},
-		{"localhost host", "GET", "/timeline", "localhost:" + testPort, nil, "", 200},
-		{"foreign host (DNS rebinding)", "GET", "/timeline", "evil.example:" + testPort, nil, "", 403},
-		{"wrong port", "GET", "/timeline", "127.0.0.1:9999", nil, "", 403},
+		{"loopback host", "GET", "/notes/timeline", good, nil, "", 200},
+		{"localhost host", "GET", "/notes/timeline", "localhost:" + testPort, nil, "", 200},
+		{"foreign host (DNS rebinding)", "GET", "/notes/timeline", "evil.example:" + testPort, nil, "", 403},
+		{"wrong port", "GET", "/notes/timeline", "127.0.0.1:9999", nil, "", 403},
 		{"foreign host on the API", "GET", "/api/notes", "evil.example", nil, "", 403},
 		{"same origin", "POST", "/api/notes", good, map[string]string{"Origin": "http://127.0.0.1:" + testPort, "Content-Type": "application/json"}, `{"text":"x"}`, 201},
 		{"localhost origin", "POST", "/api/notes", good, map[string]string{"Origin": "http://localhost:" + testPort, "Content-Type": "application/json"}, `{"text":"x"}`, 201},
@@ -290,7 +296,7 @@ func TestTimelineShowsLinksAndReferences(t *testing.T) {
 	}
 	_, _ = store.Add("脚注 [1] だけ", "")
 
-	_, body := get(t, h, "/timeline")
+	_, body := get(t, h, "/notes/timeline")
 	mustContain(t, body,
 		`<a class="ref" href="https://x.slack.com/a/1" target="_blank" rel="noopener noreferrer" title="https://x.slack.com/a/1">[1]</a>`,
 		`<a class="ref" href="https://space.backlog.com/view/DSC-1"`,
@@ -321,6 +327,6 @@ func TestToNoteViewLeavesUnmatchedRefAsText(t *testing.T) {
 
 func TestAddPageHasLinkRows(t *testing.T) {
 	h, _ := newPages(t)
-	_, body := get(t, h, "/")
+	_, body := get(t, h, "/notes")
 	mustContain(t, body, `id="links"`, `id="link-add"`, "＋ 関連 URL")
 }

@@ -21,7 +21,7 @@ import (
 )
 
 // DefaultBaseURL is where the server listens unless NOTE_SERVER says otherwise.
-const DefaultBaseURL = "http://127.0.0.1:8086"
+const DefaultBaseURL = "http://127.0.0.1:8085"
 
 // Client talks to one server.
 type Client struct {
@@ -39,7 +39,7 @@ func New(base string) (*Client, error) {
 	}
 	u, err := url.Parse(base)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, fmt.Errorf("サーバの URL が正しくありません: %q（http://127.0.0.1:8086 の形で指定してください）", base)
+		return nil, fmt.Errorf("サーバの URL が正しくありません: %q（http://127.0.0.1:8085 の形で指定してください）", base)
 	}
 	return &Client{base: strings.TrimRight(base, "/"), http: &http.Client{Timeout: 10 * time.Second}}, nil
 }

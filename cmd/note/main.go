@@ -144,7 +144,7 @@ func (e *env) openAddPage() error {
 	if err != nil {
 		return err
 	}
-	url := c.BaseURL() + "/"
+	url := c.BaseURL() + "/notes"
 	if err := e.openURL(url); err != nil {
 		return fmt.Errorf("ブラウザを開けませんでした（%s）: %w", url, err)
 	}

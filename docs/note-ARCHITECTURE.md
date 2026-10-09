@@ -12,11 +12,12 @@ last_verified: 2026-10-09   # 最後に実装と突合した日
 
 | 場所 | 責務 |
 |---|---|
-| `cmd/note-server/` | サーバの起動。設定（`LISTEN_ADDR` / `PORT` / `DATA_DIR`）の読み込み、ストアを開く、シャットダウン |
+| `cmd/server/` | todo と共通のサーバの起動。設定（`LISTEN_ADDR` / `PORT` / `TODO_DATA_DIR` / `NOTE_DATA_DIR`）の読み込み、ストアを開く、シャットダウン |
+| `internal/server/` | todo と note のルートを 1 つの gin エンジンにまとめる。httpguard と `/healthz` はここで 1 回だけ掛ける |
 | `cmd/note/` | CLI。引数・標準入力・サブコマンドを解釈して `internal/noteclient` を呼ぶ。端末かどうかの判定とブラウザを開く処理はここ |
 | `internal/note/` | モデル（Note / Annotation / Link / Filter）とストア。検証、採番、`notes.json` の原子的な書き換え、操作ログの追記。URL の抽出、`[N]` 参照の切り出し（`link.go`）、ソース表示（ホストから導出）もここ |
 | `internal/noteapi/` | `/api` の JSON エンドポイント。ストアの入力エラーを 400、存在しない id を 404 に写す |
-| `internal/notepages/` | 登録画面（`/`）とタイムライン（`/timeline`）の描画、`/static`、`/healthz`。API の取り付けもここ |
+| `internal/notepages/` | 登録画面（`/notes`）とタイムライン（`/notes/timeline`）の描画、`/notes/static`。ルート登録（`Mount`）と API の取り付けもここ。todo の `/`・`/static` とぶつからないよう `/notes` 配下に置く |
 | `internal/noteclient/` | CLI 用の HTTP クライアント。サーバに届かなければ日本語のエラーで止まる |
 | `web/note/` | 埋め込みのテンプレートと静的ファイル（CSS / JS）。フレームワークも CDN も使わない |
 | `launchd/` `scripts/install-agent.sh` | 常駐用の plist テンプレートと配置スクリプト（読み込みはしない） |
@@ -24,16 +25,16 @@ last_verified: 2026-10-09   # 最後に実装と突合した日
 ## データフロー
 
 ```
-画面（/ の JS） ─┐
+画面（/notes の JS） ─┐
                  ├─ HTTP /api ─ internal/noteapi ─ internal/note.Store ─┬─ notes.json（現在の状態）
 CLI (note) ──────┘                                                  └─ events-YYYY-MM.jsonl（追記専用）
                                       タイムライン ← internal/notepages ← Store（読み取り）
 ```
 
-- 保存先は `DATA_DIR`（既定 `~/.local/share/note-stock`）。`notes.json` は一時ファイルに書いてから rename で置き換える
+- 保存先は `NOTE_DATA_DIR`（既定 `~/.local/share/note-stock`）。`notes.json` は一時ファイルに書いてから rename で置き換える
 - ストアは mutex で直列化する。データディレクトリの `.lock` を排他ロックし、同じディレクトリを開く 2 つ目のサーバは起動に失敗する
 - ログは補助。追記に失敗しても状態の保存は成功として扱い、エラーログに残す
-- Host が `127.0.0.1:<port>` / `localhost:<port>` 以外、または別 Origin の要求は 403、`/api` への POST/PUT で Content-Type が application/json 以外は 415（`internal/notepages/guard.go`）
+- Host が `127.0.0.1:<port>` / `localhost:<port>` 以外、または別 Origin の要求は 403、`/api` への POST/PUT で Content-Type が application/json 以外は 415（`internal/httpguard`。todo と共通）
 - 話題の一覧は登録済みの話題とメモで使われている話題の和集合
 - 「補足待ち」は補足が 0 件のメモ。状態として保存せず、補足の数から求める
 - ソース表示（Slack / Notion / Backlog / リンク）は表示のたびに URL のホストから求め、保存しない

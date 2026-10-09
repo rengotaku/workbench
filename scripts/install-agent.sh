@@ -1,14 +1,15 @@
 #!/bin/zsh
-# Install the note-stock server as a login agent, and put the CLI on PATH.
+# Install the workbench server (todo + note) as a login agent, and put the
+# `todo` and `note-stock` commands on PATH.
 #
-# The script places files only. It does not load the agent: registering a login
-# item is watched on this machine, so that step is left to a person who can say
-# why it is happening (see README.md).
+# The script places files and prints the launchctl commands to run. It does not
+# load the agent itself: registering a login item is watched on this machine,
+# so that step is left to a person who can say why it is happening.
 #
 # Usage: scripts/install-agent.sh [--port N]
 set -eu
 
-PORT=8086
+PORT=8085
 while [ $# -gt 0 ]; do
   case "$1" in
     --port) PORT="${2:-}"; shift 2 ;;
@@ -22,12 +23,13 @@ case "$PORT" in
 esac
 
 REPO_ROOT=${0:A:h:h}
-LABEL=com.user.note-stock.server
+LABEL=com.user.workbench.server
 TEMPLATE="$REPO_ROOT/launchd/$LABEL.plist.template"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 BIN_DIR="$HOME/.local/bin"
-LOG_DIR="$HOME/Library/Logs/note-stock"
-DATA_DIR="$HOME/.local/share/note-stock"
+LOG_DIR="$HOME/Library/Logs/workbench"
+TODO_DATA_DIR="$HOME/.local/share/todo-order"
+NOTE_DATA_DIR="$HOME/.local/share/note-stock"
 
 [ -r "$TEMPLATE" ] || { echo "template missing: $TEMPLATE" >&2; exit 1; }
 
@@ -35,23 +37,26 @@ DATA_DIR="$HOME/.local/share/note-stock"
 # agent at all.
 ( cd "$REPO_ROOT" && make build )
 
-[ -x "$REPO_ROOT/bin/note-server" ] || { echo "build produced no bin/note-server" >&2; exit 1; }
-[ -x "$REPO_ROOT/bin/note" ] || { echo "build produced no bin/note" >&2; exit 1; }
+for b in server todo note; do
+  [ -x "$REPO_ROOT/bin/$b" ] || { echo "build produced no bin/$b" >&2; exit 1; }
+done
 
-mkdir -p "$BIN_DIR" "$LOG_DIR" "$DATA_DIR" "$HOME/Library/LaunchAgents"
-chmod 700 "$DATA_DIR"
+mkdir -p "$BIN_DIR" "$LOG_DIR" "$TODO_DATA_DIR" "$NOTE_DATA_DIR" "$HOME/Library/LaunchAgents"
+chmod 700 "$TODO_DATA_DIR" "$NOTE_DATA_DIR"
 
 # Replace rather than copy over a running binary: rename is atomic, and `cp`
 # onto a running file fails with "Text file busy".
 install_binary() {
   local src=$1 dest=$2 tmp
-  tmp=$(mktemp "$BIN_DIR/.note-stock-XXXXXX")
+  tmp=$(mktemp "$BIN_DIR/.workbench-XXXXXX")
   cat "$src" > "$tmp"
   chmod 755 "$tmp"
   mv -f "$tmp" "$dest"
 }
 
-install_binary "$REPO_ROOT/bin/note-server" "$BIN_DIR/note-stock-server"
+install_binary "$REPO_ROOT/bin/server" "$BIN_DIR/workbench-server"
+install_binary "$REPO_ROOT/bin/todo" "$BIN_DIR/todo"
+# The dotfiles `note` wrapper calls note-stock, so the name stays.
 install_binary "$REPO_ROOT/bin/note" "$BIN_DIR/note-stock"
 
 sed -e "s|__HOME__|$HOME|g" -e "s|__PORT__|$PORT|g" "$TEMPLATE" > "$PLIST.tmp"
@@ -63,12 +68,26 @@ plutil -lint "$PLIST" >/dev/null || { echo "generated plist is not valid: $PLIST
 cat <<EOT
 
 placed:
-  $BIN_DIR/note-stock-server
+  $BIN_DIR/workbench-server
+  $BIN_DIR/todo
   $BIN_DIR/note-stock
   $PLIST        (port $PORT, loopback only)
   logs:  $LOG_DIR
-  data:  $DATA_DIR
+  data:  $TODO_DATA_DIR, $NOTE_DATA_DIR
 
 The agent is not loaded yet. Registering a login item is monitored on this
-machine, so a person does that step; the commands are in README.md.
+machine, so run these yourself when you are ready:
+
+  launchctl bootstrap gui/\$(id -u) "$PLIST"
+  launchctl kickstart -k "gui/\$(id -u)/$LABEL"
+
+Then check it:
+
+  curl -s http://127.0.0.1:$PORT/healthz
+  todo list
+
+To remove it:
+
+  launchctl bootout "gui/\$(id -u)/$LABEL"
+  rm "$PLIST"
 EOT

@@ -1,4 +1,4 @@
-.PHONY: install build run-todo run-note stop stop-todo stop-note status install-agent install-agent-todo install-agent-note lint test test-cov check ci clean help
+.PHONY: install build run stop status install-agent lint test test-cov check ci clean help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -6,8 +6,7 @@
 # Variables
 BIN_DIR := bin
 COVERAGE_FILE := coverage.out
-TODO_PORT ?= 8085
-NOTE_PORT ?= 8086
+PORT ?= 8085
 
 # Auto-discover entry points under cmd/<name>/. Adding cmd/foo/main.go is
 # sufficient — `make build` will produce bin/foo without further edits.
@@ -19,7 +18,7 @@ BINARIES := $(addprefix $(BIN_DIR)/,$(CMDS))
 install:
 	go mod download
 
-## build: Build all cmd/* binaries (todo, todo-server, note, note-server)
+## build: Build all cmd/* binaries (todo, note, server)
 build: $(BINARIES)
 
 # Static pattern rule restricted to $(BINARIES) so it only matches discovered
@@ -28,40 +27,21 @@ $(BINARIES): $(BIN_DIR)/%:
 	@mkdir -p $(BIN_DIR)
 	go build -o $@ ./cmd/$*
 
-## run-todo: Run the todo server (:$(TODO_PORT), default 8085)
-run-todo:
-	PORT=$(TODO_PORT) go run ./cmd/todo-server
+## run: Run the server (todo + note, :$(PORT), default 8085)
+run:
+	PORT=$(PORT) go run ./cmd/server
 
-## run-note: Run the note server (:$(NOTE_PORT), default 8086)
-run-note:
-	PORT=$(NOTE_PORT) go run ./cmd/note-server
+## stop: Stop the server
+stop:
+	@lsof -ti :$(PORT) -sTCP:LISTEN | xargs kill 2>/dev/null || true
 
-## stop: Stop both servers
-stop: stop-todo stop-note
-
-## stop-todo: Stop the todo server
-stop-todo:
-	@lsof -ti :$(TODO_PORT) -sTCP:LISTEN | xargs kill 2>/dev/null || true
-
-## stop-note: Stop the note server
-stop-note:
-	@lsof -ti :$(NOTE_PORT) -sTCP:LISTEN | xargs kill 2>/dev/null || true
-
-## status: Check if the servers are running
+## status: Check if the server is running
 status:
-	@lsof -ti :$(TODO_PORT) -sTCP:LISTEN >/dev/null 2>&1 && echo "todo-order: running (:$(TODO_PORT))" || echo "todo-order: stopped"
-	@lsof -ti :$(NOTE_PORT) -sTCP:LISTEN >/dev/null 2>&1 && echo "note-stock: running (:$(NOTE_PORT))" || echo "note-stock: stopped"
+	@lsof -ti :$(PORT) -sTCP:LISTEN >/dev/null 2>&1 && echo "workbench: running (:$(PORT))" || echo "workbench: stopped"
 
-## install-agent: Place the binaries and launchd plists for both (does not load them)
-install-agent: install-agent-todo install-agent-note
-
-## install-agent-todo: Build, place the todo binaries and the launchd plist (does not load it)
-install-agent-todo:
-	./scripts/install-todo-agent.sh --port $(TODO_PORT)
-
-## install-agent-note: Build, place the note binaries and the launchd plist (does not load it)
-install-agent-note:
-	./scripts/install-note-agent.sh --port $(NOTE_PORT)
+## install-agent: Build, place the binaries and the launchd plist (does not load it)
+install-agent:
+	./scripts/install-agent.sh --port $(PORT)
 
 ## lint: Run golangci-lint
 lint:

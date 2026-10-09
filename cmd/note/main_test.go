@@ -125,7 +125,7 @@ func TestAddJSON(t *testing.T) {
 func TestBareNoteOpensBrowserOnTerminal(t *testing.T) {
 	h := newHarness(t)
 	r := h.run("", true)
-	if r.code != 0 || len(h.opened) != 1 || h.opened[0] != h.url+"/" {
+	if r.code != 0 || len(h.opened) != 1 || h.opened[0] != h.url+"/notes" {
 		t.Fatalf("result = %+v, opened = %v", r, h.opened)
 	}
 	if !strings.Contains(r.out, h.url) {
