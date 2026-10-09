@@ -20,6 +20,7 @@ last_verified: 2026-10-09   # 最後に実装と突合した日
 | `internal/notepages/` | 登録画面（`/notes`）とタイムライン（`/notes/timeline`）の描画、`/notes/static`。ルート登録（`Mount`）と API の取り付けもここ。todo の `/`・`/static` とぶつからないよう `/notes` 配下に置く |
 | `internal/noteroute/` | `POST /api/notes/:id/route`。AI が拾ったメモの行き先を決める。タスクを作るので task と note の両方のストアを受け取る（ADR note-0004）。`internal/server` が追加の Mounter として取り付ける |
 | `internal/noteclient/` | CLI 用の HTTP クライアント。サーバに届かなければ日本語のエラーで止まる |
+| `web/shared/` | todo と note が共有するレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・基底 CSS・`common.js`（IME ガードと API 呼び出し）。`/shared` で配信し、`internal/server` がガードの内側にマウントする |
 | `web/note/` | 埋め込みのテンプレートと静的ファイル（CSS / JS）。フレームワークも CDN も使わない |
 | `launchd/` `scripts/install-agent.sh` | 常駐用の plist テンプレートと配置スクリプト（読み込みはしない） |
 
@@ -57,9 +58,9 @@ CLI (note) ──────┘                                                
 | `[N]` 参照の書き方・関連 URL の検証 | `internal/note/link.go` の `refPattern` / `buildLinks` / `checkRefs` |
 | 登録画面の関連 URL 行 | `web/note/static/js/add.js` の `addLinkRow` / `readLinks` |
 | API の項目・ステータス | `internal/noteapi/api.go` |
-| 画面の見た目 | `web/note/static/css/style.css`、`web/note/templates/` |
+| 画面の見た目 | `web/shared/static/css/tokens.css`（色・文字・角丸・余白）、`web/note/static/css/style.css`、`web/note/templates/` |
 | 登録画面の操作（Enter・チップ・元に戻す） | `web/note/static/js/add.js` |
-| IME 変換中のキーの扱い | `web/note/static/js/shared.js` の `composing()` |
+| IME 変換中のキーの扱い | `web/shared/static/js/common.js` の `composing()` |
 | CLI のコマンドと出力 | `cmd/note/main.go` |
 | 既定のポート・データの置き場 | `cmd/server/main.go`、`Makefile`、`launchd/*.template`、`scripts/install-agent.sh` |
 

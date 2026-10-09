@@ -14,6 +14,7 @@ import (
 
 	"github.com/rengotaku/workbench/internal/note"
 	"github.com/rengotaku/workbench/internal/noteapi"
+	sharedweb "github.com/rengotaku/workbench/web/shared"
 )
 
 // Pages renders the screens from the store.
@@ -24,13 +25,13 @@ type Pages struct {
 	api       *noteapi.API
 }
 
-// LoadTemplates builds a per-page template set so each page gets its own
-// "content" definition. A single shared set lets the last-parsed file's
+// LoadTemplates builds a per-page template set (shared layout + tool.html +
+// the page) so each page gets its own "content" definition. A single shared set lets the last-parsed file's
 // {{define "content"}} win for every page.
 func LoadTemplates(fsys fs.FS) (map[string]*template.Template, error) {
 	m := make(map[string]*template.Template)
 	for _, name := range []string{"add.html", "timeline.html"} {
-		t, err := template.ParseFS(fsys, "templates/base.html", "templates/"+name)
+		t, err := sharedweb.Parse(fsys, name)
 		if err != nil {
 			return nil, fmt.Errorf("loading template %s: %w", name, err)
 		}
@@ -77,12 +78,13 @@ func (p *Pages) render(c *gin.Context, name string, data any) {
 // ---- add screen ----
 
 type addView struct {
-	Title  string
-	Topics []string
+	Title   string
+	Current string // which header link is the current screen
+	Topics  []string
 }
 
 func (p *Pages) handleAdd(c *gin.Context) {
-	p.render(c, "add.html", addView{Title: "note", Topics: p.store.Topics()})
+	p.render(c, "add.html", addView{Title: "note", Current: "note", Topics: p.store.Topics()})
 }
 
 // ---- timeline ----
@@ -142,6 +144,7 @@ type dayView struct {
 
 type timelineView struct {
 	Title   string
+	Current string
 	Empty   string
 	Chips   []chipView
 	Days    []dayView
@@ -170,7 +173,7 @@ func buildTimeline(notes []note.Note, topics []string, topic string, noTopic boo
 	}
 	chips = append(chips, chipView{Label: "話題なし", Href: TimelinePath + "?no_topic=1", On: noTopic})
 
-	v := timelineView{Title: "note タイムライン", Chips: chips, Empty: "まだメモがありません。note と打って 1 行入れてください"}
+	v := timelineView{Title: "note タイムライン", Current: "timeline", Chips: chips, Empty: "まだメモがありません。note と打って 1 行入れてください"}
 	if topic != "" || noTopic {
 		v.Empty = "この絞り込みに合うメモはありません。「すべて」に戻してください"
 	}

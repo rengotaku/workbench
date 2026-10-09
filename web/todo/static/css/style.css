@@ -1,89 +1,12 @@
 /* 着手順 — one row per task, ordered list first.
-   Colour carries one meaning each: 藍 = the accent, 赤/琥珀 = how close a due
-   date is, 緑 = done, 紫 = waiting on someone else. */
+   Tokens (colour, type, shape, space) and the base styles come from
+   /shared/css; this file adds only what is particular to the todo list. */
 
-:root {
-  --ground: #f7f6f3;
-  --surface: #ffffff;
-  --surface-sunk: #f2f1ed;
-  --ink: #1c2027;
-  --ink-soft: #4a5260;
-  --muted: #7c8492;
-  --line: #e3e1db;
-  --line-soft: #eeece7;
-  --accent: #2f4a7d;
-  --accent-soft: #e6ebf5;
-  --over: #a8342b;
-  --over-soft: #f7e6e3;
-  --near: #96650f;
-  --near-soft: #f8eedb;
-  --wait: #6b5f88;
-  --someday: #4a7d6b;
-  --done: #3d7355;
-  --shadow: 0 1px 2px rgba(28, 32, 39, .05), 0 8px 24px -12px rgba(28, 32, 39, .18);
-  --sans: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --ground: #14171c;
-    --surface: #1c2027;
-    --surface-sunk: #22262e;
-    --ink: #e9e7e2;
-    --ink-soft: #b9bec8;
-    --muted: #868e9b;
-    --line: #2e343d;
-    --line-soft: #262b33;
-    --accent: #9bb8e8;
-    --accent-soft: #232d3f;
-    --over: #e58a7f;
-    --over-soft: #3a2723;
-    --near: #d9ad63;
-    --near-soft: #33291a;
-    --wait: #b0a2cf;
-    --someday: #86bfa9;
-    --done: #7fb695;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .6);
-  }
-}
-
-:root[data-theme="dark"] {
-  --ground: #14171c;
-  --surface: #1c2027;
-  --surface-sunk: #22262e;
-  --ink: #e9e7e2;
-  --ink-soft: #b9bec8;
-  --muted: #868e9b;
-  --line: #2e343d;
-  --line-soft: #262b33;
-  --accent: #9bb8e8;
-  --accent-soft: #232d3f;
-  --over: #e58a7f;
-  --over-soft: #3a2723;
-  --near: #d9ad63;
-  --near-soft: #33291a;
-  --wait: #b0a2cf;
-  --done: #7fb695;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .6);
-}
-
-* { box-sizing: border-box; }
-
-/* `hidden` has to win over the display rules below, or a hidden control
-   (the custom scope date) stays on screen. */
-[hidden] { display: none !important; }
-
-body {
-  margin: 0;
-  background: var(--ground);
-  color: var(--ink);
-  font-family: var(--sans);
-  font-size: 15px;
-  line-height: 1.6;
-  padding-inline: 16px;
-  padding-block: 40px 64px;
-  -webkit-font-smoothing: antialiased;
+/* The page body: the shared header sits above it, so the padding that used to
+   be on <body> lives here. */
+.site-main {
+  padding-inline: var(--space-4);
+  padding-block: var(--space-6) 64px;
 }
 
 .wrap { max-width: 660px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
@@ -104,7 +27,7 @@ body {
     display: block;
     background: var(--surface);
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     box-shadow: var(--shadow);
     padding: 15px 17px;
     position: sticky;
@@ -118,29 +41,29 @@ body {
   justify-content: space-between;
   gap: 10px;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
   letter-spacing: .06em;
   color: var(--muted);
   margin-bottom: 9px;
 }
-.d-name { font-size: 13.5px; font-weight: 500; line-height: 1.6; margin: 0 0 8px; }
-.d-body { font-size: 12px; line-height: 1.85; color: var(--ink-soft); white-space: pre-wrap; }
+.d-name { font-size: var(--fs-lg2); font-weight: 500; line-height: 1.6; margin: 0 0 8px; }
+.d-body { font-size: var(--fs-md); line-height: 1.85; color: var(--ink-soft); white-space: pre-wrap; }
 .d-body.none { color: var(--muted); }
 .d-sec { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line-soft); }
-.d-sec h2 { margin: 0 0 6px; font-size: 10.5px; letter-spacing: .08em; color: var(--muted); font-weight: 500; }
+.d-sec h2 { margin: 0 0 6px; font-size: var(--fs-xs); letter-spacing: .08em; color: var(--muted); font-weight: 500; }
 .d-trail { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
-.d-trail li { font-size: 11.5px; color: var(--ink-soft); line-height: 1.6; }
+.d-trail li { font-size: var(--fs-sm2); color: var(--ink-soft); line-height: 1.6; }
 .d-trail time { font-family: var(--mono); color: var(--muted); margin-right: 6px; }
-.d-from { display: inline-block; margin-bottom: 6px; font-size: 11.5px; color: var(--muted); text-decoration: underline; }
+.d-from { display: inline-block; margin-bottom: 6px; font-size: var(--fs-sm2); color: var(--muted); text-decoration: underline; }
 .d-ann-item { margin: 0 0 8px; }
-.d-ann-who { font-size: 11px; color: var(--muted); }
-.d-ann-body { font-size: 12px; line-height: 1.75; color: var(--ink-soft); white-space: pre-wrap; }
-.d-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.9; }
+.d-ann-who { font-size: var(--fs-sm); color: var(--muted); }
+.d-ann-body { font-size: var(--fs-md); line-height: 1.75; color: var(--ink-soft); white-space: pre-wrap; }
+.d-empty { margin: 0; color: var(--muted); font-size: var(--fs-md); line-height: 1.9; }
 
 .app {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow);
   overflow: hidden;
 }
@@ -157,38 +80,34 @@ body {
 }
 .head-left { display: flex; align-items: baseline; gap: 10px; }
 .head-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.app-name { font-size: 21px; font-weight: 700; letter-spacing: .02em; margin: 0; line-height: 1.2; }
-.app-date { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+.app-name { font-size: var(--fs-title); font-weight: 700; letter-spacing: .02em; margin: 0; line-height: 1.2; }
+.app-date { font-family: var(--mono); font-size: var(--fs-md); color: var(--muted); letter-spacing: .04em; }
 
 /* ---- scope: the only control over what is in view ---- */
-.scope-set { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.scope-set { display: flex; border: 1px solid var(--line); border-radius: var(--radius-ctl); overflow: hidden; }
 .scope-set button {
   appearance: none;
   border: 0;
   background: var(--surface);
   color: var(--ink-soft);
   font-family: var(--sans);
-  font-size: 12.5px;
+  font-size: var(--fs-md2);
   padding: 6px 11px;
   cursor: pointer;
   border-right: 1px solid var(--line);
 }
 .scope-set button:last-child { border-right: 0; }
-.scope-set button[aria-pressed="true"] { background: var(--accent); color: var(--surface); font-weight: 500; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .scope-set button[aria-pressed="true"] { color: #14171c; }
-}
-:root[data-theme="dark"] .scope-set button[aria-pressed="true"] { color: #14171c; }
+.scope-set button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); font-weight: 500; }
 .scope-set button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-.scope-until { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.scope-until { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: var(--fs-md); color: var(--muted); }
 .scope-until input {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-md);
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 4px 6px;
 }
 .scope-until input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -200,11 +119,11 @@ body {
   align-items: center;
   gap: 5px;
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: var(--fs-md2);
   font-variant-numeric: tabular-nums;
   cursor: default;
 }
-.count i { width: 3px; height: 12px; border-radius: 2px; display: block; }
+.count i { width: 3px; height: 12px; border-radius: var(--radius-xs); display: block; }
 .count b { font-weight: 500; }
 .count.over { color: var(--over); }
 .count.over i { background: var(--over); }
@@ -222,7 +141,7 @@ body {
   padding: 10px 0 0;
   margin: 0;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: var(--fs-sm2);
   letter-spacing: .04em;
   color: var(--muted);
   cursor: pointer;
@@ -245,25 +164,25 @@ body {
   gap: 8px;
   margin-bottom: 6px;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
   letter-spacing: .14em;
   text-transform: uppercase;
   color: var(--accent);
 }
 .focus-head .n {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   letter-spacing: 0;
   color: var(--accent);
   background: var(--surface);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 .focus-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .focus-item { display: grid; grid-template-columns: 18px 1fr auto auto; gap: 8px; align-items: center; }
 .focus-item .check { margin-top: 0; }
 .focus-item .fname {
-  font-size: 14.5px;
+  font-size: var(--fs-xl);
   color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -275,14 +194,14 @@ body {
   border: 0;
   cursor: pointer;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-md);
   color: var(--muted);
   padding: 0 2px;
 }
 .focus-item .drop:hover { color: var(--over); }
 .focus-item .drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.num.mark-focus { color: var(--accent); font-size: 11px; text-align: center; }
+.num.mark-focus { color: var(--accent); font-size: var(--fs-sm); text-align: center; }
 .panel-actions button.focus-on { color: var(--accent); border-color: var(--accent); }
 
 /* ---- sections: same left baseline in all three ---- */
@@ -294,14 +213,14 @@ body {
 .sec-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
 .sec-title {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   letter-spacing: .16em;
   text-transform: uppercase;
   color: var(--muted);
   margin: 0;
   font-weight: 500;
 }
-.sec-hint { font-size: 12px; color: var(--muted); }
+.sec-hint { font-size: var(--fs-md); color: var(--muted); }
 /* The add row sits at the end of the queue because that is where a new task
    lands, and it shares the row grid so the ＋ lines up with the checkboxes.
    Until it is used it is a button, not a field: the list stays quiet. */
@@ -314,9 +233,9 @@ body {
   padding: 9px 22px 9px 19px;
   border-top: 1px solid var(--line-soft);
 }
-.add .plus { color: var(--accent); font-size: 15px; text-align: center; line-height: 1; }
+.add .plus { color: var(--accent); font-size: var(--fs-body); text-align: center; line-height: 1; }
 .add .as-button {
-  font-size: 14.5px;
+  font-size: var(--fs-xl);
   color: var(--accent);
   background: none;
   border: 0;
@@ -337,7 +256,7 @@ body {
   border: 0;
   background: none;
   font-family: var(--sans);
-  font-size: 14.5px;
+  font-size: var(--fs-xl);
   color: var(--ink);
   padding: 0;
 }
@@ -345,11 +264,11 @@ body {
 .add input[type="text"]:focus { outline: none; }
 .add input[type="date"] {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--muted);
   background: none;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 2px 4px;
 }
 .add input[type="date"]:hover { border-color: var(--line); }
@@ -366,22 +285,22 @@ body {
   padding: 0;
   cursor: pointer;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   letter-spacing: .16em;
   text-transform: uppercase;
   color: var(--muted);
 }
 .fold-head:hover { color: var(--ink-soft); }
 .fold-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.fold-head .caret { font-size: 9px; }
+.fold-head .caret { font-size: var(--fs-2xs); }
 .fold-head .n {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   letter-spacing: 0;
   color: var(--muted);
   background: var(--surface-sunk);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 .fold-head[aria-expanded="true"] + .list { margin-top: 10px; }
 
@@ -395,7 +314,7 @@ body {
 
 .save-state {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
   letter-spacing: .06em;
   color: var(--muted);
   opacity: 0;
@@ -407,11 +326,11 @@ body {
 .panel-actions .spacer { flex: 1; }
 .panel-actions input {
   font-family: var(--sans);
-  font-size: 12px;
+  font-size: var(--fs-md);
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
   padding: 2px 6px;
 }
 
@@ -419,7 +338,7 @@ body {
    does not grow by as many lines as the task has events. */
 .trail-link, .reason-link, .handoff-note {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   letter-spacing: .03em;
   color: var(--muted);
   text-decoration: underline dotted;
@@ -472,7 +391,7 @@ ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction
   cursor: grab;
   user-select: none;
   line-height: 1.5;
-  font-size: 12px;
+  font-size: var(--fs-md);
   padding-top: 2px;
 }
 .task:hover .grip { color: var(--muted); }
@@ -483,7 +402,7 @@ ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction
    so all three sections share the same left baseline. */
 .num {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-md);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -521,7 +440,7 @@ ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction
 
 /* The row never wraps: a long name is clipped, the full text is the title. */
 .name {
-  font-size: 14.5px;
+  font-size: var(--fs-xl);
   color: var(--ink);
   display: flex;
   align-items: baseline;
@@ -541,7 +460,7 @@ ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction
    a bordered circle would read as an unchecked box. */
 .check.empty { border-color: transparent; cursor: default; }
 .drop-why {
-  font-size: 12px;
+  font-size: var(--fs-md);
   color: var(--ink-soft);
   margin-top: 2px;
   overflow: hidden;
@@ -556,7 +475,7 @@ a.ticket {
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
 a.ticket:hover { border-bottom-color: var(--accent); }
-a.ticket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+a.ticket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-xs); }
 
 /* While a name is being edited it stays one text node — no anchor to catch the
    caret — so the link is painted with the highlight API instead. It carries the
@@ -572,7 +491,7 @@ a.ticket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
    is named beneath it instead. */
 .add .add-link {
   grid-column: 4 / -1;
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--muted);
   font-family: var(--mono);
   overflow: hidden;
@@ -590,7 +509,7 @@ a.ticket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   gap: 8px;
 }
 .panel .live.detail {
-  font-size: 13px;
+  font-size: var(--fs-lg);
   color: var(--ink-soft);
   line-height: 1.7;
   min-height: 1.7em;
@@ -609,10 +528,10 @@ a.ticket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   appearance: none;
   background: none;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: var(--radius-chip);
   padding: 2px 8px;
   font-family: var(--sans);
-  font-size: 12px;
+  font-size: var(--fs-md);
   color: var(--muted);
   cursor: pointer;
 }
@@ -634,11 +553,11 @@ a.ticket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   padding: 0;
   background: none;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
   color: var(--muted);
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   line-height: 1;
   cursor: pointer;
   opacity: 0;
@@ -652,11 +571,11 @@ a.ticket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
 
 .due {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   padding: 2px 7px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin-top: 3px;
   color: var(--muted);
   background: var(--surface-sunk);
@@ -672,11 +591,11 @@ button.due-edit:hover { border-color: var(--line); }
 button.due-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .due-input {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--accent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 1px 4px;
   margin-top: 3px;
 }
@@ -690,15 +609,15 @@ button.due-edit:focus-visible { outline: 2px solid var(--accent); outline-offset
   border-top: 1px solid var(--line-soft);
   background: var(--surface-sunk);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-md);
   color: var(--muted);
   letter-spacing: .02em;
   overflow-x: auto;
 }
 .add-row code { color: var(--ink-soft); white-space: nowrap; }
 
-.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--muted); }
-.legend i { display: inline-block; width: 3px; height: 12px; border-radius: 2px; transform: translateY(1px); margin-right: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: var(--fs-md); color: var(--muted); }
+.legend i { display: inline-block; width: 3px; height: 12px; border-radius: var(--radius-xs); transform: translateY(1px); margin-right: 6px; }
 .legend .l-over i { background: var(--over); }
 .legend .l-near i { background: var(--near); }
 .legend .l-rest i { background: var(--line); }
@@ -706,10 +625,10 @@ button.due-edit:focus-visible { outline: 2px solid var(--accent); outline-offset
 .err {
   margin: 0;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--over-soft);
   color: var(--over);
-  font-size: 13px;
+  font-size: var(--fs-lg);
 }
 /* A reload that happened on its own is news, not a failure. */
 .err.notice { background: var(--accent-soft); color: var(--accent); }
@@ -719,7 +638,7 @@ button.due-edit:focus-visible { outline: 2px solid var(--accent); outline-offset
   border: 0;
   padding: 0;
   font-family: var(--sans);
-  font-size: 13px;
+  font-size: var(--fs-lg);
   color: inherit;
   cursor: pointer;
   text-decoration: underline;

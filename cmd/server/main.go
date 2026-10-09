@@ -26,6 +26,7 @@ import (
 	"github.com/rengotaku/workbench/internal/taskapi"
 	"github.com/rengotaku/workbench/internal/taskweb"
 	noteweb "github.com/rengotaku/workbench/web/note"
+	sharedweb "github.com/rengotaku/workbench/web/shared"
 	todoweb "github.com/rengotaku/workbench/web/todo"
 )
 
@@ -192,7 +193,7 @@ func loadTodoTemplates() (map[string]*template.Template, error) {
 
 	m := make(map[string]*template.Template, len(pages))
 	for _, p := range pages {
-		t, err := template.ParseFS(todoweb.FS, "templates/base.html", p.path)
+		t, err := sharedweb.Parse(todoweb.FS, p.name)
 		if err != nil {
 			return nil, fmt.Errorf("loading template %s: %w", p.name, err)
 		}

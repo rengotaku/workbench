@@ -32,6 +32,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | `internal/taskclient/` | CLI からサーバを叩く HTTP クライアント |
 | `internal/legacy/` | 旧台帳（テキストの TODO ファイルと順序 YAML）の読み取りと移行計画の組み立て |
 | `internal/taskweb/` | 画面（`/`・`/add`）と `/static` の配信、`/api` のマウント（`Mount`） |
+| `web/shared/` | todo と note 共通のレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・`common.js`。`/shared` で配信 |
 | `web/todo/` | テンプレート・CSS・JS。`embed` でバイナリに焼き込む |
 | `launchd/`, `scripts/` | 常駐させるための plist テンプレートと配置スクリプト |
 
@@ -168,7 +169,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 |---|---|
 | 期限の表示文字・色の境目 | `internal/taskapi/api.go` の `view` |
 | 理由を聞く条件 | `internal/task/task.go` の `NeedsReason` / `AskReason`、待ちの閾値は `AskThresholdDays` |
-| 画面の見た目 | `web/todo/static/css/style.css` |
+| 画面の見た目 | `web/shared/static/css/tokens.css`（変数）、`web/todo/static/css/style.css` |
 | 画面の挙動（ドラッグ・開閉・スコープ） | `web/todo/static/js/app.js` |
 | 補足の追加・検証 | `internal/task/store.go` の `Annotate`、`internal/taskapi/api.go` の `annotateTask`、`cmd/todo/main.go` の `annotateCmd` |
 | 詳細での補足と「元のメモ」の表示 | `web/todo/static/js/app.js` の `supplementsBlock` |

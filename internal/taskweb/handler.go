@@ -43,8 +43,9 @@ func (h *Handler) Mount(r gin.IRouter) {
 func (h *Handler) handleIndex(c *gin.Context) {
 	now := time.Now()
 	h.render(c, "index.html", http.StatusOK, gin.H{
-		"Title": "着手順",
-		"Today": today(now),
+		"Title":   "着手順",
+		"Current": "todo",
+		"Today":   today(now),
 	})
 }
 
@@ -52,8 +53,9 @@ func (h *Handler) handleIndex(c *gin.Context) {
 // `todo` opens.
 func (h *Handler) handleAdd(c *gin.Context) {
 	h.render(c, "add.html", http.StatusOK, gin.H{
-		"Title": "着手順に追加",
-		"Today": today(time.Now()),
+		"Title":   "着手順に追加",
+		"Current": "todo",
+		"Today":   today(time.Now()),
 	})
 }
 
