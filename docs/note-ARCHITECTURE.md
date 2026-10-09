@@ -18,6 +18,7 @@ last_verified: 2026-10-09   # 最後に実装と突合した日
 | `internal/note/` | モデル（Note / Annotation / Link / Filter）とストア。検証、採番、`notes.json` の原子的な書き換え、操作ログの追記。URL の抽出、`[N]` 参照の切り出し（`link.go`）、ソース表示（ホストから導出）もここ |
 | `internal/noteapi/` | `/api` の JSON エンドポイント。ストアの入力エラーを 400、存在しない id を 404 に写す |
 | `internal/notepages/` | 登録画面（`/notes`）とタイムライン（`/notes/timeline`）の描画、`/notes/static`。ルート登録（`Mount`）と API の取り付けもここ。todo の `/`・`/static` とぶつからないよう `/notes` 配下に置く |
+| `internal/noteroute/` | `POST /api/notes/:id/route`。AI が拾ったメモの行き先を決める。タスクを作るので task と note の両方のストアを受け取る（ADR note-0004）。`internal/server` が追加の Mounter として取り付ける |
 | `internal/noteclient/` | CLI 用の HTTP クライアント。サーバに届かなければ日本語のエラーで止まる |
 | `web/note/` | 埋め込みのテンプレートと静的ファイル（CSS / JS）。フレームワークも CDN も使わない |
 | `launchd/` `scripts/install-agent.sh` | 常駐用の plist テンプレートと配置スクリプト（読み込みはしない） |
@@ -36,7 +37,10 @@ CLI (note) ──────┘                                                
 - ログは補助。追記に失敗しても状態の保存は成功として扱い、エラーログに残す
 - Host が `127.0.0.1:<port>` / `localhost:<port>` 以外、または別 Origin の要求は 403、`/api` への POST/PUT で Content-Type が application/json 以外は 415（`internal/httpguard`。todo と共通）
 - 話題の一覧は登録済みの話題とメモで使われている話題の和集合
-- 「補足待ち」は補足が 0 件のメモ。状態として保存せず、補足の数から求める
+- 「補足待ち」は AI がまだ拾っていないメモ（`Note.TriagedAt` が空）。補足の有無では決まらない。拾うと `triaged_at` と `route`（`to`: `todo` / `record`、`todo` のときは `task_id`）が付く
+- 行き先は変えられない。同じ行き先で再実行すると現状を返し、違う行き先は 409。`todo` はタスクを先に作ってからメモを更新し、失敗後の再実行は `source_note_id` で既存のタスクを使う（ADR note-0004）
+- 起動時に、補足があって `triaged_at` が空のメモを「最初の補足の時刻に `record` で拾い済み」へ直す（`note.Open` の `migrateTriage`）。変更があったときだけ保存する
+- タイムラインは行き先を「→ todo T001」（todo の一覧 `/` へのリンク）か「記録」で出す。各メモは `id="note-<id>"` のアンカーを持ち、todo の詳細の「元のメモ」がここへ飛ぶ
 - ソース表示（Slack / Notion / Backlog / リンク）は表示のたびに URL のホストから求め、保存しない
 - 関連 URL（`Note.Links`）は登録時にだけ付く。送られた順に 1 から番号を振り、以後は変えない。関連 URL が 1 件以上あるメモでは、本文の `[N]` が件数を超えると 400 にする。関連 URL が無いメモの `[N]` はただの文字として扱う
 - タイムラインでは本文の `[N]` を対応する関連 URL へのリンクにする。URL の中の `[N]` は URL の一部として扱う
@@ -46,6 +50,8 @@ CLI (note) ──────┘                                                
 | 変えたいこと | 触る場所 |
 |---|---|
 | 補足の種別を増やす | `internal/note/note.go` の `Kind*` と `internal/note/store.go` の `Annotate`、`internal/notepages/pages.go` の `kindLabels` |
+| 行き先を決める手順・ステータス | `internal/noteroute/route.go` |
+| 拾い済みの判定・移行 | `internal/note/note.go` の `Pending`、`internal/note/store.go` の `SetRoute` / `migrateTriage` |
 | ソース表示のホスト判定 | `internal/note/note.go` の `sourceHosts` |
 | URL の取り出し方 | `internal/note/note.go` の `urlPattern` / `urlTrailing` |
 | `[N]` 参照の書き方・関連 URL の検証 | `internal/note/link.go` の `refPattern` / `buildLinks` / `checkRefs` |

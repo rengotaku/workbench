@@ -48,7 +48,28 @@ const (
 	KindLinked    Kind = "linked"
 	KindFocused   Kind = "focused"
 	KindUnfocused Kind = "unfocused"
+	// KindAnnotated is a supplement appended to a task. It is not undoable:
+	// see ADR todo-0010.
+	KindAnnotated Kind = "annotated"
 )
+
+// Annotation kinds, the same three a note has.
+const (
+	AnnotationQuote    = "quote"
+	AnnotationAnalysis = "analysis"
+	AnnotationMemo     = "memo"
+)
+
+// Annotation is one appended supplement to a task. None is ever edited or
+// removed.
+type Annotation struct {
+	CreatedAt time.Time `json:"created_at"`
+	Kind      string    `json:"kind"`
+	Body      string    `json:"body"`
+	Source    string    `json:"source,omitempty"`
+	Author    Actor     `json:"author"`
+	ID        int       `json:"id"`
+}
 
 // Task is the current state of one entry. Callers never mutate a Task in
 // place; Store hands out copies and applies changes through its own methods.
@@ -76,10 +97,15 @@ type Task struct {
 	HandedTo string `json:"handed_to,omitempty"`
 	HandedOn string `json:"handed_on,omitempty"`
 	WaitNote string `json:"wait_note,omitempty"`
-	Order    int    `json:"order"`
+	// Annotations are appended supplements, oldest first. Undo leaves them.
+	Annotations []Annotation `json:"annotations,omitempty"`
+	Order       int          `json:"order"`
 	// Focused lifts a task into the band at the top of the page. It is a
 	// working set, not a state: the task keeps its place in the queue.
 	Focused bool `json:"focused,omitempty"`
+	// SourceNoteID is the memo this task was made from; 0 when it was not made
+	// from one. It is what lets a retry find the task it already made.
+	SourceNoteID int `json:"source_note_id,omitempty"`
 }
 
 // Event is one entry in the append-only log for a task. Reason is empty until

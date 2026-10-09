@@ -28,6 +28,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | `cmd/todo/` | CLI。サブコマンドの定義と人向けの出力整形だけを持つ |
 | `internal/task/` | タスクの型・イベントの型・保存（`store.go`）・旧台帳の取り込み（`import.go`） |
 | `internal/taskapi/` | REST ハンドラ。期限の日数計算と区画分けはここで行い、画面と CLI が再計算しない |
+| `internal/noteroute/` | メモの行き先を決める API。todo 行きではここがタスクを作る（`AddFromNote`）。詳細は note-ARCHITECTURE |
 | `internal/taskclient/` | CLI からサーバを叩く HTTP クライアント |
 | `internal/legacy/` | 旧台帳（テキストの TODO ファイルと順序 YAML）の読み取りと移行計画の組み立て |
 | `internal/taskweb/` | 画面（`/`・`/add`）と `/static` の配信、`/api` のマウント（`Mount`） |
@@ -144,6 +145,11 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 - **逆操作が書いたイベントも同時に消費済みにする**。ここを忘れると「戻す → やり直す → 戻す」の往復になる（実装中に実際そうなった）
 - 削除を戻せるのは、`removed` イベントにタスクを丸ごと控えているため（`Event.Snapshot`）
 - 当てられない時（対象が消えている・状態が既に変わっている）は**その 1 件を飛ばして、さらに前を探す**
+- **補足（`annotated`）は取り消さない**。`undoable` に入れておらず、件数にも数えない。スナップショットを書き戻す取り消し（棚上げ）は、現在の補足を書き戻し先に引き継ぐ（ADR todo-0010）
+
+## 補足とメモからのタスク
+
+`Task.Annotations` はタスクに足す引用・考察・メモで、追記専用（`POST /api/tasks/:id/annotations`、`todo annotate`）。書き手はリクエストの `actor` で決まる。`Task.SourceNoteID` は note のメモから作ったタスクの元のメモの id で、`note route <id> --todo` が付ける。同じ `source_note_id` のタスクがすでにあれば `AddFromNote` は新しく作らず、それを返す（ADR note-0004）。画面の詳細（ホバーの詳細ボックスと開いた行）に補足を新しい順で出し、`source_note_id` があれば `/notes/timeline#note-<id>` への「元のメモ」リンクを出す。本文は `textContent` で入れ、HTML としては解釈しない。
 
 ## 理由を聞く条件
 
@@ -164,6 +170,8 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | 理由を聞く条件 | `internal/task/task.go` の `NeedsReason` / `AskReason`、待ちの閾値は `AskThresholdDays` |
 | 画面の見た目 | `web/todo/static/css/style.css` |
 | 画面の挙動（ドラッグ・開閉・スコープ） | `web/todo/static/js/app.js` |
+| 補足の追加・検証 | `internal/task/store.go` の `Annotate`、`internal/taskapi/api.go` の `annotateTask`、`cmd/todo/main.go` の `annotateCmd` |
+| 詳細での補足と「元のメモ」の表示 | `web/todo/static/js/app.js` の `supplementsBlock` |
 | CLI の出力 | `cmd/todo/main.go`（サーバへの呼び出しは `internal/taskclient`） |
 | 保存の形 | `internal/task/store.go`。`persist` が状態、`appendEvent` がログ |
 | 旧台帳の読み取り | `internal/legacy/legacy.go` |

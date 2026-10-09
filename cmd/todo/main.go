@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,7 +48,7 @@ func rootCmd() *cobra.Command {
 	root.Flags().String("detail", "", "detail text")
 
 	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), removeCmd(), waitCmd(), resumeCmd(),
-		somedayCmd(), orderCmd(), dueCmd(), detailCmd(), renameCmd(), focusCmd(true), focusCmd(false),
+		somedayCmd(), orderCmd(), dueCmd(), detailCmd(), annotateCmd(), renameCmd(), focusCmd(true), focusCmd(false),
 		undoCmd(), askCmd(), whyCmd(), contextCmd(), importCmd())
 	return root
 }
@@ -521,6 +522,51 @@ func detailCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func annotateCmd() *cobra.Command {
+	var kind, body, bodyFile, source string
+	c := &cobra.Command{
+		Use:   "annotate <ID> --kind quote|analysis|memo (--body TEXT | --body-file PATH) [--source NAME]",
+		Short: "補足を追記する（追記のみ。undo の対象にならない）",
+		Long: "タスクに補足（引用・考察・メモ）を追記する。既存の補足は変えず、todo undo でも取り消されない。\n" +
+			"書いた人は TODO_ORDER_ACTOR（human / ai）で決まる。",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if kind == "" {
+				return errors.New("--kind が要ります。quote / analysis / memo のどれかを指定してください")
+			}
+			hasBody, hasFile := cmd.Flags().Changed("body"), cmd.Flags().Changed("body-file")
+			switch {
+			case hasBody == hasFile:
+				return errors.New("--body か --body-file のどちらか一方を指定してください")
+			case hasFile:
+				b, err := os.ReadFile(bodyFile)
+				if err != nil {
+					return fmt.Errorf("--body-file を読めません: %w", err)
+				}
+				body = string(b)
+			}
+			cl, err := newClient()
+			if err != nil {
+				return err
+			}
+			_, raw, err := cl.Annotate(args[0], task.AnnotationInput{Kind: kind, Body: body, Source: source})
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return printRaw(raw)
+			}
+			fmt.Printf("補足 %s  %s\n", args[0], kind)
+			return nil
+		},
+	}
+	c.Flags().StringVar(&kind, "kind", "", "種別: quote（引用）/ analysis（考察）/ memo（メモ）")
+	c.Flags().StringVar(&body, "body", "", "補足の本文")
+	c.Flags().StringVar(&bodyFile, "body-file", "", "補足の本文を読むファイル")
+	c.Flags().StringVar(&source, "source", "", "出どころ（任意。例: slack）")
+	return c
 }
 
 func renameCmd() *cobra.Command {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/rengotaku/workbench/internal/note"
 	"github.com/rengotaku/workbench/internal/noteclient"
+	"github.com/rengotaku/workbench/internal/noteroute"
 )
 
 // env is what the commands touch outside themselves, so tests can replace it.
@@ -63,6 +64,8 @@ func rootCmd(e *env) *cobra.Command {
 			"  note 文字列...        その文字列を 1 件のメモとして登録する\n" +
 			"  pbpaste | note       標準入力の全体を 1 件のメモとして登録する\n" +
 			"  note \"本文 [1]\" --link \"<URL> 一言\"   関連 URL を添えて登録する。本文の [1] は 1 つ目の --link を指す\n\n" +
+			"  note list --pending  AI がまだ拾っていないメモ\n" +
+			"  note route <id> --todo 名前 | --record   拾ったメモの行き先を決める\n\n" +
 			"サーバ（既定 " + noteclient.DefaultBaseURL + "、$NOTE_SERVER で変更）経由でのみ読み書きする。",
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
@@ -75,7 +78,7 @@ func rootCmd(e *env) *cobra.Command {
 	root.Flags().String("topic", "", "話題")
 	root.Flags().StringArray("link", nil, "関連 URL（\"<URL> 一言\" の形。一言は省略可）。書いた順に [1] [2] … と番号が付く")
 
-	root.AddCommand(e.listCmd(), e.showCmd(), e.annotateCmd(), e.topicCmd(), e.topicsCmd(), e.deleteCmd())
+	root.AddCommand(e.listCmd(), e.showCmd(), e.annotateCmd(), e.routeCmd(), e.topicCmd(), e.topicsCmd(), e.deleteCmd())
 	return root
 }
 
@@ -180,7 +183,7 @@ func (e *env) listCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&f.Topic, "topic", "", "この話題のメモだけ")
-	c.Flags().BoolVar(&f.Pending, "pending", false, "補足待ち（補足 0 件）のメモだけ")
+	c.Flags().BoolVar(&f.Pending, "pending", false, "補足待ち（AI がまだ拾っていない = 行き先が未決）のメモだけ")
 	c.Flags().BoolVar(&f.NoTopic, "no-topic", false, "話題のないメモだけ")
 	return c
 }
@@ -233,7 +236,12 @@ func showText(n note.Note) string {
 			b.WriteString(" " + l.Label)
 		}
 	}
-	if n.Pending() {
+	switch {
+	case n.Route != nil && n.Route.To == note.RouteTodo:
+		fmt.Fprintf(&b, "\n  → todo %s", n.Route.TaskID)
+	case n.Route != nil:
+		b.WriteString("\n  → 記録")
+	case n.Pending():
 		b.WriteString("\n  補足待ち")
 	}
 	for _, a := range n.Annotations {
@@ -289,6 +297,65 @@ func (e *env) annotateCmd() *cobra.Command {
 	c.Flags().StringVar(&bodyFile, "body-file", "", "補足の本文を読むファイル")
 	c.Flags().StringVar(&source, "source", "", "出どころ（任意。例: slack）")
 	c.Flags().StringVar(&author, "author", "", "書いた人: ai（既定）/ human")
+	return c
+}
+
+func (e *env) routeCmd() *cobra.Command {
+	var todoName, due, detail string
+	var record bool
+	c := &cobra.Command{
+		Use:   "route <id> (--todo 名前 [--due YYYY-MM-DD] [--detail TEXT] | --record)",
+		Short: "拾ったメモの行き先を決める（todo を作る / 記録として残す）",
+		Long: "メモを拾った AI が行き先を決める。行為なら --todo でタスクを作り、記録なら --record で残す。\n" +
+			"どちらも、そのメモは補足待ちから外れる。同じメモに同じ行き先でもう一度実行しても、タスクは増えない。\n" +
+			"別の行き先に変えることはできない。",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			hasTodo := cmd.Flags().Changed("todo")
+			switch {
+			case hasTodo == record:
+				return errors.New("--todo 名前 か --record のどちらか一方を指定してください")
+			case record && (due != "" || detail != ""):
+				return errors.New("--due / --detail は --todo のときだけ指定できます")
+			case hasTodo && strings.TrimSpace(todoName) == "":
+				return errors.New("--todo にタスクの名前を渡してください")
+			}
+			cl, err := e.client()
+			if err != nil {
+				return err
+			}
+			var (
+				res noteroute.Response
+				raw []byte
+			)
+			if record {
+				res, raw, err = cl.RouteRecord(id)
+			} else {
+				res, raw, err = cl.RouteTodo(id, noteroute.TaskInput{Name: strings.TrimSpace(todoName), Due: due, Detail: detail})
+			}
+			if err != nil {
+				return err
+			}
+			if e.asJSON {
+				e.printRaw(raw)
+				return nil
+			}
+			if res.Task != nil {
+				e.println(fmt.Sprintf("note #%d → todo %s", id, res.Task.ID))
+			} else {
+				e.println(fmt.Sprintf("note #%d → 記録", id))
+			}
+			return nil
+		},
+	}
+	c.Flags().StringVar(&todoName, "todo", "", "タスクを作る。タスクの名前")
+	c.Flags().StringVar(&due, "due", "", "タスクの期限（YYYY-MM-DD。--todo のとき任意）")
+	c.Flags().StringVar(&detail, "detail", "", "タスクの詳細（--todo のとき任意）")
+	c.Flags().BoolVar(&record, "record", false, "記録として残す（タスクは作らない）")
 	return c
 }
 

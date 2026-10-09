@@ -95,7 +95,7 @@ func TestListFilters(t *testing.T) {
 	b := mustAdd(t, s, "b", "Y")
 	c := mustAdd(t, s, "c", "")
 	d := mustAdd(t, s, "d", "X")
-	if _, err := s.Annotate(a.ID, AnnotationInput{Kind: KindMemo, Body: "x"}); err != nil {
+	if _, err := s.SetRoute(a.ID, Route{To: RouteRecord}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,8 +145,8 @@ func TestAnnotateAppendsOnly(t *testing.T) {
 	if len(got.Annotations) != 2 || got.Annotations[0] != first || got.Annotations[1] != second {
 		t.Errorf("annotations should be both, in order: %+v", got.Annotations)
 	}
-	if got.Pending() {
-		t.Error("annotated note must not be pending")
+	if !got.Pending() {
+		t.Error("annotating alone must not mark the note as picked up")
 	}
 }
 
@@ -286,6 +286,9 @@ func TestReopenRestoresState(t *testing.T) {
 	s, dir := openStore(t)
 	n := mustAdd(t, s, "https://x.notion.so/p 決める", "青分離")
 	if _, err := s.Annotate(n.ID, AnnotationInput{Kind: KindAnalysis, Body: "考察\n二行目"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetRoute(n.ID, Route{To: RouteRecord}); err != nil {
 		t.Fatal(err)
 	}
 	mustAdd(t, s, "b", "")
@@ -488,4 +491,165 @@ func TestOpenFailureReleasesLock(t *testing.T) {
 		t.Fatalf("a failed Open must not leave the directory locked: %v", err)
 	}
 	_ = s.Close()
+}
+
+func TestSetRouteIsIdempotentAndRejectsAnotherDestination(t *testing.T) {
+	s, _ := openStore(t)
+	n := mustAdd(t, s, "a", "")
+
+	got, err := s.SetRoute(n.ID, Route{To: RouteTodo, TaskID: "T001"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Pending() || got.Route == nil || got.Route.TaskID != "T001" {
+		t.Fatalf("route not recorded: %+v", got)
+	}
+	first := *got.TriagedAt
+
+	again, err := s.SetRoute(n.ID, Route{To: RouteTodo, TaskID: "T001"})
+	if err != nil || !again.TriagedAt.Equal(first) {
+		t.Errorf("same destination should return the current state: %+v %v", again, err)
+	}
+	if _, err := s.SetRoute(n.ID, Route{To: RouteRecord}); !errors.Is(err, ErrRouteConflict) {
+		t.Errorf("err = %v, want ErrRouteConflict", err)
+	}
+	if _, err := s.SetRoute(n.ID, Route{To: "x"}); err == nil {
+		t.Error("unknown destination must be rejected")
+	}
+	if _, err := s.SetRoute(99, Route{To: RouteRecord}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+	if s.PendingCount() != 0 {
+		t.Errorf("PendingCount = %d, want 0", s.PendingCount())
+	}
+}
+
+func TestOpenMigratesAnnotatedNotesToTriagedOnce(t *testing.T) {
+	s, dir := openStore(t)
+	a := mustAdd(t, s, "annotated", "")
+	b := mustAdd(t, s, "bare", "")
+	an, err := s.Annotate(a.ID, AnnotationInput{Kind: KindMemo, Body: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if closeErr := s.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	makeOldFormat(t, dir)
+
+	s2, err := Open(dir, clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ga, _ := s2.Get(a.ID)
+	if ga.Pending() || ga.Route == nil || ga.Route.To != RouteRecord || !ga.TriagedAt.Equal(an.CreatedAt) {
+		t.Errorf("annotated note not migrated: %+v", ga)
+	}
+	if gb, _ := s2.Get(b.ID); !gb.Pending() {
+		t.Errorf("bare note must stay pending: %+v", gb)
+	}
+	if closeErr := s2.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	before, err := os.ReadFile(filepath.Join(dir, "notes.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logBefore := countMigrateEvents(t, dir)
+	if logBefore != 1 {
+		t.Fatalf("migrate events = %d, want 1", logBefore)
+	}
+
+	s3, err := Open(dir, clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s3.Close() }()
+	after, _ := os.ReadFile(filepath.Join(dir, "notes.json"))
+	if string(before) != string(after) {
+		t.Error("second start must not change notes.json")
+	}
+	if got := countMigrateEvents(t, dir); got != logBefore {
+		t.Errorf("second start wrote %d more migrate events", got-logBefore)
+	}
+}
+
+// makeOldFormat rewrites notes.json as a version of the app before triage
+// wrote it: no schema_version.
+func makeOldFormat(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, "notes.json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if uerr := json.Unmarshal(b, &m); uerr != nil {
+		t.Fatal(uerr)
+	}
+	if _, ok := m["schema_version"]; !ok {
+		t.Fatal("a new store should have written schema_version")
+	}
+	delete(m, "schema_version")
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A memo annotated after the migration has run is not settled by a restart.
+func TestRestartDoesNotSettleANoteAnnotatedAfterMigration(t *testing.T) {
+	s, dir := openStore(t)
+	old := mustAdd(t, s, "old", "")
+	if _, err := s.Annotate(old.ID, AnnotationInput{Kind: KindMemo, Body: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	makeOldFormat(t, dir)
+
+	s2, err := Open(dir, clock()) // the one migration
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh := mustAdd(t, s2, "fresh", "")
+	if _, aerr := s2.Annotate(fresh.ID, AnnotationInput{Kind: KindMemo, Body: "y"}); aerr != nil {
+		t.Fatal(aerr)
+	}
+	if cerr := s2.Close(); cerr != nil {
+		t.Fatal(cerr)
+	}
+
+	s3, err := Open(dir, clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s3.Close() }()
+	if g, _ := s3.Get(fresh.ID); !g.Pending() || g.Route != nil {
+		t.Errorf("annotated but not routed must stay pending after a restart: %+v", g)
+	}
+	if g, _ := s3.Get(old.ID); g.Pending() || g.Route.To != RouteRecord {
+		t.Errorf("old note should have been recorded once: %+v", g)
+	}
+	if got := countMigrateEvents(t, dir); got != 1 {
+		t.Errorf("migrate events = %d, want 1", got)
+	}
+}
+
+func countMigrateEvents(t *testing.T, dir string) int {
+	t.Helper()
+	files, _ := filepath.Glob(filepath.Join(dir, "events-*.jsonl"))
+	n := 0
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n += strings.Count(string(b), `"op":"migrate_triage"`)
+	}
+	return n
 }

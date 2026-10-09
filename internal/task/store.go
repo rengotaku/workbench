@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -148,6 +149,39 @@ func (s *Store) Add(name, detail, due string, actor Actor) (Task, error) {
 // Adding and linking are one change, so a single undo takes the task back out
 // instead of leaving it behind without its link.
 func (s *Store) AddLinked(name, detail, due, url, linkText string, actor Actor) (Task, error) {
+	return s.add(name, detail, due, url, linkText, 0, actor)
+}
+
+// AddFromNote appends a task made from a memo. When a task for that memo
+// already exists it is returned unchanged and nothing is created, so a retry
+// after a failure further along cannot make a second one.
+func (s *Store) AddFromNote(name, detail, due string, noteID int, actor Actor) (Task, error) {
+	if noteID < 1 {
+		return Task{}, errors.New("source note id is required")
+	}
+	return s.add(name, detail, due, "", "", noteID, actor)
+}
+
+// FindBySourceNote returns the task made from a memo.
+func (s *Store) FindBySourceNote(noteID int) (Task, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.findBySourceNote(noteID)
+}
+
+func (s *Store) findBySourceNote(noteID int) (Task, bool) {
+	if noteID < 1 {
+		return Task{}, false
+	}
+	for _, t := range s.st.Tasks {
+		if t.SourceNoteID == noteID {
+			return t, true
+		}
+	}
+	return Task{}, false
+}
+
+func (s *Store) add(name, detail, due, url, linkText string, noteID int, actor Actor) (Task, error) {
 	if name == "" {
 		return Task{}, errors.New("name is required")
 	}
@@ -160,15 +194,25 @@ func (s *Store) AddLinked(name, detail, due, url, linkText string, actor Actor) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if existing, ok := s.findBySourceNote(noteID); ok {
+		// It may be in memory only, if saving it failed the first time. Save
+		// again before saying it exists, so the caller never records a task
+		// that is not on disk.
+		if err := s.persist(); err != nil {
+			return Task{}, err
+		}
+		return existing, nil
+	}
 	t := Task{
-		ID:        fmt.Sprintf("T%03d", s.st.NextTask),
-		Name:      name,
-		Detail:    detail,
-		Due:       due,
-		URL:       url,
-		State:     StateOpen,
-		Order:     len(s.openIndexes()),
-		CreatedAt: s.now(),
+		ID:           fmt.Sprintf("T%03d", s.st.NextTask),
+		Name:         name,
+		Detail:       detail,
+		Due:          due,
+		URL:          url,
+		State:        StateOpen,
+		Order:        len(s.openIndexes()),
+		CreatedAt:    s.now(),
+		SourceNoteID: noteID,
 	}
 	if url != "" {
 		t.LinkText = linkText
@@ -518,6 +562,67 @@ func (s *Store) SetDetail(id, detail string, actor Actor) (Task, error) {
 	return s.mustGet(id), nil
 }
 
+// Limits on one annotation, in bytes. The event log is read line by line with
+// a 1 MiB limit per line; an annotation is logged with its body, so it must
+// stay far below that or every later read of the log fails.
+const (
+	MaxAnnotationBody   = 64 * 1024
+	MaxAnnotationSource = 200
+)
+
+// AnnotationInput is what a caller supplies; the store assigns id and time.
+type AnnotationInput struct {
+	Kind   string
+	Body   string
+	Source string
+}
+
+// Annotate appends a supplement to a task. It is recorded as an event but is
+// never undoable, and existing annotations are never touched.
+func (s *Store) Annotate(id string, in AnnotationInput, actor Actor) (Annotation, error) {
+	switch in.Kind {
+	case AnnotationQuote, AnnotationAnalysis, AnnotationMemo:
+	default:
+		return Annotation{}, fmt.Errorf("kind must be quote, analysis or memo: %q", in.Kind)
+	}
+	if strings.TrimSpace(in.Body) == "" {
+		return Annotation{}, errors.New("body is required")
+	}
+	if len(in.Body) > MaxAnnotationBody {
+		return Annotation{}, fmt.Errorf("body is too long (%d bytes, limit %d); split it into several annotations", len(in.Body), MaxAnnotationBody)
+	}
+	if len(strings.TrimSpace(in.Source)) > MaxAnnotationSource {
+		return Annotation{}, fmt.Errorf("source is too long (limit %d bytes)", MaxAnnotationSource)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	i, err := s.indexOf(id)
+	if err != nil {
+		return Annotation{}, err
+	}
+	t := s.st.Tasks[i]
+	a := Annotation{
+		ID:        len(t.Annotations) + 1,
+		Kind:      in.Kind,
+		Body:      in.Body,
+		Source:    strings.TrimSpace(in.Source),
+		Author:    actor,
+		CreatedAt: s.now(),
+	}
+	t.Annotations = append(append([]Annotation(nil), t.Annotations...), a)
+	s.st.Tasks[i] = t
+
+	if err := s.record(Event{TaskID: id, Kind: KindAnnotated, Actor: actor, FromValue: in.Kind, ToValue: in.Body}); err != nil {
+		return Annotation{}, err
+	}
+	if err := s.persist(); err != nil {
+		return Annotation{}, err
+	}
+	return a, nil
+}
+
 // SetLink records the link a task came from: the URL, and the part of the name
 // that was the link at the source. An empty url clears both. The values are
 // stored as given — the store never builds a URL or picks a range of its own.
@@ -633,8 +738,8 @@ func (s *Store) Events(taskID string) ([]Event, error) {
 // the queue, so a question can quote the reason it is being asked.
 type Pending struct {
 	Trigger string `json:"trigger"`
-	Task    Task   `json:"task"`
 	Event   Event  `json:"event"`
+	Task    Task   `json:"task"`
 }
 
 // Ask returns the changes worth explaining that still have no reason: the

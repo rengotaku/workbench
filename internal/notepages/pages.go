@@ -117,7 +117,14 @@ type annotationView struct {
 	Body   string
 }
 
+// routeView says where the AI sent a memo once it picked it up.
+type routeView struct {
+	Label string // → todo | 記録
+	Href  string // the todo list for a task, empty for a record
+}
+
 type noteView struct {
+	Route       *routeView
 	Time        string
 	Source      string
 	Topic       string
@@ -125,6 +132,7 @@ type noteView struct {
 	Links       []linkView
 	Annotations []annotationView
 	ID          int
+	Pending     bool // the AI has not picked it up yet
 }
 
 type dayView struct {
@@ -187,6 +195,14 @@ func toNoteView(n note.Note, at time.Time) noteView {
 		Time:   at.Format("15:04"),
 		Source: note.SourceLabel(n.URL),
 		Topic:  n.Topic,
+		// Pending is the memo's own state, not the absence of annotations.
+		Pending: n.Pending(),
+	}
+	if n.Route != nil {
+		nv.Route = &routeView{Label: "記録"}
+		if n.Route.To == note.RouteTodo {
+			nv.Route = &routeView{Label: "→ todo " + n.Route.TaskID, Href: "/"}
+		}
 	}
 	for _, l := range n.Links {
 		nv.Links = append(nv.Links, linkView{N: l.N, URL: l.URL, Label: l.Label, Source: note.SourceLabel(l.URL)})

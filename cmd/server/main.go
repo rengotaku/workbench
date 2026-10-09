@@ -20,6 +20,7 @@ import (
 
 	"github.com/rengotaku/workbench/internal/note"
 	"github.com/rengotaku/workbench/internal/notepages"
+	"github.com/rengotaku/workbench/internal/noteroute"
 	"github.com/rengotaku/workbench/internal/server"
 	"github.com/rengotaku/workbench/internal/task"
 	"github.com/rengotaku/workbench/internal/taskapi"
@@ -136,6 +137,7 @@ func run() int {
 	handler := server.New(cfg.Port,
 		taskweb.NewHandler(todoTemplates, todoStatic, taskapi.New(taskStore, time.Local)),
 		notepages.New(noteTemplates, noteStatic, noteStore),
+		noteroute.New(noteStore, taskStore, time.Local),
 	)
 
 	srv := &http.Server{
