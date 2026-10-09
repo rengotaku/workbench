@@ -96,9 +96,10 @@ func main() {
 		slog.Error("failed to open task store", "error", err, "dir", dataDir)
 		os.Exit(1)
 	}
+	defer func() { _ = store.Close() }()
 	slog.Info("task store ready", "dir", dataDir)
 
-	h := taskweb.NewHandler(templates, staticFiles, taskapi.New(store, time.Local))
+	h := taskweb.NewHandler(templates, staticFiles, taskapi.New(store, time.Local), cfg.Port)
 
 	srv := &http.Server{
 		Addr:         cfg.Listen + ":" + cfg.Port,

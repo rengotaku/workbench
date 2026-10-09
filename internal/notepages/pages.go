@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/rengotaku/workbench/internal/httpguard"
 	"github.com/rengotaku/workbench/internal/note"
 	"github.com/rengotaku/workbench/internal/noteapi"
 )
@@ -49,7 +50,7 @@ func New(templates map[string]*template.Template, staticFS fs.FS, store *note.St
 // Routes returns the router.
 func (p *Pages) Routes() http.Handler {
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery(), guard(p.port))
+	r.Use(gin.Logger(), gin.Recovery(), httpguard.New(p.port))
 
 	r.StaticFS("/static", http.FS(p.staticFS))
 	r.GET("/", p.handleAdd)

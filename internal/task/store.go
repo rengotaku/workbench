@@ -11,6 +11,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/rengotaku/workbench/internal/store"
 )
 
 // ErrNotFound is returned when an ID does not exist. Callers surface it as an
@@ -38,10 +40,11 @@ type state struct {
 // events-YYYY-MM.jsonl beside it. The state file is rewritten atomically; the
 // event log is only ever appended to.
 type Store struct {
-	loc *time.Location
-	dir string
-	st  state
-	mu  sync.Mutex
+	lock *store.Lock // holds the data dir's single-writer lock for the Store's lifetime
+	loc  *time.Location
+	dir  string
+	st   state
+	mu   sync.Mutex
 }
 
 // Open loads a store from dir, creating an empty one when nothing is there.
@@ -52,16 +55,25 @@ func Open(dir string, loc *time.Location) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("creating %s: %w", dir, err)
 	}
-	s := &Store{dir: dir, loc: loc, st: state{NextTask: 1, NextEvent: 1}}
+	lock, err := store.AcquireLock(dir)
+	switch {
+	case errors.Is(err, store.ErrLocked):
+		return nil, fmt.Errorf("data directory %s is in use by another process; stop it or set a different DATA_DIR", dir)
+	case err != nil:
+		return nil, fmt.Errorf("locking %s: %w", dir, err)
+	}
+	s := &Store{dir: dir, loc: loc, lock: lock, st: state{NextTask: 1, NextEvent: 1}}
 
 	b, err := os.ReadFile(s.statePath())
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		return s, nil
 	case err != nil:
+		_ = s.Close()
 		return nil, fmt.Errorf("reading %s: %w", s.statePath(), err)
 	}
 	if err := json.Unmarshal(b, &s.st); err != nil {
+		_ = s.Close()
 		return nil, fmt.Errorf("parsing %s: %w", s.statePath(), err)
 	}
 	if s.st.NextTask < 1 {
@@ -73,10 +85,20 @@ func Open(dir string, loc *time.Location) (*Store, error) {
 	return s, nil
 }
 
+// Close releases the data directory lock. The Store must not be used after.
+func (s *Store) Close() error {
+	if s.lock == nil {
+		return nil
+	}
+	err := s.lock.Close()
+	s.lock = nil
+	return err
+}
+
 func (s *Store) statePath() string { return filepath.Join(s.dir, "tasks.json") }
 
 func (s *Store) eventsPath(at time.Time) string {
-	return filepath.Join(s.dir, fmt.Sprintf("events-%s.jsonl", at.In(s.loc).Format("2006-01")))
+	return store.MonthlyLogPath(s.dir, at.In(s.loc))
 }
 
 // SetNextTaskNumber fixes where task IDs continue from. Migration uses it to
@@ -882,21 +904,11 @@ func (s *Store) recordID(e Event) (string, error) {
 }
 
 func (s *Store) appendEvent(e Event) error {
-	path := s.eventsPath(e.At)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("opening %s: %w", path, err)
-	}
-	defer func() { _ = f.Close() }() // write errors are reported below
-
 	b, err := json.Marshal(e)
 	if err != nil {
 		return fmt.Errorf("encoding event: %w", err)
 	}
-	if _, err := f.Write(append(b, '\n')); err != nil {
-		return fmt.Errorf("appending to %s: %w", path, err)
-	}
-	return nil
+	return store.AppendLine(s.eventsPath(e.At), b)
 }
 
 // readEvents reads every month's log in order. A later line for the same event
@@ -959,28 +971,7 @@ func (s *Store) persist() error {
 	if err != nil {
 		return fmt.Errorf("encoding state: %w", err)
 	}
-	tmp, err := os.CreateTemp(s.dir, "tasks-*.json")
-	if err != nil {
-		return fmt.Errorf("creating temp state file: %w", err)
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }() // no-op once the rename succeeds
-
-	if _, err := tmp.Write(append(b, '\n')); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("writing temp state file: %w", err)
-	}
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("setting permissions on temp state file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("closing temp state file: %w", err)
-	}
-	if err := os.Rename(tmpName, s.statePath()); err != nil {
-		return fmt.Errorf("replacing %s: %w", s.statePath(), err)
-	}
-	return nil
+	return store.WriteFileAtomic(s.statePath(), append(b, '\n'))
 }
 
 func lastEventOfKind(all []Event, taskID string, kind Kind) (Event, bool) {

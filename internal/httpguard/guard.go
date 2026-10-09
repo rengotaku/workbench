@@ -1,4 +1,6 @@
-package notepages
+// Package httpguard refuses requests that a web page on another origin could
+// send to a loopback server.
+package httpguard
 
 import (
 	"mime"
@@ -8,11 +10,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// guard refuses requests that a web page on another origin could send to the
-// loopback server: a foreign Host (DNS rebinding), a foreign Origin, and a
+// New returns middleware that refuses: a foreign Host (DNS rebinding), a foreign Origin, and a
 // write to /api that is not JSON (a cross-origin form or text/plain POST
 // needs no preflight, so it would otherwise land).
-func guard(port string) gin.HandlerFunc {
+func New(port string) gin.HandlerFunc {
 	hosts := map[string]bool{"127.0.0.1:" + port: true, "localhost:" + port: true}
 	origins := map[string]bool{"http://127.0.0.1:" + port: true, "http://localhost:" + port: true}
 
@@ -33,10 +34,13 @@ func guard(port string) gin.HandlerFunc {
 	}
 }
 
-// needsJSON is true for the API writes that carry a body. DELETE has none, so
-// it is covered by the Host and Origin checks only.
+// needsJSON is true for the API writes that change state. It does not look at
+// whether a body is present: a body-less cross-origin form POST needs no
+// preflight and would otherwise land, so clients must send JSON for these
+// methods even when they have nothing to say. DELETE is covered by the Host
+// and Origin checks only.
 func needsJSON(r *http.Request) bool {
-	return strings.HasPrefix(r.URL.Path, "/api/") && (r.Method == http.MethodPost || r.Method == http.MethodPut)
+	return strings.HasPrefix(r.URL.Path, "/api/") && (r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch)
 }
 
 func isJSON(contentType string) bool {

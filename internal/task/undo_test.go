@@ -233,6 +233,7 @@ func TestUndo_SurvivesAReload(t *testing.T) {
 
 	// A fresh store must not offer the same reversal again: what is left is the
 	// creation, one step further back.
+	_ = s.Close()
 	reloaded, err := task.Open(dir, time.Local)
 	require.NoError(t, err)
 
