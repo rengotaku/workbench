@@ -20,6 +20,7 @@ type recorder struct {
 	method string
 	path   string
 	query  string
+	ctype  string
 }
 
 func serve(t *testing.T, status int, response string) (*taskclient.Client, *recorder) {
@@ -30,6 +31,7 @@ func serve(t *testing.T, status int, response string) (*taskclient.Client, *reco
 		rec.method = r.Method
 		rec.path = r.URL.Path
 		rec.query = r.URL.RawQuery
+		rec.ctype = r.Header.Get("Content-Type")
 		if raw, err := io.ReadAll(r.Body); err == nil && len(raw) > 0 {
 			_ = json.Unmarshal(raw, &rec.body)
 		}
@@ -250,4 +252,18 @@ func TestUnreachableServer_StopsWithAnActionableMessage(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot reach the todo-order server")
 	assert.Contains(t, err.Error(), "make run")
+}
+
+// The server refuses a POST that is not JSON even when it has no body, so the
+// CLI must send a JSON Content-Type for the body-less ones too.
+func TestBodylessPostsStillSendJSON(t *testing.T) {
+	c, rec := serve(t, http.StatusOK, `{"task":{},"undone":{}}`)
+
+	_, _, _ = c.Done("T1")
+	assert.Equal(t, "application/json", rec.ctype)
+	assert.Equal(t, http.MethodPost, rec.method)
+
+	_, _, _ = c.Undo()
+	assert.Equal(t, "application/json", rec.ctype)
+	assert.Equal(t, "/api/undo", rec.path)
 }

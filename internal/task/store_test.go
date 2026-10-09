@@ -268,6 +268,7 @@ func TestAsk_QueuesAStalledHandoffOnceItPassesTheThreshold(t *testing.T) {
 
 	// Backdate the handoff past the threshold and reload from disk.
 	require.NoError(t, backdateHandoff(dir, added.ID, task.AskThresholdDays+1))
+	_ = s.Close()
 	reloaded, err := task.Open(dir, time.Local)
 	require.NoError(t, err)
 
@@ -379,6 +380,7 @@ func TestEvents_AreKeptPerTaskAndSurviveAReload(t *testing.T) {
 	_, err = s.SetDetail(a.ID, "詳しい話", task.ActorHuman)
 	require.NoError(t, err)
 
+	_ = s.Close()
 	reloaded, err := task.Open(dir, time.Local)
 	require.NoError(t, err)
 
@@ -581,6 +583,7 @@ func TestOpen_ReadsBackAnExistingStore(t *testing.T) {
 
 	assert.FileExists(t, filepath.Join(dir, "tasks.json"))
 
+	_ = s.Close()
 	reopened, err := task.Open(dir, nil)
 	require.NoError(t, err)
 	list, _ := reopened.List()
@@ -724,4 +727,23 @@ func TestSetURL_UnknownTaskIsAnError(t *testing.T) {
 
 	_, err := s.SetLink("T999", "https://example.test/", "", task.ActorHuman)
 	require.Error(t, err)
+}
+
+func TestOpen_SecondOpenOnSameDirFailsUntilClosed(t *testing.T) {
+	dir := t.TempDir()
+	first, err := task.Open(dir, time.Local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = task.Open(dir, time.Local); err == nil {
+		t.Fatal("second Open on the same directory should fail")
+	}
+	if err = first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	again, err := task.Open(dir, time.Local)
+	if err != nil {
+		t.Fatalf("Open after Close: %v", err)
+	}
+	_ = again.Close()
 }

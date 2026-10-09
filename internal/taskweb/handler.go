@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/rengotaku/workbench/internal/httpguard"
 	"github.com/rengotaku/workbench/internal/taskapi"
 )
 
@@ -16,18 +17,20 @@ type Handler struct {
 	templates map[string]*template.Template
 	staticFS  fs.FS
 	api       *taskapi.API
+	port      string
 }
 
 // NewHandler wires the page and the API together. api may be nil in tests that
-// only exercise the page.
-func NewHandler(templates map[string]*template.Template, staticFS fs.FS, a *taskapi.API) *Handler {
-	return &Handler{templates: templates, staticFS: staticFS, api: a}
+// only exercise the page. port is the one the server listens on; requests for
+// any other Host or Origin are refused.
+func NewHandler(templates map[string]*template.Template, staticFS fs.FS, a *taskapi.API, port string) *Handler {
+	return &Handler{templates: templates, staticFS: staticFS, api: a, port: port}
 }
 
 // Routes returns the router: the page, the static bundle, health, and /api.
 func (h *Handler) Routes() http.Handler {
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
+	r.Use(gin.Logger(), gin.Recovery(), httpguard.New(h.port))
 
 	r.StaticFS("/static", http.FS(h.staticFS))
 

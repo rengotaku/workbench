@@ -235,6 +235,11 @@ func (c *Client) taskCall(method, path string, body map[string]any) (Task, []byt
 // falling back to local files: the server is the only writer, and a silent
 // local write would split the source of truth in two.
 func (c *Client) do(method, path string, body map[string]any, out any) ([]byte, error) {
+	// The server rejects a POST/PUT/PATCH that is not JSON even when it has no
+	// body to read, so those methods always send one.
+	if body == nil && sendsJSON(method) {
+		body = map[string]any{}
+	}
 	var reader io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -278,6 +283,11 @@ func (c *Client) do(method, path string, body map[string]any, out any) ([]byte, 
 		}
 	}
 	return raw, nil
+}
+
+// sendsJSON reports whether the server requires a JSON Content-Type for method.
+func sendsJSON(method string) bool {
+	return method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch
 }
 
 // actor marks who made the change. The CLI is used by both a person and an

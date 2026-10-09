@@ -14,6 +14,9 @@
 
   function request(method, path, body) {
     var opts = { method: method, headers: {} };
+    // The server refuses a POST/PUT/PATCH that is not JSON, even with nothing
+    // to say, so those methods always send a body.
+    if (!body && /^(POST|PUT|PATCH)$/i.test(method)) body = {};
     if (body) {
       opts.headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(body);

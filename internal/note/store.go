@@ -10,8 +10,9 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/rengotaku/workbench/internal/store"
 )
 
 // ErrNotFound is returned for an id that does not exist.
@@ -43,7 +44,7 @@ type Event struct {
 // events-YYYY-MM.jsonl beside it. notes.json is replaced atomically; the log
 // is only appended to. The server is the only writer.
 type Store struct {
-	lock *os.File // holds the data dir's single-writer lock for the Store's lifetime
+	lock *store.Lock // holds the data dir's single-writer lock for the Store's lifetime
 	dir  string
 	now  func() time.Time
 	st   state
@@ -59,9 +60,12 @@ func Open(dir string, now func() time.Time) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("%s を作れません: %w", dir, err)
 	}
-	lock, err := acquireLock(dir)
-	if err != nil {
-		return nil, err
+	lock, err := store.AcquireLock(dir)
+	switch {
+	case errors.Is(err, store.ErrLocked):
+		return nil, fmt.Errorf("同じデータディレクトリ（%s）を別のサーバが使っています。そちらを止めるか、DATA_DIR を変えて起動してください", dir)
+	case err != nil:
+		return nil, fmt.Errorf("ロックを取れません: %w", err)
 	}
 	s := &Store{dir: dir, now: now, lock: lock, st: state{NextNote: 1, NextAnnotation: 1}}
 
@@ -82,24 +86,6 @@ func Open(dir string, now func() time.Time) (*Store, error) {
 	return s, nil
 }
 
-// acquireLock takes an exclusive, non-blocking lock on dir/.lock. A second
-// writer on the same directory would overwrite notes.json from an old
-// snapshot and lose memos, so a second Open must fail instead.
-func acquireLock(dir string) (*os.File, error) {
-	f, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("ロックファイルを開けません: %w", err)
-	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		_ = f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, fmt.Errorf("同じデータディレクトリ（%s）を別のサーバが使っています。そちらを止めるか、DATA_DIR を変えて起動してください", dir)
-		}
-		return nil, fmt.Errorf("ロックを取れません: %w", err)
-	}
-	return f, nil
-}
-
 // Close releases the data directory lock. The Store must not be used after.
 func (s *Store) Close() error {
 	if s.lock == nil {
@@ -113,7 +99,7 @@ func (s *Store) Close() error {
 func (s *Store) statePath() string { return filepath.Join(s.dir, "notes.json") }
 
 func (s *Store) eventsPath(at time.Time) string {
-	return filepath.Join(s.dir, "events-"+at.Format("2006-01")+".jsonl")
+	return store.MonthlyLogPath(s.dir, at)
 }
 
 // commit writes next to notes.json, makes it current, then appends ev to the
@@ -126,7 +112,7 @@ func (s *Store) commit(next state, ev Event) error {
 	if err != nil {
 		return fmt.Errorf("保存内容を作れません: %w", err)
 	}
-	if err := writeAtomic(s.statePath(), b); err != nil {
+	if err := store.WriteFileAtomic(s.statePath(), b); err != nil {
 		return err
 	}
 	s.st = next
@@ -141,41 +127,8 @@ func (s *Store) appendEvent(ev Event) error {
 	if err != nil {
 		return fmt.Errorf("操作ログを作れません: %w", err)
 	}
-	f, err := os.OpenFile(s.eventsPath(ev.At), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("操作ログを開けません: %w", err)
-	}
-	if _, err := f.Write(append(line, '\n')); err != nil {
-		_ = f.Close()
+	if err := store.AppendLine(s.eventsPath(ev.At), line); err != nil {
 		return fmt.Errorf("操作ログに書けません: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("操作ログを閉じられません: %w", err)
-	}
-	return nil
-}
-
-// writeAtomic writes through a temp file and renames it into place, so a
-// reader never sees half a file.
-func writeAtomic(path string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".notes-*.tmp")
-	if err != nil {
-		return fmt.Errorf("一時ファイルを作れません: %w", err)
-	}
-	defer func() { _ = os.Remove(tmp.Name()) }() // no-op after a successful rename
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("一時ファイルに書けません: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("一時ファイルを同期できません: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("一時ファイルを閉じられません: %w", err)
-	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		return fmt.Errorf("%s に置き換えられません: %w", path, err)
 	}
 	return nil
 }

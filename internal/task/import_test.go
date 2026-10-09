@@ -64,6 +64,7 @@ func TestImport_WritesNothingWhenARowIsBad(t *testing.T) {
 	require.Error(t, err)
 
 	// Validation happens before any write, so the store is still empty.
+	_ = s.Close()
 	reopened, err := task.Open(dir, time.Local)
 	require.NoError(t, err)
 	tasks, _ := reopened.List()

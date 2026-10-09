@@ -273,6 +273,7 @@ func TestAsk_DoesNotStallASomedayTaskThatWasOnceWaiting(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, backdateHandoff(dir, added.ID, task.AskThresholdDays+1))
+	_ = s.Close()
 	reloaded, err := task.Open(dir, time.Local)
 	require.NoError(t, err)
 

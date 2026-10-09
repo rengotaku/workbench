@@ -79,6 +79,7 @@ func TestList_SomedaySortsByUntilWithEmptyLast(t *testing.T) {
 
 	clearUntil(t, dir, noUntil.ID)
 
+	_ = store.Close()
 	reloaded, err := task.Open(dir, time.Local)
 	require.NoError(t, err)
 	r := gin.New()
