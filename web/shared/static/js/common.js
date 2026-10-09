@@ -39,8 +39,9 @@
   var embedded = window.parent !== window;
   if (embedded) document.documentElement.classList.add('embedded');
 
-  // tell sends the dialog a message: 'changed' after something was added or
-  // undone, 'close' when the screen is left. Outside a dialog it does nothing.
+  // tell sends the dialog a message: 'busy' / 'idle' around a request that
+  // writes, 'changed' after something was added or undone, 'close' when the
+  // screen is left. Outside a dialog it does nothing.
   function tell(type) {
     if (embedded) window.parent.postMessage({ workbench: type }, location.origin);
   }

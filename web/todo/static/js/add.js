@@ -147,13 +147,15 @@
   }
 
   function undo(li, name) {
+    window.workbench.tell('busy');
     shared.request('POST', '/api/undo')
       .then(function () {
         li.classList.add('is-undone');
         window.workbench.tell('changed');
         toast([text('取り消しました: ' + name)]);
       })
-      .catch(function (err) { toast([text('取り消せませんでした: ' + reason(err))], true); });
+      .catch(function (err) { toast([text('取り消せませんでした: ' + reason(err))], true); })
+      .then(function () { window.workbench.tell('idle'); });
   }
 
   function reset() {
@@ -180,6 +182,7 @@
 
     busy = true;
     el.name.disabled = true;
+    window.workbench.tell('busy');
     shared.request('POST', '/api/tasks', body)
       .then(function (data) {
         var t = data.task || body;
@@ -199,7 +202,7 @@
         el.name.focus();
         toast([text('追加できませんでした: ' + reason(err))], true);
       })
-      .then(function () { busy = false; });
+      .then(function () { busy = false; window.workbench.tell('idle'); });
   }
 
   el.submit.addEventListener('click', submit);
