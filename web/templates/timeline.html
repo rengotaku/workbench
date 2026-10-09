@@ -23,7 +23,12 @@
       <div class="meta">
         {{.Time}}{{if .Source}} · <span class="src">{{.Source}}</span>{{end}}{{if .Topic}} · <span class="topic">{{.Topic}}</span>{{end}} · <span class="nid">#{{.ID}}</span>
       </div>
-      <p class="memo">{{range .Segments}}{{if .URL}}<a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Text}}</a>{{else}}{{.Text}}{{end}}{{end}}</p>
+      <p class="memo">{{range .Segments}}{{if .Ref}}<a class="ref" href="{{.URL}}" target="_blank" rel="noopener noreferrer" title="{{.URL}}">{{.Text}}</a>{{else if .URL}}<a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Text}}</a>{{else}}{{.Text}}{{end}}{{end}}</p>
+      {{if .Links}}
+      <ol class="links" aria-label="関連 URL">
+        {{range .Links}}<li><span class="ln">[{{.N}}]</span> <span class="src">{{.Source}}</span> <a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{if .Label}}{{.Label}}{{else}}{{.URL}}{{end}}</a></li>{{end}}
+      </ol>
+      {{end}}
       {{range .Annotations}}
       <div class="add k-{{.Kind}}">
         <div class="who">{{.Label}} · {{.Author}} · {{.When}}{{if .Source}} · {{.Source}}{{end}}</div>

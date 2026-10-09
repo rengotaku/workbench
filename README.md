@@ -31,6 +31,7 @@
 note                          # 端末から引数なし: ブラウザで登録画面を開く
 note "https://… 一言"          # 引数を空白で連結して 1 件登録（--topic 青分離 で話題つき）
 pbpaste | note                # 標準入力の全体を 1 件登録
+note "[1] で決定" --link "https://… 一言"   # 関連 URL を添えて登録（--link を書いた順に [1] [2] …）
 note list [--topic X] [--pending] [--no-topic] [--json]
 note show 41 [--json]         # メモと補足を全部
 note annotate 41 --kind quote --source slack --body-file quote.md

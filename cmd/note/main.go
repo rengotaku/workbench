@@ -61,7 +61,8 @@ func rootCmd(e *env) *cobra.Command {
 		Long: "1 行メモ（リンクと一言）を溜め、あとから補足（引用・考察）と話題を追記して読む。\n\n" +
 			"  note                 端末から引数なしで実行すると、ブラウザで登録画面を開く\n" +
 			"  note 文字列...        その文字列を 1 件のメモとして登録する\n" +
-			"  pbpaste | note       標準入力の全体を 1 件のメモとして登録する\n\n" +
+			"  pbpaste | note       標準入力の全体を 1 件のメモとして登録する\n" +
+			"  note \"本文 [1]\" --link \"<URL> 一言\"   関連 URL を添えて登録する。本文の [1] は 1 つ目の --link を指す\n\n" +
 			"サーバ（既定 " + client.DefaultBaseURL + "、$NOTE_SERVER で変更）経由でのみ読み書きする。",
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
@@ -72,6 +73,7 @@ func rootCmd(e *env) *cobra.Command {
 	root.PersistentFlags().StringVar(&e.serverURL, "server", "", "サーバの URL（既定 $NOTE_SERVER または "+client.DefaultBaseURL+"）")
 	root.PersistentFlags().BoolVar(&e.asJSON, "json", false, "サーバの応答の JSON をそのまま出す")
 	root.Flags().String("topic", "", "話題")
+	root.Flags().StringArray("link", nil, "関連 URL（\"<URL> 一言\" の形。一言は省略可）。書いた順に [1] [2] … と番号が付く")
 
 	root.AddCommand(e.listCmd(), e.showCmd(), e.annotateCmd(), e.topicCmd(), e.topicsCmd(), e.deleteCmd())
 	return root
@@ -92,8 +94,16 @@ func (e *env) printRaw(raw []byte) {
 
 func (e *env) runAdd(cmd *cobra.Command, args []string) error {
 	topic, _ := cmd.Flags().GetString("topic")
+	rawLinks, _ := cmd.Flags().GetStringArray("link")
+	links := make([]note.LinkInput, 0, len(rawLinks))
+	for _, l := range rawLinks {
+		links = append(links, note.ParseLinkInput(l))
+	}
 
 	if len(args) == 0 && e.stdinIsTTY {
+		if len(links) > 0 {
+			return errors.New("--link を付けるときは本文も渡してください。note \"本文 [1]\" --link <URL> の形で入れてください")
+		}
 		return e.openAddPage()
 	}
 
@@ -116,7 +126,7 @@ func (e *env) runAdd(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	n, raw, err := c.Add(text, strings.TrimSpace(topic))
+	n, raw, err := c.Add(text, strings.TrimSpace(topic), links...)
 	if err != nil {
 		return err
 	}
@@ -216,6 +226,12 @@ func showText(n note.Note) string {
 	b.WriteString(listLine(n))
 	if n.URL != "" {
 		fmt.Fprintf(&b, "\n  リンク: %s（%s）", n.URL, note.SourceLabel(n.URL))
+	}
+	for _, l := range n.Links {
+		fmt.Fprintf(&b, "\n  [%d] %s（%s）", l.N, l.URL, note.SourceLabel(l.URL))
+		if l.Label != "" {
+			b.WriteString(" " + l.Label)
+		}
 	}
 	if n.Pending() {
 		b.WriteString("\n  補足待ち")

@@ -91,9 +91,19 @@ type chipView struct {
 	On    bool
 }
 
+// segmentView is a run of memo text. A reference ([N]) to a related link
+// is shown as a link to that URL; one with no such link stays plain text.
 type segmentView struct {
 	Text string
 	URL  string
+	Ref  int
+}
+
+type linkView struct {
+	URL    string
+	Label  string
+	Source string
+	N      int
 }
 
 type annotationView struct {
@@ -110,6 +120,7 @@ type noteView struct {
 	Source      string
 	Topic       string
 	Segments    []segmentView
+	Links       []linkView
 	Annotations []annotationView
 	ID          int
 }
@@ -175,8 +186,15 @@ func toNoteView(n note.Note, at time.Time) noteView {
 		Source: note.SourceLabel(n.URL),
 		Topic:  n.Topic,
 	}
-	for _, s := range note.SplitLinks(n.Text) {
-		nv.Segments = append(nv.Segments, segmentView(s))
+	for _, l := range n.Links {
+		nv.Links = append(nv.Links, linkView{N: l.N, URL: l.URL, Label: l.Label, Source: note.SourceLabel(l.URL)})
+	}
+	for _, s := range note.SplitMemo(n.Text) {
+		sv := segmentView{Text: s.Text, URL: s.URL}
+		if s.Ref >= 1 && s.Ref <= len(n.Links) {
+			sv.URL, sv.Ref = n.Links[s.Ref-1].URL, s.Ref
+		}
+		nv.Segments = append(nv.Segments, sv)
 	}
 	for _, a := range n.Annotations {
 		nv.Annotations = append(nv.Annotations, annotationView{

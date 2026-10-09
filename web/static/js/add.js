@@ -1,5 +1,7 @@
-// The add screen: one field. Enter saves the memo and empties the field for
-// the next one. A topic chip, when picked, stays picked between saves.
+// The add screen: one field, plus optional related-URL rows numbered [1], [2]…
+// that the memo text can point at. Enter saves the memo and empties the
+// fields for the next one. A topic chip, when picked, stays picked between
+// saves.
 (function () {
   'use strict';
 
@@ -8,6 +10,8 @@
     memo: document.getElementById('memo'),
     topics: document.getElementById('topics'),
     addTopic: document.getElementById('topic-add'),
+    links: document.getElementById('links'),
+    addLink: document.getElementById('link-add'),
     status: document.getElementById('status'),
     recent: document.getElementById('recent'),
   };
@@ -105,6 +109,106 @@
     input.addEventListener('blur', function () { if (!input.value.trim()) close(); });
   });
 
+  // ---- related URLs: one row each, numbered by position ----
+
+  function linkRows() { return Array.prototype.slice.call(el.links.querySelectorAll('.link-row')); }
+
+  // A row's number is its position, so removing one renumbers the rest. The
+  // server numbers them the same way, in the order sent.
+  function renumber() {
+    linkRows().forEach(function (row, i) {
+      var n = '[' + (i + 1) + ']';
+      row.querySelector('.ln').textContent = n;
+      row.querySelector('input').setAttribute('aria-label', '関連 URL ' + n + '（URL と一言）');
+      row.querySelector('button').setAttribute('aria-label', '関連 URL ' + n + ' を外す');
+    });
+  }
+
+  function addLinkRow() {
+    var row = document.createElement('div');
+    row.className = 'link-row';
+    var n = document.createElement('span');
+    n.className = 'ln';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'link-input';
+    input.autocomplete = 'off';
+    input.placeholder = 'URL と一言（一言は省略可）';
+    input.addEventListener('keydown', function (e) {
+      if (shared.composing(e)) return;
+      if (e.key === 'Enter') { e.preventDefault(); save(); }
+    });
+    var remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'linklike';
+    remove.textContent = '外す';
+    remove.addEventListener('click', function () {
+      if (busy) return;
+      // Removing row k moves every later row up by one, so a [k] or later in
+      // the memo would quietly point at a different URL. Refuse instead.
+      var k = linkRows().indexOf(row) + 1;
+      var from = referencedFrom(el.memo.value, k);
+      if (from) {
+        show('本文が ' + from + ' を指しているので [' + k + '] は外せません。本文の番号を直してから外してください。', true);
+        return;
+      }
+      row.remove();
+      renumber();
+      el.status.hidden = true; // a message about a row number may no longer hold
+      el.memo.focus();
+    });
+    row.appendChild(n);
+    row.appendChild(input);
+    row.appendChild(remove);
+    el.links.appendChild(row);
+    renumber();
+    input.focus();
+  }
+
+  el.addLink.addEventListener('click', function () { if (!busy) addLinkRow(); });
+
+  // The first [N] (N >= k) in text, or "". A [N] inside a URL counts too: that
+  // only refuses a removal, it never saves a wrong reference.
+  function referencedFrom(text, k) {
+    var re = /\[([1-9][0-9]{0,3})\]/g;
+    var m;
+    while ((m = re.exec(text)) !== null) {
+      if (Number(m[1]) >= k) return m[0];
+    }
+    return '';
+  }
+
+  // While a save is in flight the rows must not change: the reply clears
+  // them, which would drop an edit made after the request was sent.
+  function lockLinks(locked) {
+    el.addLink.disabled = locked;
+    linkRows().forEach(function (row) {
+      row.querySelector('input').disabled = locked;
+      row.querySelector('button').disabled = locked;
+    });
+  }
+
+  // "URL 一言" → {url, label}. The server numbers what is sent in order, so
+  // an empty row in the middle would shift every number after it away from
+  // what the screen shows. Such a row stops the save instead (returns null).
+  function readLinks() {
+    var out = [];
+    var rows = linkRows();
+    for (var i = 0; i < rows.length; i++) {
+      var v = rows[i].querySelector('input').value.trim();
+      if (v === '') {
+        show('関連 URL [' + (i + 1) + '] が空です。URL を入れるか「外す」を押してください。', true);
+        rows[i].querySelector('input').focus();
+        return null;
+      }
+      var m = /^(\S+)(?:[\s\u3000]+([\s\S]*))?$/.exec(v);
+      out.push({ url: m[1], label: (m[2] || '').trim() });
+    }
+    return out;
+  }
+
+  function clearLinks() { linkRows().forEach(function (row) { row.remove(); }); }
+
   // ---- status line ----
 
   function show(parts, isError) {
@@ -130,7 +234,8 @@
     var li = document.createElement('li');
     var t = document.createElement('span');
     t.className = 'rtext';
-    t.textContent = '#' + n.id + '  ' + n.text + (n.topic ? '  [' + n.topic + ']' : '');
+    var links = (n.links || []).length;
+    t.textContent = '#' + n.id + '  ' + n.text + (n.topic ? '  [' + n.topic + ']' : '') + (links ? '  ＋関連 ' + links : '');
     var undo = document.createElement('button');
     undo.type = 'button';
     undo.className = 'linklike';
@@ -153,16 +258,21 @@
   function save() {
     var text = el.memo.value.trim();
     if (!text || busy) { el.memo.focus(); return; }
+    var links = readLinks();
+    if (!links) return;
     var body = { text: text };
     if (selected) body.topic = selected;
+    if (links.length) body.links = links;
 
     busy = true;
     el.memo.disabled = true;
+    lockLinks(true);
     shared.request('POST', '/api/notes', body)
       .then(function (n) {
         remember(n);
         show('✓ 保存しました（補足待ち）', false);
         el.memo.value = '';
+        clearLinks();
       })
       .catch(function (err) {
         // Keep what was typed so nothing is lost.
@@ -171,6 +281,7 @@
       .then(function () {
         busy = false;
         el.memo.disabled = false;
+        lockLinks(false);
         el.memo.focus();
       });
   }

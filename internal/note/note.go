@@ -32,13 +32,14 @@ type Annotation struct {
 	ID        int       `json:"id"`
 }
 
-// Note is a one-line memo: the text as typed, the first link in it, and the
-// annotations added since.
+// Note is a one-line memo: the text as typed, the first link in it, the
+// related links attached when it was added, and the annotations added since.
 type Note struct {
 	CreatedAt   time.Time    `json:"created_at"`
 	Text        string       `json:"text"`
 	URL         string       `json:"url"`
 	Topic       string       `json:"topic"`
+	Links       []Link       `json:"links,omitempty"`
 	Annotations []Annotation `json:"annotations"`
 	ID          int          `json:"id"`
 }
@@ -127,10 +128,12 @@ func SourceLabel(rawURL string) string {
 	return "リンク"
 }
 
-// Segment is a run of memo text: plain, or (URL set) a link.
+// Segment is a run of memo text: plain, a link (URL set) or a reference to a
+// related link (Ref set).
 type Segment struct {
 	Text string
 	URL  string // non-empty for a link; equals Text
+	Ref  int    // N of a [N] reference; 0 otherwise
 }
 
 // SplitLinks cuts text into plain runs and http(s) links, in order, so a page

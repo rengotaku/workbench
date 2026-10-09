@@ -322,3 +322,32 @@ func TestParseID(t *testing.T) {
 		}
 	}
 }
+
+func TestAddWithLinks(t *testing.T) {
+	h := newHarness(t)
+	if got := h.ok("[1] で決定", "--link", "https://x.slack.com/a/1 決定スレッド", "--link", "https://space.backlog.com/view/DSC-1"); got != "note #1 保存\n" {
+		t.Errorf("out = %q", got)
+	}
+	show := h.ok("show", "1")
+	for _, want := range []string{
+		"\n  [1] https://x.slack.com/a/1（Slack） 決定スレッド",
+		"\n  [2] https://space.backlog.com/view/DSC-1（Backlog）",
+	} {
+		if !strings.Contains(show, want) {
+			t.Errorf("show should contain %q:\n%s", want, show)
+		}
+	}
+
+	r := h.run("", true, "[3] は無い", "--link", "https://x.example/")
+	if r.code != 1 || !strings.Contains(r.errOut, "[3] に当たる関連 URL がありません") {
+		t.Errorf("result = %+v", r)
+	}
+}
+
+func TestLinkWithoutTextFails(t *testing.T) {
+	h := newHarness(t)
+	r := h.run("", true, "--link", "https://x.example/")
+	if r.code != 1 || !strings.Contains(r.errOut, "本文も渡してください") || len(h.opened) != 0 {
+		t.Errorf("result = %+v, opened %v", r, h.opened)
+	}
+}

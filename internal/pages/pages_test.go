@@ -275,3 +275,52 @@ func TestGuardRejectedWritesStoreNothing(t *testing.T) {
 		t.Errorf("refused requests stored %d memos", got)
 	}
 }
+
+func TestTimelineShowsLinksAndReferences(t *testing.T) {
+	h, store := newPages(t)
+	_, err := store.Add("[1] で決定、[2] は無関係の脚注", "",
+		note.LinkInput{URL: "https://x.slack.com/a/1", Label: "決定スレッド"})
+	if err == nil {
+		t.Fatal("[2] without a second link should be rejected")
+	}
+	if _, err := store.Add("[1] で決定、詳細は [2]", "",
+		note.LinkInput{URL: "https://x.slack.com/a/1", Label: "決定スレッド"},
+		note.LinkInput{URL: "https://space.backlog.com/view/DSC-1"}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = store.Add("脚注 [1] だけ", "")
+
+	_, body := get(t, h, "/timeline")
+	mustContain(t, body,
+		`<a class="ref" href="https://x.slack.com/a/1" target="_blank" rel="noopener noreferrer" title="https://x.slack.com/a/1">[1]</a>`,
+		`<a class="ref" href="https://space.backlog.com/view/DSC-1"`,
+		`<span class="ln">[1]</span> <span class="src">Slack</span> <a href="https://x.slack.com/a/1" target="_blank" rel="noopener noreferrer">決定スレッド</a>`,
+		`<span class="ln">[2]</span> <span class="src">Backlog</span> <a href="https://space.backlog.com/view/DSC-1" target="_blank" rel="noopener noreferrer">https://space.backlog.com/view/DSC-1</a>`,
+		"脚注 [1] だけ",
+	)
+	if got := strings.Count(body, `class="links"`); got != 1 {
+		t.Errorf("only the memo with links should list them, got %d lists", got)
+	}
+}
+
+func TestToNoteViewLeavesUnmatchedRefAsText(t *testing.T) {
+	// Stored data is trusted to be checked on add, but a reference with no
+	// link must still render as text rather than an empty link.
+	n := note.Note{ID: 1, Text: "[1] と [2]", Links: []note.Link{{N: 1, URL: "https://a.example/"}}}
+	nv := toNoteView(n, time.Now())
+	want := []segmentView{{Text: "[1]", URL: "https://a.example/", Ref: 1}, {Text: " と "}, {Text: "[2]"}}
+	if len(nv.Segments) != len(want) {
+		t.Fatalf("segments = %+v", nv.Segments)
+	}
+	for i := range want {
+		if nv.Segments[i] != want[i] {
+			t.Errorf("segment %d = %+v, want %+v", i, nv.Segments[i], want[i])
+		}
+	}
+}
+
+func TestAddPageHasLinkRows(t *testing.T) {
+	h, _ := newPages(t)
+	_, body := get(t, h, "/")
+	mustContain(t, body, `id="links"`, `id="link-add"`, "＋ 関連 URL")
+}

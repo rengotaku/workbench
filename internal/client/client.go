@@ -94,9 +94,13 @@ func decode[T any](raw []byte) (T, error) {
 	return v, nil
 }
 
-// Add stores a memo.
-func (c *Client) Add(text, topic string) (note.Note, []byte, error) {
-	raw, err := c.do(http.MethodPost, "/api/notes", map[string]string{"text": text, "topic": topic})
+// Add stores a memo with its related links, numbered in the order given.
+func (c *Client) Add(text, topic string, links ...note.LinkInput) (note.Note, []byte, error) {
+	body := map[string]any{"text": text, "topic": topic}
+	if len(links) > 0 {
+		body["links"] = links
+	}
+	raw, err := c.do(http.MethodPost, "/api/notes", body)
 	if err != nil {
 		return note.Note{}, nil, err
 	}

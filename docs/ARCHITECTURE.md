@@ -1,10 +1,11 @@
 ---
-last_verified: 2026-10-06   # 最後に実装と突合した日
+last_verified: 2026-10-09   # 最後に実装と突合した日
 ---
 
 # ARCHITECTURE
 
 1 行メモ（リンクと一言）を溜め、外から CLI で補足と話題を追記し、話題で絞ったタイムラインで読む 1 人用アプリ。
+メモには登録時に関連 URL を添えられ、本文から `[1]` の形で指せる。
 サーバ 1 つが唯一の書き手で、画面も CLI もサーバの HTTP API を通る。アプリは AI を呼ばない。
 
 ## 構成
@@ -13,7 +14,7 @@ last_verified: 2026-10-06   # 最後に実装と突合した日
 |---|---|
 | `cmd/server/` | サーバの起動。設定（`LISTEN_ADDR` / `PORT` / `DATA_DIR`）の読み込み、ストアを開く、シャットダウン |
 | `cmd/note/` | CLI。引数・標準入力・サブコマンドを解釈して `internal/client` を呼ぶ。端末かどうかの判定とブラウザを開く処理はここ |
-| `internal/note/` | モデル（Note / Annotation / Filter）とストア。検証、採番、`notes.json` の原子的な書き換え、操作ログの追記。URL の抽出とソース表示（ホストから導出）もここ |
+| `internal/note/` | モデル（Note / Annotation / Link / Filter）とストア。検証、採番、`notes.json` の原子的な書き換え、操作ログの追記。URL の抽出、`[N]` 参照の切り出し（`link.go`）、ソース表示（ホストから導出）もここ |
 | `internal/api/` | `/api` の JSON エンドポイント。ストアの入力エラーを 400、存在しない id を 404 に写す |
 | `internal/pages/` | 登録画面（`/`）とタイムライン（`/timeline`）の描画、`/static`、`/healthz`。API の取り付けもここ |
 | `internal/client/` | CLI 用の HTTP クライアント。サーバに届かなければ日本語のエラーで止まる |
@@ -36,6 +37,8 @@ CLI (note) ──────┘                                                
 - 話題の一覧は登録済みの話題とメモで使われている話題の和集合
 - 「補足待ち」は補足が 0 件のメモ。状態として保存せず、補足の数から求める
 - ソース表示（Slack / Notion / Backlog / リンク）は表示のたびに URL のホストから求め、保存しない
+- 関連 URL（`Note.Links`）は登録時にだけ付く。送られた順に 1 から番号を振り、以後は変えない。関連 URL が 1 件以上あるメモでは、本文の `[N]` が件数を超えると 400 にする。関連 URL が無いメモの `[N]` はただの文字として扱う
+- タイムラインでは本文の `[N]` を対応する関連 URL へのリンクにする。URL の中の `[N]` は URL の一部として扱う
 
 ## どこを触れば何が変わるか
 
@@ -44,6 +47,8 @@ CLI (note) ──────┘                                                
 | 補足の種別を増やす | `internal/note/note.go` の `Kind*` と `internal/note/store.go` の `Annotate`、`internal/pages/pages.go` の `kindLabels` |
 | ソース表示のホスト判定 | `internal/note/note.go` の `sourceHosts` |
 | URL の取り出し方 | `internal/note/note.go` の `urlPattern` / `urlTrailing` |
+| `[N]` 参照の書き方・関連 URL の検証 | `internal/note/link.go` の `refPattern` / `buildLinks` / `checkRefs` |
+| 登録画面の関連 URL 行 | `web/static/js/add.js` の `addLinkRow` / `readLinks` |
 | API の項目・ステータス | `internal/api/api.go` |
 | 画面の見た目 | `web/static/css/style.css`、`web/templates/` |
 | 登録画面の操作（Enter・チップ・元に戻す） | `web/static/js/add.js` |

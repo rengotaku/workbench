@@ -17,6 +17,12 @@ kbd{font:11px ui-monospace,SFMono-Regular,monospace;border:1px solid var(--line)
 .big:focus-visible{outline:none;border-bottom-color:var(--acc);box-shadow:0 2px 0 0 var(--acc)}
 .big::placeholder{color:var(--mut)}
 .big:disabled{opacity:.6}
+.link-rows{margin-top:8px}
+.link-row{display:flex;gap:8px;align-items:center;margin-top:6px}
+.link-input{flex:1;min-width:0;font:inherit;font-size:13px;color:var(--fg);background:transparent;border:0;border-bottom:1px solid var(--line);padding:4px 2px}
+.link-input:focus-visible{outline:none;border-bottom-color:var(--acc)}
+.link-input::placeholder{color:var(--mut)}
+.link-add{margin-top:8px}
 .hint{margin-top:8px;font-size:12px;color:var(--mut);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 
 .filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--mut);margin:14px 0}
@@ -42,6 +48,10 @@ kbd{font:11px ui-monospace,SFMono-Regular,monospace;border:1px solid var(--line)
 .src{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--chip);color:var(--mut)}
 .topic{color:var(--acc)}
 .memo{font-size:15px;margin:2px 0;overflow-wrap:anywhere}
+.memo a.ref{text-decoration:none;font-weight:600}
+.links{list-style:none;margin:4px 0 0;padding:0;font-size:12px}
+.links li{overflow-wrap:anywhere}
+.ln{color:var(--mut);font-variant-numeric:tabular-nums}
 .add{margin:8px 0 0;padding:8px 12px;border-radius:6px;background:var(--q)}
 .add .who{font-size:11px;color:var(--ai);font-weight:600;margin-bottom:2px}
 .add .body{margin:4px 0;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}

@@ -189,13 +189,24 @@ func withTopic(topics []string, name string) []string {
 }
 
 // Add stores a new memo. text is trimmed; an empty one is rejected. A topic
-// that is not registered yet is registered.
-func (s *Store) Add(text, topic string) (Note, error) {
+// that is not registered yet is registered. links are numbered from 1 in the
+// order given, and every [N] in text must have its link.
+func (s *Store) Add(text, topic string, linkInputs ...LinkInput) (Note, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return Note{}, InvalidError("メモが空です。1 行以上の文字を入れてください")
 	}
 	topic = strings.TrimSpace(topic)
+	links, err := buildLinks(linkInputs)
+	if err != nil {
+		return Note{}, err
+	}
+	if err := checkRefs(text, links); err != nil {
+		return Note{}, err
+	}
+	if len(links) == 0 {
+		links = nil // stored without a "links" key, like memos from before links
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -206,6 +217,7 @@ func (s *Store) Add(text, topic string) (Note, error) {
 		Text:        text,
 		URL:         ExtractURL(text),
 		Topic:       topic,
+		Links:       links,
 		CreatedAt:   at,
 		Annotations: []Annotation{},
 	}

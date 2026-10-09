@@ -249,3 +249,24 @@ func TestStoreFailureIs500(t *testing.T) {
 	}
 	wantError(t, call(t, r, http.MethodPost, "/api/notes", `{"text":"a"}`), http.StatusInternalServerError)
 }
+
+func TestAddNoteWithLinks(t *testing.T) {
+	h, store := newServer(t)
+	rec := call(t, h, http.MethodPost, "/api/notes", `{"text":"[1] を見る","links":[{"url":"https://x.slack.com/a/1","label":"スレッド"}]}`)
+	wantStatus(t, rec, http.StatusCreated)
+	n := decodeBody[note.Note](t, rec)
+	if len(n.Links) != 1 || n.Links[0] != (note.Link{N: 1, URL: "https://x.slack.com/a/1", Label: "スレッド"}) {
+		t.Errorf("links = %+v", n.Links)
+	}
+
+	for _, body := range []string{
+		`{"text":"a","links":[{"url":"javascript:alert(1)"}]}`,
+		`{"text":"[2]","links":[{"url":"https://x.example/"}]}`,
+		`{"text":"a","links":"https://x.example/"}`,
+	} {
+		wantError(t, call(t, h, http.MethodPost, "/api/notes", body), http.StatusBadRequest)
+	}
+	if got := len(store.List(note.Filter{})); got != 1 {
+		t.Errorf("rejected requests must store nothing; have %d memos", got)
+	}
+}

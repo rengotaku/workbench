@@ -69,17 +69,18 @@ func noteID(c *gin.Context) (int, bool) {
 }
 
 type addNoteRequest struct {
-	Text  string `json:"text"`
-	Topic string `json:"topic"`
+	Text  string           `json:"text"`
+	Topic string           `json:"topic"`
+	Links []note.LinkInput `json:"links"`
 }
 
 func (a *API) addNote(c *gin.Context) {
 	var req addNoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		badRequest(c, "リクエストの JSON を読めません。{\"text\": \"...\"} の形で送ってください")
+		badRequest(c, "リクエストの JSON を読めません。{\"text\": \"...\", \"links\": [{\"url\": \"...\"}]} の形で送ってください")
 		return
 	}
-	n, err := a.store.Add(req.Text, req.Topic)
+	n, err := a.store.Add(req.Text, req.Topic, req.Links...)
 	if err != nil {
 		fail(c, err)
 		return
