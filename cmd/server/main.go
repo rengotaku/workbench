@@ -168,8 +168,11 @@ func run() int {
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
+		// Handlers may still be writing. Exit without the deferred Close so the
+		// data directory locks are held until the process is gone; releasing
+		// them early would let another server open a store mid-write.
 		slog.Error("server shutdown error", "error", err)
-		return 1
+		os.Exit(1)
 	}
 
 	slog.Info("server stopped")

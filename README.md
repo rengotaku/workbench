@@ -298,4 +298,11 @@ launchctl bootout gui/$(id -u)/com.user.workbench.server
 rm ~/Library/LaunchAgents/com.user.workbench.server.plist
 ```
 
-旧 2 サーバ（`com.user.todo-order.server` / `com.user.note-stock.server`）から移るときは、旧エージェントを bootout してから新しい方を bootstrap する（同じ 8085 を使うため）。
+旧 2 サーバ（`com.user.todo-order.server` / `com.user.note-stock.server`）から移るときは、旧エージェントを bootout してから新しい方を bootstrap する（同じ 8085 を使うため）。旧エージェントの plist も消す。残すと次のログインで旧サーバが立ち上がり、データディレクトリのロックを先に取って新サーバが起動できなくなる。
+
+```sh
+launchctl bootout gui/$(id -u)/com.user.todo-order.server
+launchctl bootout gui/$(id -u)/com.user.note-stock.server
+rm ~/Library/LaunchAgents/com.user.todo-order.server.plist
+rm ~/Library/LaunchAgents/com.user.note-stock.server.plist
+```
