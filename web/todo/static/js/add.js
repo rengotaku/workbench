@@ -150,6 +150,7 @@
     shared.request('POST', '/api/undo')
       .then(function () {
         li.classList.add('is-undone');
+        window.workbench.tell('changed');
         toast([text('取り消しました: ' + name)]);
       })
       .catch(function (err) { toast([text('取り消せませんでした: ' + reason(err))], true); });
@@ -183,6 +184,7 @@
       .then(function (data) {
         var t = data.task || body;
         var li = remember(t);
+        window.workbench.tell('changed');
         var again = document.createElement('button');
         again.type = 'button';
         again.textContent = '元に戻す';
@@ -211,7 +213,7 @@
     // ⌥+digit types a symbol on macOS (¡ ™ …), so read the physical key.
     var m = /^Digit([0-9])$/.exec(e.code || '');
     if (e.altKey && m) { e.preventDefault(); choose(Number(m[1])); return; }
-    if (e.key === 'Escape' && document.activeElement !== el.pick) { location.href = '/'; }
+    if (e.key === 'Escape' && document.activeElement !== el.pick) { window.workbench.leave('/'); }
   });
 
   renderChips();

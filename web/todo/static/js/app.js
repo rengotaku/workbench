@@ -53,7 +53,6 @@
     focusBand: document.getElementById('focus-band'),
     focusList: document.getElementById('focus-list'),
     focusCount: document.getElementById('focus-count'),
-    addSlot: document.getElementById('add-slot'),
     addTrigger: document.getElementById('add-trigger'),
     detail: document.getElementById('detail'),
     doneFold: document.getElementById('done-fold'),
@@ -899,20 +898,6 @@
     if (r.end < t.name.length) el.appendChild(document.createTextNode(t.name.slice(r.end)));
   }
 
-  // markAddLink shows the link a paste brought into the add field. The field is
-  // an <input>, where the highlight API does not reach, so the link is named
-  // beside it instead of marked inside it.
-  function markAddLink(input, hint) {
-    if (!input.pastedURL) {
-      hint.hidden = true;
-      hint.textContent = '';
-      return;
-    }
-    hint.hidden = false;
-    hint.textContent = '🔗 ' + (input.pastedLinkText || input.value) + ' → ' + input.pastedURL;
-    hint.title = input.pastedURL;
-  }
-
   // paintLink marks the link range inside an editable name. It uses the
   // highlight API rather than wrapping the text in an element: the node keeps
   // one text node, so repainting never moves the caret, and there is no anchor
@@ -1230,116 +1215,14 @@
     }
   }
 
-  el.addTrigger.addEventListener('click', openAddEditor);
-
-  // openAddEditor turns the button into a field. It stays open after a task is
-  // added so several can go in one after another, and closes on Escape or on
-  // leaving it empty.
-  function openAddEditor() {
-    var slot = el.addSlot;
-    slot.classList.add('editing');
-    slot.textContent = '';
-
-    var name = document.createElement('input');
-    name.type = 'text';
-    name.id = 'add-name';
-    name.placeholder = 'タスク名（Enter で追加）';
-    name.setAttribute('aria-label', 'タスク名');
-    name.autocomplete = 'off';
-
-    var hint = document.createElement('span');
-    hint.className = 'add-link';
-    hint.hidden = true;
-
-    var due = document.createElement('input');
-    due.type = 'date';
-    due.id = 'add-due';
-    due.setAttribute('aria-label', '期限（任意）');
-
-    function close() {
-      state.busy = false;
-      slot.classList.remove('editing');
-      slot.textContent = '';
-      ['', ''].forEach(function () { slot.appendChild(document.createElement('span')); });
-      var plus = document.createElement('span');
-      plus.className = 'plus';
-      plus.setAttribute('aria-hidden', 'true');
-      plus.textContent = '＋';
-      var trigger = document.createElement('button');
-      trigger.type = 'button';
-      trigger.className = 'as-button';
-      trigger.id = 'add-trigger';
-      trigger.textContent = 'タスクを追加';
-      trigger.addEventListener('click', openAddEditor);
-      slot.appendChild(plus);
-      slot.appendChild(trigger);
-      slot.appendChild(document.createElement('span'));
-      el.addTrigger = trigger;
-    }
-
-    function submit() {
-      var value = name.value.trim();
-      if (!value) { close(); return; }
-
-      var body = { name: value };
-      if (due.value) body.due = due.value;
-      if (name.pastedURL) {
-        body.url = name.pastedURL;
-        body.link_text = name.pastedLinkText || '';
-      }
-
-      name.disabled = true;
-      request('POST', '/api/tasks', body)
-        .then(function () {
-          return load().then(function () {
-            // The list was redrawn; open a fresh field at the end again.
-            openAddEditor();
-            flash('追加した: ' + value);
-          });
-        })
-        .catch(function (err) { name.disabled = false; showError(err); });
-    }
-
-    wirePaste(name, true);
-    name.addEventListener('input', function () {
-      if (!name.value) { name.pastedURL = null; name.pastedLinkText = null; } // an emptied field has no link
-      markAddLink(name, hint);
+  // "タスクを追加" opens the add page (/add) in a dialog over the list: the
+  // same form, due chips and detail as a bare `todo` opens. The list is
+  // reloaded after it closes if a task went in.
+  el.addTrigger.addEventListener('click', function () {
+    window.workbench.openAddDialog('/add', 'タスクを追加', function (changed) {
+      if (changed) load();
     });
-    name.addEventListener('paste', function () {
-      window.setTimeout(function () { markAddLink(name, hint); }, 0); // after the text lands
-    });
-    name.addEventListener('keydown', function (e) {
-      if (composing(e)) return;
-      if (e.key === 'Enter') { e.preventDefault(); submit(); }
-      if (e.key === 'Escape') { close(); }
-    });
-    due.addEventListener('keydown', function (e) {
-      if (composing(e)) return;
-      if (e.key === 'Enter') { e.preventDefault(); submit(); }
-      if (e.key === 'Escape') { close(); }
-    });
-    name.addEventListener('blur', function () {
-      // Leaving an empty field puts the button back; a half-typed one stays.
-      window.setTimeout(function () {
-        if (!name.value.trim() && document.activeElement !== due) close();
-      }, 120);
-    });
-
-    var plusMark = document.createElement('span');
-    plusMark.className = 'plus';
-    plusMark.setAttribute('aria-hidden', 'true');
-    plusMark.textContent = '＋';
-
-    slot.appendChild(document.createElement('span'));
-    slot.appendChild(document.createElement('span'));
-    slot.appendChild(plusMark);
-    slot.appendChild(name);
-    slot.appendChild(hint);
-    slot.appendChild(due);
-
-    state.busy = true; // typing must not be interrupted by the poll
-    name.focus();
-  }
+  });
 
   el.doneFold.addEventListener('click', function () {
     state.doneOpen = !state.doneOpen;

@@ -86,3 +86,26 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---- add dialog (modal.js) ---- */
+.add-dialog {
+  width: min(760px, calc(100vw - 32px));
+  height: min(640px, calc(100vh - 64px));
+  padding: 0; border: 1px solid var(--line); border-radius: var(--radius-xl);
+  background: var(--ground); color: var(--ink); box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.add-dialog::backdrop { background: rgba(20, 23, 28, .45); }
+.add-dialog iframe { display: block; width: 100%; height: 100%; border: 0; }
+.add-dialog-close {
+  position: absolute; top: 8px; right: 10px; z-index: 1;
+  width: 28px; height: 28px; border-radius: var(--radius-pill);
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
+  font: var(--fs-body) / 1 var(--sans); cursor: pointer;
+}
+.add-dialog-close:hover { color: var(--ink); border-color: var(--muted); }
+
+/* An add page shown inside the dialog: no site header, and no link back to
+   the list (the dialog's × and Esc close it). */
+.embedded .site-head,
+.embedded a[data-leave] { display: none; }

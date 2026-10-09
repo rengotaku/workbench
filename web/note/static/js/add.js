@@ -244,6 +244,7 @@
       shared.request('DELETE', '/api/notes/' + n.id)
         .then(function () {
           li.classList.add('is-undone');
+          window.workbench.tell('changed');
           undo.remove();
           show('取り消しました: ' + n.text, false);
           el.memo.focus();
@@ -270,6 +271,7 @@
     shared.request('POST', '/api/notes', body)
       .then(function (n) {
         remember(n);
+        window.workbench.tell('changed');
         show('✓ 保存しました（補足待ち）', false);
         el.memo.value = '';
         clearLinks();
@@ -293,7 +295,7 @@
 
   document.addEventListener('keydown', function (e) {
     if (shared.composing(e)) return;
-    if (e.key === 'Escape') { location.href = '/notes/timeline'; }
+    if (e.key === 'Escape') { window.workbench.leave('/notes/timeline'); }
   });
 
   el.memo.focus();

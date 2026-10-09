@@ -188,7 +188,7 @@ func TestTimelineEmpty(t *testing.T) {
 
 func TestStatic(t *testing.T) {
 	h, _ := newPages(t)
-	for _, p := range []string{"/notes/static/css/style.css", "/notes/static/js/shared.js", "/notes/static/js/add.js", "/notes/static/js/timeline.js", "/notes/static/icon.svg"} {
+	for _, p := range []string{"/notes/static/css/style.css", "/notes/static/js/shared.js", "/notes/static/js/add.js", "/notes/static/js/timeline.js"} {
 		if code, body := get(t, h, p); code != http.StatusOK || body == "" {
 			t.Errorf("%s: status %d, %d bytes", p, code, len(body))
 		}

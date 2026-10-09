@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{.Title}}</title>
-  <link rel="icon" href="{{template "icon" .}}" type="image/svg+xml">
+  <link rel="icon" href="/shared/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/shared/css/tokens.css">
   <link rel="stylesheet" href="/shared/css/base.css">
   {{block "styles" .}}{{end}}
@@ -22,6 +22,7 @@
     {{template "content" .}}
   </div>
   <script src="/shared/js/common.js" defer></script>
+  <script src="/shared/js/modal.js" defer></script>
   {{template "toolshared" .}}
   {{block "scripts" .}}{{end}}
 </body>
