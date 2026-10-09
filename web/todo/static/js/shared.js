@@ -1,33 +1,13 @@
-// Pieces both pages need: the API call, the IME guard, and how a pasted link
-// keeps its URL. Loaded before the page script, which reads them from
-// window.todoShared.
+// Pieces both todo pages need: the API call and the IME guard (from the shared
+// common.js), and how a pasted link keeps its URL. Loaded before the page
+// script, which reads them from window.todoShared.
 (function () {
   'use strict';
 
-  // A key pressed while the IME is converting belongs to the IME, not to us.
-  // In Japanese input, Enter confirms the conversion and Escape cancels it; if
-  // we act on those, the first Enter submits a half-converted name. `isComposing`
-  // covers current browsers, keyCode 229 covers the ones that omit it.
-  function composing(e) {
-    return e.isComposing === true || e.keyCode === 229;
-  }
-
-  function request(method, path, body) {
-    var opts = { method: method, headers: {} };
-    // The server refuses a POST/PUT/PATCH that is not JSON, even with nothing
-    // to say, so those methods always send a body.
-    if (!body && /^(POST|PUT|PATCH)$/i.test(method)) body = {};
-    if (body) {
-      opts.headers['Content-Type'] = 'application/json';
-      opts.body = JSON.stringify(body);
-    }
-    return fetch(path, opts).then(function (res) {
-      return res.json().catch(function () { return {}; }).then(function (data) {
-        if (!res.ok) throw new Error(data.error || ('server returned ' + res.status));
-        return data;
-      });
-    });
-  }
+  // The IME guard and the API call are shared with the note screens
+  // (/shared/js/common.js, loaded first).
+  var composing = window.workbench.composing;
+  var request = window.workbench.request;
 
   // A link pasted into a name keeps two things: the text it showed, and the URL
   // it pointed at. The URL is stored with the task exactly as pasted — the app

@@ -21,6 +21,7 @@ import (
 	"github.com/rengotaku/workbench/internal/taskapi"
 	"github.com/rengotaku/workbench/internal/taskweb"
 	noteweb "github.com/rengotaku/workbench/web/note"
+	sharedweb "github.com/rengotaku/workbench/web/shared"
 	todoweb "github.com/rengotaku/workbench/web/todo"
 )
 
@@ -119,11 +120,52 @@ func TestGuardCoversBothHalves(t *testing.T) {
 func todoTemplates() (map[string]*template.Template, error) {
 	m := map[string]*template.Template{}
 	for _, name := range []string{"index.html", "add.html"} {
-		t, err := template.ParseFS(todoweb.FS, "templates/base.html", "templates/"+name)
+		t, err := sharedweb.Parse(todoweb.FS, name)
 		if err != nil {
 			return nil, err
 		}
 		m[name] = t
 	}
 	return m, nil
+}
+
+// Every screen carries the same header: links to todo, note and the timeline,
+// with aria-current on the one the reader is on.
+func TestSiteHeaderOnEveryScreen(t *testing.T) {
+	h := newServer(t)
+	links := []string{`href="/"`, `href="/notes"`, `href="/notes/timeline"`}
+	screens := []struct{ path, current string }{
+		{"/", `<a href="/" aria-current="page">`},
+		{"/add", `<a href="/" aria-current="page">`},
+		{"/notes", `<a href="/notes" aria-current="page">`},
+		{"/notes/timeline", `<a href="/notes/timeline" aria-current="page">`},
+	}
+	for _, s := range screens {
+		rec := do(h, http.MethodGet, s.path, "")
+		require.Equal(t, http.StatusOK, rec.Code, s.path)
+		body := rec.Body.String()
+		start := strings.Index(body, `class="site-nav"`)
+		require.GreaterOrEqual(t, start, 0, s.path)
+		nav := body[start : start+strings.Index(body[start:], "</nav>")]
+		for _, l := range links {
+			assert.Contains(t, nav, l, s.path)
+		}
+		assert.Contains(t, nav, s.current, s.path)
+		assert.Equal(t, 1, strings.Count(nav, `aria-current="page"`), s.path)
+		assert.Contains(t, body, "/shared/css/tokens.css", s.path)
+		assert.Contains(t, body, "/shared/js/common.js", s.path)
+	}
+}
+
+func TestSharedStaticServedBehindGuard(t *testing.T) {
+	h := newServer(t)
+	for _, p := range []string{"/shared/css/tokens.css", "/shared/css/base.css", "/shared/js/common.js"} {
+		assert.Equal(t, http.StatusOK, do(h, http.MethodGet, p, "").Code, p)
+
+		req := httptest.NewRequest(http.MethodGet, p, nil)
+		req.Host = "evil.example:" + port
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusForbidden, rec.Code, p)
+	}
 }

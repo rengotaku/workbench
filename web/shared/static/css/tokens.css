@@ -1,0 +1,110 @@
+/* Design tokens shared by the todo and note screens. Colour carries one
+   meaning each: 藍 = the accent, 赤/琥珀 = how close a due date is, 緑 = done,
+   紫 = waiting on someone else. The dark set follows the OS unless the page
+   pins a theme with data-theme="light" | "dark". */
+
+:root {
+  /* colour */
+  --ground: #f7f6f3;
+  --surface: #ffffff;
+  --surface-sunk: #f2f1ed;
+  --ink: #1c2027;
+  --ink-soft: #4a5260;
+  --muted: #7c8492;
+  --line: #e3e1db;
+  --line-soft: #eeece7;
+  --accent: #2f4a7d;
+  --accent-soft: #e6ebf5;
+  --on-accent: #ffffff;
+  --over: #a8342b;
+  --over-soft: #f7e6e3;
+  --near: #96650f;
+  --near-soft: #f8eedb;
+  --wait: #6b5f88;
+  --someday: #4a7d6b;
+  --done: #3d7355;
+  --shadow: 0 1px 2px rgba(28, 32, 39, .05), 0 8px 24px -12px rgba(28, 32, 39, .18);
+
+  /* type */
+  --sans: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --fs-2xs: 9px;
+  --fs-xs: 10.5px;
+  --fs-sm: 11px;
+  --fs-sm2: 11.5px;
+  --fs-md: 12px;
+  --fs-md2: 12.5px;
+  --fs-lg: 13px;
+  --fs-lg2: 13.5px;
+  --fs-lg3: 14px;
+  --fs-xl: 14.5px;
+  --fs-body: 15px;
+  --fs-title: 21px;
+  --lh-body: 1.6;
+
+  /* shape */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-chip: 5px;
+  --radius-md: 6px;
+  --radius-ctl: 7px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-pill: 999px;
+
+  /* space */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 40px;
+
+  /* layout */
+  --head-h: 44px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #14171c;
+    --surface: #1c2027;
+    --surface-sunk: #22262e;
+    --ink: #e9e7e2;
+    --ink-soft: #b9bec8;
+    --muted: #868e9b;
+    --line: #2e343d;
+    --line-soft: #262b33;
+    --accent: #9bb8e8;
+    --accent-soft: #232d3f;
+    --on-accent: #14171c;
+    --over: #e58a7f;
+    --over-soft: #3a2723;
+    --near: #d9ad63;
+    --near-soft: #33291a;
+    --wait: #b0a2cf;
+    --someday: #86bfa9;
+    --done: #7fb695;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .6);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #14171c;
+  --surface: #1c2027;
+  --surface-sunk: #22262e;
+  --ink: #e9e7e2;
+  --ink-soft: #b9bec8;
+  --muted: #868e9b;
+  --line: #2e343d;
+  --line-soft: #262b33;
+  --accent: #9bb8e8;
+  --accent-soft: #232d3f;
+  --on-accent: #14171c;
+  --over: #e58a7f;
+  --over-soft: #3a2723;
+  --near: #d9ad63;
+  --near-soft: #33291a;
+  --wait: #b0a2cf;
+  --done: #7fb695;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -12px rgba(0, 0, 0, .6);
+}

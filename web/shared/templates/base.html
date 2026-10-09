@@ -1,0 +1,30 @@
+{{define "base"}}<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}}</title>
+  <link rel="icon" href="{{template "icon" .}}" type="image/svg+xml">
+  {{block "fonts" .}}{{end}}
+  <link rel="stylesheet" href="/shared/css/tokens.css">
+  <link rel="stylesheet" href="/shared/css/base.css">
+  {{block "styles" .}}{{end}}
+</head>
+<body>
+  <header class="site-head">
+    <span class="site-brand">workbench</span>
+    <nav class="site-nav" aria-label="画面の切り替え">
+      <a href="/"{{if eq .Current "todo"}} aria-current="page"{{end}}>todo</a>
+      <a href="/notes"{{if eq .Current "note"}} aria-current="page"{{end}}>note</a>
+      <a href="/notes/timeline"{{if eq .Current "timeline"}} aria-current="page"{{end}}>タイムライン</a>
+    </nav>
+  </header>
+  <div class="site-main">
+    {{template "content" .}}
+  </div>
+  <script src="/shared/js/common.js" defer></script>
+  {{template "toolshared" .}}
+  {{block "scripts" .}}{{end}}
+</body>
+</html>
+{{end}}

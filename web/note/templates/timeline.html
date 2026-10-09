@@ -1,11 +1,10 @@
-{{template "base" .}}
-
 {{define "scripts"}}<script src="/notes/static/js/timeline.js" defer></script>{{end}}
 
 {{define "content"}}
-<div class="frame">
+<div class="page">
+  <div class="frame">
   <header class="hd">
-    <b>note</b>
+    <h1 class="page-title">タイムライン</h1>
     <a href="/notes" id="to-add">＋ メモ <kbd>N</kbd></a>
   </header>
 
@@ -42,5 +41,6 @@
   {{else}}
   <p class="empty">{{.Empty}}</p>
   {{end}}
+  </div>
 </div>
 {{end}}

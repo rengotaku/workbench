@@ -1,14 +1,15 @@
 /* The add page: one large field as the whole screen. Colours and fonts come
    from style.css; only the layout lives here. */
 
-/* style.css pads body for the list; this page lays out edge to edge. */
-body { padding: 0; }
+/* style.css pads the page body for the list; this page lays out edge to edge,
+   under the slim site header. */
+.site-main { padding: 0; }
 
-.ap-page { min-height: 100vh; display: flex; flex-direction: column; }
+.ap-page { min-height: calc(100vh - var(--head-h) - 1px); display: flex; flex-direction: column; }
 
 .ap-head {
   display: flex; justify-content: space-between; align-items: baseline;
-  padding: 20px 32px; font-size: 13px; color: var(--muted);
+  padding: 20px 32px; font-size: var(--fs-lg); color: var(--muted);
 }
 .ap-date { font-family: var(--mono); letter-spacing: .04em; }
 .ap-head a { color: var(--accent); text-decoration: none; }
@@ -18,7 +19,7 @@ body { padding: 0; }
   width: 100%; max-width: 760px; margin: 0 auto; padding: 0 24px 12vh;
 }
 
-.ap-label { display: block; font-size: 13px; color: var(--muted); margin: 0 0 10px; letter-spacing: .06em; }
+.ap-label { display: block; font-size: var(--fs-lg); color: var(--muted); margin: 0 0 10px; letter-spacing: .06em; }
 
 .ap-name {
   width: 100%; border: none; outline: none; background: transparent;
@@ -31,7 +32,7 @@ body { padding: 0; }
 .ap-name:disabled { opacity: .5; }
 
 .ap-link {
-  margin-top: 8px; font-size: 12px; color: var(--accent);
+  margin-top: 8px; font-size: var(--fs-md); color: var(--accent);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
@@ -41,37 +42,37 @@ body { padding: 0; }
 .ap-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .ap-chip {
   border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
-  font: 13px var(--sans); padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  font: var(--fs-lg) var(--sans); padding: 6px 12px; border-radius: var(--radius-pill); cursor: pointer;
 }
-.ap-chip kbd { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-left: 4px; }
-.ap-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.ap-chip kbd { font-family: var(--mono); font-size: var(--fs-sm); color: var(--muted); margin-left: 4px; }
+.ap-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .ap-chip[aria-pressed="true"] kbd { color: inherit; opacity: .7; }
 
 /* The native picker opens from the 日付… chip; the field itself stays out of sight. */
 .ap-pick { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
-.ap-resolved { font-family: var(--mono); font-size: 12px; color: var(--near); margin-top: 8px; min-height: 1em; }
+.ap-resolved { font-family: var(--mono); font-size: var(--fs-md); color: var(--near); margin-top: 8px; min-height: 1em; }
 
 .ap-detail {
   width: 100%; min-height: 64px; resize: vertical; border: 1px solid var(--line);
-  border-radius: 8px; background: var(--surface); color: var(--ink);
-  font: 14px/1.6 var(--sans); padding: 10px 12px; outline: none;
+  border-radius: var(--radius-lg); background: var(--surface); color: var(--ink);
+  font: var(--fs-lg3)/1.6 var(--sans); padding: 10px 12px; outline: none;
 }
 .ap-detail:focus { border-color: var(--accent); }
 
 .ap-actions { display: flex; align-items: center; gap: 16px; margin-top: 32px; flex-wrap: wrap; }
 .ap-submit {
-  background: var(--accent); color: var(--surface); border: none; border-radius: 8px;
-  font: 500 15px var(--sans); padding: 11px 22px; cursor: pointer; box-shadow: var(--shadow);
+  background: var(--accent); color: var(--on-accent); border: none; border-radius: var(--radius-lg);
+  font: 500 var(--fs-body) var(--sans); padding: 11px 22px; cursor: pointer; box-shadow: var(--shadow);
 }
-.ap-hint { font-size: 12px; color: var(--muted); }
+.ap-hint { font-size: var(--fs-md); color: var(--muted); }
 .ap-hint kbd {
-  font-family: var(--mono); font-size: 11px; border: 1px solid var(--line);
-  border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; background: var(--surface);
+  font-family: var(--mono); font-size: var(--fs-sm); border: 1px solid var(--line);
+  border-bottom-width: 2px; border-radius: var(--radius-sm); padding: 1px 5px; background: var(--surface);
 }
 
 .ap-toast {
-  margin-top: 28px; padding: 10px 14px; border-radius: 8px; font-size: 14px;
+  margin-top: 28px; padding: 10px 14px; border-radius: var(--radius-lg); font-size: var(--fs-lg3);
   background: var(--accent-soft); color: var(--ink-soft);
 }
 .ap-toast.is-error { background: var(--over-soft); color: var(--over); }
@@ -82,12 +83,12 @@ body { padding: 0; }
 
 .ap-recent { margin-top: 36px; border-top: 1px solid var(--line-soft); padding-top: 14px; }
 .ap-recent ul { list-style: none; margin: 0; padding: 0; }
-.ap-recent li { display: flex; gap: 10px; padding: 6px 0; font-size: 14px; color: var(--ink-soft); }
+.ap-recent li { display: flex; gap: 10px; padding: 6px 0; font-size: var(--fs-lg3); color: var(--ink-soft); }
 .ap-recent li::before { content: "✓"; color: var(--done); }
 .ap-recent li.is-undone { text-decoration: line-through; color: var(--muted); }
 .ap-recent li.is-undone::before { content: "↺"; color: var(--muted); }
 .ap-recent .ap-recent-name { flex: 1; }
-.ap-recent .ap-recent-due { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.ap-recent .ap-recent-due { font-family: var(--mono); font-size: var(--fs-md); color: var(--muted); }
 
 @media (max-width: 600px) {
   .ap-head { padding: 16px; }
