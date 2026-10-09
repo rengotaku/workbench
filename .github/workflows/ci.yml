@@ -26,6 +26,9 @@ jobs:
         with:
           version: v2.11
 
+      - name: Test
+        run: go test ./...
+
       - name: Test with coverage
         run: |
           go test ./internal/... -coverprofile=coverage.out

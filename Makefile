@@ -28,13 +28,13 @@ $(BINARIES): $(BIN_DIR)/%:
 	@mkdir -p $(BIN_DIR)
 	go build -o $@ ./cmd/$*
 
-## run-todo: Run the todo server (:8085)
+## run-todo: Run the todo server (:$(TODO_PORT), default 8085)
 run-todo:
-	go run ./cmd/todo-server
+	PORT=$(TODO_PORT) go run ./cmd/todo-server
 
-## run-note: Run the note server (:8086)
+## run-note: Run the note server (:$(NOTE_PORT), default 8086)
 run-note:
-	go run ./cmd/note-server
+	PORT=$(NOTE_PORT) go run ./cmd/note-server
 
 ## stop: Stop both servers
 stop: stop-todo stop-note
@@ -79,8 +79,8 @@ test-cov:
 ## check: Run lint + test
 check: lint test
 
-## ci: Run lint + test with coverage
-ci: lint test-cov
+## ci: Run lint + all tests + coverage (internal/...)
+ci: lint test test-cov
 
 ## clean: Remove build artifacts
 clean:
