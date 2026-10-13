@@ -552,6 +552,7 @@ button.due-edit {
 }
 button.due-edit:hover { border-color: var(--line); }
 button.due-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.due-edit[aria-expanded="true"] { border-color: var(--accent); }
 .due-input {
   font-family: var(--mono);
   font-size: var(--fs-sm);
@@ -562,6 +563,44 @@ button.due-edit:focus-visible { outline: 2px solid var(--accent); outline-offset
   padding: 1px 4px;
   margin-top: 3px;
 }
+
+/* The due chip's menu: a date, a week or a month on, no date, someday. */
+.due-menu {
+  position: absolute;
+  z-index: 20;
+  width: 232px;
+  padding: var(--space-1);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  font-size: var(--fs-lg);
+}
+.dm-sec { padding: var(--space-1) 0; }
+.dm-sec + .dm-sec { border-top: 1px solid var(--line-soft); }
+.dm-label { font-size: var(--fs-xs); color: var(--muted); padding: 2px var(--space-2) var(--space-1); }
+.due-menu .due-input { display: block; width: calc(100% - 2 * var(--space-2)); margin: 0 var(--space-2) var(--space-1); padding: 3px 6px; border-color: var(--line); }
+.due-menu .due-input:focus-visible { outline: none; border-color: var(--accent); }
+.dm-item {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.dm-item:hover, .dm-item:focus-visible { background: var(--accent-soft); outline: none; }
+.dm-item:disabled { opacity: .5; cursor: default; }
+.dm-hint { font-family: var(--mono); font-size: var(--fs-sm2); color: var(--muted); }
+.dm-clear { color: var(--ink-soft); }
+.dm-someday { color: var(--someday); }
 .due.over { background: var(--over-soft); color: var(--over); font-weight: 500; }
 
 .add-row {
