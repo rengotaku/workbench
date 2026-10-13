@@ -330,6 +330,8 @@
       due.type = 'button';
       due.className = 'due due-edit';
       due.title = opts.dueTitle || '期限を設定する';
+      due.setAttribute('aria-haspopup', 'menu');
+      due.setAttribute('aria-expanded', 'false');
       due.dataset.due = opts.task.due || '';
     } else {
       due = document.createElement('span');
@@ -760,8 +762,8 @@
       actions.appendChild(resume);
       if (t.state === 'waiting') actions.appendChild(somedayButton(t));
     } else if (t.state === 'open') {
+      // いつかにする lives in the due chip's menu for open rows.
       actions.appendChild(waitControl(t));
-      actions.appendChild(somedayButton(t));
     }
 
     // The trail is one line: a link whose tooltip holds the whole history.
@@ -1101,10 +1103,19 @@
 
   document.addEventListener('click', function (ev) {
     if (ev.target.closest('a.ticket')) return; // let the link do its job
+    if (ev.target.closest('.due-menu')) return; // the menu handles its own clicks
 
     var chip = ev.target.closest('.due-edit');
     if (chip) {
-      openDueEditor(chip);
+      var same = dueMenu && dueMenu.chip === chip;
+      closeDueMenu();
+      if (!same) openDueMenu(chip);
+      return;
+    }
+    // A click outside an open menu only closes it: it should not also open
+    // or close the row underneath.
+    if (dueMenu) {
+      closeDueMenu();
       return;
     }
     if (ev.target === el.more) {
@@ -1148,6 +1159,10 @@
       undo();
       return;
     }
+    if (ev.key === 'Escape' && dueMenu) {
+      closeDueMenu();
+      return;
+    }
     if (ev.key === 'Escape') {
       // First Escape leaves the field (which saves it); the second closes the
       // row. The field's own handler stops the event while it has focus.
@@ -1179,44 +1194,169 @@
       });
   });
 
-  // openDueEditor swaps the chip for a date field. Leaving it empty clears the
-  // due date, which is why the field is not marked required.
-  function openDueEditor(chip) {
-    var li = chip.closest('.task');
-    var input = document.createElement('input');
-    input.type = 'date';
-    input.className = 'due-input';
-    input.value = chip.dataset.due || '';
-    input.setAttribute('aria-label', '期限');
+  // ---- due menu ----
+  //
+  // The due chip opens one menu for everything that moves a task later: a
+  // date, a week or a month on, no date, or off the queue to someday. They
+  // used to live in three places (the chip, an emptied date field, the panel).
 
-    var done = false;
-    function finish(save) {
-      if (done) return;
-      done = true;
-      state.busy = false;
-      if (!save || input.value === (chip.dataset.due || '')) {
-        load(); // put the row back the way the server has it
-        return;
-      }
-      request('PATCH', '/api/tasks/' + encodeURIComponent(li.dataset.id), { due: input.value })
-        .then(load)
+  var dueMenu = null; // { chip, node }
+
+  function ymd(d) {
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+
+  function shortDate(d) { return (d.getMonth() + 1) + '/' + d.getDate(); }
+
+  // shiftBase is where "+1週間" counts from: the due date if it is still ahead,
+  // otherwise today. Counting from an overdue date could land a week on and
+  // still be overdue.
+  function shiftBase(due) {
+    var now = new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (!due) return today;
+    var d = new Date(due + 'T00:00:00');
+    return isNaN(d) || d < today ? today : d;
+  }
+
+  function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
+  // A month on follows Go's AddDate, which the server uses for someday: 1/31
+  // goes to 3/3, not 2/28. Keeping one rule means the two never disagree.
+  function addMonths(d, n) { var x = new Date(d); x.setMonth(x.getMonth() + n); return x; }
+
+  function dueMenuItem(label, hint, cls, run) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'dm-item' + (cls ? ' ' + cls : '');
+    b.setAttribute('role', 'menuitem');
+    var l = document.createElement('span');
+    l.textContent = label;
+    b.appendChild(l);
+    if (hint) {
+      var h = document.createElement('span');
+      h.className = 'dm-hint';
+      h.textContent = hint;
+      b.appendChild(h);
+    }
+    b.addEventListener('click', function () {
+      b.disabled = true;
+      run();
+    });
+    return b;
+  }
+
+  function dueMenuLabel(text) {
+    var d = document.createElement('div');
+    d.className = 'dm-label';
+    d.textContent = text;
+    return d;
+  }
+
+  function openDueMenu(chip) {
+    var id = chip.closest('.task').dataset.id;
+    var current = chip.dataset.due || '';
+    var path = '/api/tasks/' + encodeURIComponent(id);
+
+    function setDue(value, said) {
+      closeDueMenu();
+      request('PATCH', path, { due: value })
+        .then(function () { return load().then(function () { flash(said); }); })
         .catch(function (err) { showError(err); load(); });
     }
 
-    input.addEventListener('change', function () { finish(true); });
-    input.addEventListener('blur', function () { finish(true); });
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { finish(false); }
-      if (e.key === 'Enter') { finish(true); }
+    var menu = document.createElement('div');
+    menu.className = 'due-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', '期限');
+
+    var sec = document.createElement('div');
+    sec.className = 'dm-sec';
+    sec.appendChild(dueMenuLabel('期限'));
+    var input = document.createElement('input');
+    input.type = 'date';
+    input.className = 'due-input';
+    input.value = current;
+    input.setAttribute('aria-label', '期限の日付');
+    input.addEventListener('change', function () {
+      if (!input.value || input.value === current) return;
+      setDue(input.value, '期限を ' + shortDate(new Date(input.value + 'T00:00:00')) + ' にした');
+    });
+    sec.appendChild(input);
+    menu.appendChild(sec);
+
+    var base = shiftBase(current);
+    sec = document.createElement('div');
+    sec.className = 'dm-sec';
+    sec.appendChild(dueMenuLabel('後ろにずらす（' + shortDate(base) + ' から）'));
+    [['+1週間', addDays(base, 7)], ['+2週間', addDays(base, 14)], ['+1ヶ月', addMonths(base, 1)]]
+      .forEach(function (o) {
+        sec.appendChild(dueMenuItem(o[0], shortDate(o[1]), '', function () {
+          setDue(ymd(o[1]), '期限を ' + shortDate(o[1]) + ' にずらした');
+        }));
+      });
+    menu.appendChild(sec);
+
+    sec = document.createElement('div');
+    sec.className = 'dm-sec';
+    if (current) {
+      sec.appendChild(dueMenuItem('期限なし', '', 'dm-clear', function () {
+        setDue('', '期限を外した');
+      }));
+    }
+    sec.appendChild(dueMenuItem('いつかにする', shortDate(addMonths(shiftBase(''), 1)) + ' に見直す', 'dm-someday',
+      function () {
+        closeDueMenu();
+        request('POST', path + '/someday', {})
+          .then(function () { return load().then(function () { flash('いつかへ棚上げした'); }); })
+          .catch(function (err) { showError(err); load(); });
+      }));
+    menu.appendChild(sec);
+
+    menu.addEventListener('keydown', function (e) {
+      if (composing(e)) return;
+      var items = Array.prototype.slice.call(menu.querySelectorAll('input, button:not([disabled])'));
+      var at = items.indexOf(document.activeElement);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeDueMenu();
+        chip.focus();
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        // Inside the date field the arrows step the date; leave them alone.
+        if (document.activeElement === input) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var step = e.key === 'ArrowDown' ? 1 : -1;
+        items[(at + step + items.length) % items.length].focus();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.stopPropagation(); // the button's own click runs; the row must not toggle
+      }
     });
 
-    state.busy = true;
-    chip.replaceWith(input);
-    input.focus();
-    if (input.showPicker) {
-      try { input.showPicker(); } catch (e) { /* not allowed without a gesture */ }
-    }
+    // The menu hangs off the page, not the row: the row redraws on every load
+    // and would take the menu with it.
+    document.body.appendChild(menu);
+    var r = chip.getBoundingClientRect();
+    var left = Math.max(8, Math.min(r.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8));
+    menu.style.left = (left + window.scrollX) + 'px';
+    menu.style.top = (r.bottom + 4 + window.scrollY) + 'px';
+
+    chip.setAttribute('aria-expanded', 'true');
+    state.busy = true; // hold the poll: a redraw would replace the chip under the menu
+    dueMenu = { chip: chip, node: menu };
+    var first = menu.querySelector('.dm-item');
+    if (first) first.focus();
   }
+
+  function closeDueMenu() {
+    if (!dueMenu) return;
+    dueMenu.node.remove();
+    dueMenu.chip.setAttribute('aria-expanded', 'false');
+    dueMenu = null;
+    state.busy = false;
+  }
+
+  window.addEventListener('resize', closeDueMenu);
 
   // "タスクを追加" and N open the add page (/add) in a dialog over the list:
   // the same form, due chips and detail as a bare `todo` opens. The list is
