@@ -28,20 +28,25 @@
     frame.style.visibility = 'hidden';
 
     var changed = false;
-    var busy = false;
+    // Saves in flight. An undo and a save can overlap, so this counts: the
+    // dialog closes only once every one of them has answered.
+    var pending = 0;
     var closeWanted = false;
 
     function requestClose() {
-      if (busy) { closeWanted = true; return; }
+      if (pending > 0) { closeWanted = true; return; }
       dialog.close();
     }
 
     function onMessage(e) {
       if (e.origin !== location.origin || e.source !== frame.contentWindow) return;
       var type = e.data && e.data.workbench;
-      if (type === 'busy') busy = true;
+      if (type === 'busy') pending++;
       if (type === 'changed') changed = true;
-      if (type === 'idle') { busy = false; if (closeWanted) dialog.close(); }
+      if (type === 'idle') {
+        pending = Math.max(0, pending - 1);
+        if (closeWanted && pending === 0) dialog.close();
+      }
       if (type === 'close') requestClose();
     }
 

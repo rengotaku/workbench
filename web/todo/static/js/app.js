@@ -1140,6 +1140,9 @@
 
   // Enter / Space open a row from the keyboard.
   document.addEventListener('keydown', function (ev) {
+    // While the add dialog is open the list's keys are off: Cmd+Z here would
+    // undo the list's history behind it.
+    if (document.querySelector('dialog[open]')) return;
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z' && !state.busy) {
       ev.preventDefault();
       undo();
