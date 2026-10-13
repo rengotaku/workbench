@@ -1140,6 +1140,9 @@
 
   // Enter / Space open a row from the keyboard.
   document.addEventListener('keydown', function (ev) {
+    // While the add dialog is open the list's keys are off: Cmd+Z here would
+    // undo the list's history behind it.
+    if (document.querySelector('dialog[open]')) return;
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z' && !state.busy) {
       ev.preventDefault();
       undo();
@@ -1215,13 +1218,26 @@
     }
   }
 
-  // "タスクを追加" opens the add page (/add) in a dialog over the list: the
-  // same form, due chips and detail as a bare `todo` opens. The list is
+  // "タスクを追加" and N open the add page (/add) in a dialog over the list:
+  // the same form, due chips and detail as a bare `todo` opens. The list is
   // reloaded after it closes if a task went in.
-  el.addTrigger.addEventListener('click', function () {
+  function openAdd() {
     window.workbench.openAddDialog('/add', 'タスクを追加', function (changed) {
       if (changed) load();
     });
+  }
+  el.addTrigger.addEventListener('click', openAdd);
+
+  // N, the same key as on the timeline. Not while typing (a name, a due date)
+  // or while a dialog is already open.
+  document.addEventListener('keydown', function (ev) {
+    if (composing(ev) || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (ev.key !== 'n' && ev.key !== 'N') return;
+    if (document.querySelector('dialog[open]')) return;
+    var t = ev.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    ev.preventDefault();
+    openAdd();
   });
 
   el.doneFold.addEventListener('click', function () {

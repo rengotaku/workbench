@@ -246,6 +246,7 @@
 }
 .add .as-button:hover { text-decoration: underline; }
 .add .as-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.add kbd { justify-self: end; }
 
 /* The completed list is closed by default: it is a record, not a queue. The
    count stays visible so closing it does not hide how much there is. */
