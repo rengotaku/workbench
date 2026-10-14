@@ -3,6 +3,7 @@
 package notepages
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -75,16 +76,52 @@ func (p *Pages) render(c *gin.Context, name string, data any) {
 	}
 }
 
+// visibleTopics is how many topic chips a screen shows before it folds the
+// rest into the "他 N" chip.
+const visibleTopics = 6
+
+// splitTopics picks the topics to show as chips: the most recently used
+// visibleTopics, plus selected when it is not among them. rest is every other
+// topic, in the same order.
+func splitTopics(stats []note.TopicStat, selected string) (shown, rest []string) {
+	for i, t := range note.RankByRecent(stats) {
+		if i < visibleTopics || t.Name == selected {
+			shown = append(shown, t.Name)
+		} else {
+			rest = append(rest, t.Name)
+		}
+	}
+	return shown, rest
+}
+
+// namesJSON is names as a JSON array, for a data attribute the script reads
+// (the template escapes it for the attribute).
+func namesJSON(names []string) string {
+	b, err := json.Marshal(append([]string{}, names...))
+	if err != nil { // a string slice always marshals
+		return "[]"
+	}
+	return string(b)
+}
+
 // ---- add screen ----
 
 type addView struct {
-	Title   string
-	Current string // which header link is the current screen
-	Topics  []string
+	Title     string
+	Current   string // which header link is the current screen
+	AllTopics string // every topic as a JSON array, for the topic input
+	Topics    []string
+	Others    int // topics folded into "他 N"
 }
 
 func (p *Pages) handleAdd(c *gin.Context) {
-	p.render(c, "add.html", addView{Title: "note", Current: "note", Topics: p.store.Topics()})
+	stats := p.store.TopicStats()
+	shown, rest := splitTopics(stats, "")
+	all := make([]string, len(stats))
+	for i, t := range stats {
+		all[i] = t.Name
+	}
+	p.render(c, "add.html", addView{Title: "note", Current: "note", Topics: shown, Others: len(rest), AllTopics: namesJSON(all)})
 }
 
 // ---- timeline ----
@@ -92,6 +129,7 @@ func (p *Pages) handleAdd(c *gin.Context) {
 type chipView struct {
 	Label string
 	Href  string
+	Topic string // the topic a chip filters by; empty for すべて / 話題なし
 	On    bool
 }
 
@@ -143,12 +181,14 @@ type dayView struct {
 }
 
 type timelineView struct {
-	Title   string
-	Current string
-	Empty   string
-	Chips   []chipView
-	Days    []dayView
-	Pending int
+	Title     string
+	Current   string
+	Empty     string
+	Chips     []chipView // すべて, the shown topics, 話題なし
+	OtherJSON string     // the topics behind "他 N", as a JSON array
+	Days      []dayView
+	Others    int
+	Pending   int
 }
 
 var kindLabels = map[string]string{
@@ -163,17 +203,18 @@ func (p *Pages) handleTimeline(c *gin.Context) {
 	topic := c.Query("topic")
 	noTopic := c.Query("no_topic") == "1"
 	notes := p.store.List(note.Filter{Topic: topic, NoTopic: noTopic})
-	p.render(c, "timeline.html", buildTimeline(notes, p.store.Topics(), topic, noTopic))
+	p.render(c, "timeline.html", buildTimeline(notes, p.store.TopicStats(), topic, noTopic))
 }
 
-func buildTimeline(notes []note.Note, topics []string, topic string, noTopic bool) timelineView {
+func buildTimeline(notes []note.Note, stats []note.TopicStat, topic string, noTopic bool) timelineView {
+	shown, rest := splitTopics(stats, topic)
 	chips := []chipView{{Label: "すべて", Href: TimelinePath, On: topic == "" && !noTopic}}
-	for _, t := range topics {
-		chips = append(chips, chipView{Label: t, Href: TimelinePath + "?topic=" + url.QueryEscape(t), On: t == topic && !noTopic})
+	for _, t := range shown {
+		chips = append(chips, chipView{Label: t, Topic: t, Href: TimelinePath + "?topic=" + url.QueryEscape(t), On: t == topic && !noTopic})
 	}
 	chips = append(chips, chipView{Label: "話題なし", Href: TimelinePath + "?no_topic=1", On: noTopic})
 
-	v := timelineView{Title: "note タイムライン", Current: "timeline", Chips: chips, Empty: "まだメモがありません。note と打って 1 行入れてください"}
+	v := timelineView{Title: "note タイムライン", Current: "timeline", Chips: chips, Others: len(rest), OtherJSON: namesJSON(rest), Empty: "まだメモがありません。note と打って 1 行入れてください"}
 	if topic != "" || noTopic {
 		v.Empty = "この絞り込みに合うメモはありません。「すべて」に戻してください"
 	}

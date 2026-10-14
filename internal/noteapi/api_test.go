@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -288,4 +289,92 @@ func TestAnnotateRejectsOversize(t *testing.T) {
 	if len(got.Annotations) != 0 {
 		t.Error("a rejected annotation must not be stored")
 	}
+}
+
+func TestTopicsDetails(t *testing.T) {
+	h, store := newServer(t)
+	_, _ = store.Add("a", "青")
+	_, _ = store.Add("b", "青")
+	_ = store.AddTopic("空")
+	got := decodeBody[TopicsResponse](t, call(t, h, http.MethodGet, "/api/topics", ""))
+	if len(got.Topics) != 2 || len(got.Details) != 2 {
+		t.Fatalf("response = %+v", got)
+	}
+	if got.Details[0].Name != "青" || got.Details[0].Count != 2 || got.Details[0].LastUsed == nil {
+		t.Errorf("details[0] = %+v", got.Details[0])
+	}
+	if got.Details[1].Count != 0 || got.Details[1].LastUsed != nil {
+		t.Errorf("details[1] = %+v", got.Details[1])
+	}
+}
+
+func TestRenameTopic(t *testing.T) {
+	h, store := newServer(t)
+	n, _ := store.Add("a", "青")
+	rec := call(t, h, http.MethodPut, "/api/topics/"+url.PathEscape("青"), `{"name":"青分離"}`)
+	wantStatus(t, rec, http.StatusOK)
+	if got := decodeBody[TopicsResponse](t, rec); len(got.Topics) != 1 || got.Topics[0] != "青分離" || got.Details[0].Count != 1 {
+		t.Errorf("response = %+v", got)
+	}
+	if got, _ := store.Get(n.ID); got.Topic != "青分離" {
+		t.Errorf("memo topic = %q", got.Topic)
+	}
+
+	// An existing name merges.
+	_, _ = store.Add("b", "赤")
+	rec = call(t, h, http.MethodPut, "/api/topics/"+url.PathEscape("赤"), `{"name":"青分離"}`)
+	wantStatus(t, rec, http.StatusOK)
+	if got := decodeBody[TopicsResponse](t, rec); len(got.Topics) != 1 || got.Details[0].Count != 2 {
+		t.Errorf("after merge by rename = %+v", got)
+	}
+}
+
+func TestTopicNameWithSlash(t *testing.T) {
+	h, store := newServer(t)
+	_, _ = store.Add("a", "C/C")
+	wantStatus(t, call(t, h, http.MethodPut, "/api/topics/"+url.PathEscape("C/C"), `{"name":"CC"}`), http.StatusOK)
+	wantStatus(t, call(t, h, http.MethodDelete, "/api/topics/CC", ""), http.StatusOK)
+}
+
+func TestMergeTopic(t *testing.T) {
+	h, store := newServer(t)
+	_, _ = store.Add("a", "旧")
+	_, _ = store.Add("b", "新")
+	rec := call(t, h, http.MethodPut, "/api/topics/"+url.PathEscape("旧"), `{"merge_into":"新"}`)
+	wantStatus(t, rec, http.StatusOK)
+	if got := decodeBody[TopicsResponse](t, rec); len(got.Topics) != 1 || got.Details[0].Count != 2 {
+		t.Errorf("response = %+v", got)
+	}
+	// The target has to exist, and may not be the topic itself.
+	wantError(t, call(t, h, http.MethodPut, "/api/topics/"+url.PathEscape("新"), `{"merge_into":"無い"}`), http.StatusBadRequest)
+	wantError(t, call(t, h, http.MethodPut, "/api/topics/"+url.PathEscape("新"), `{"merge_into":"新"}`), http.StatusBadRequest)
+}
+
+func TestUpdateTopicErrors(t *testing.T) {
+	h, store := newServer(t)
+	_, _ = store.Add("a", "青")
+	p := "/api/topics/" + url.PathEscape("青")
+	for _, body := range []string{`{}`, `{"name":"x","merge_into":"y"}`, `not json`, `{"name":""}`, `{"name":"  "}`, `{"name":"青"}`} {
+		wantError(t, call(t, h, http.MethodPut, p, body), http.StatusBadRequest)
+	}
+	wantError(t, call(t, h, http.MethodPut, "/api/topics/"+url.PathEscape("無い"), `{"name":"x"}`), http.StatusNotFound)
+	wantError(t, call(t, h, http.MethodPut, "/api/topics/", `{"name":"x"}`), http.StatusBadRequest)
+	if got := store.Topics(); len(got) != 1 || got[0] != "青" {
+		t.Errorf("rejected calls changed Topics: %v", got)
+	}
+}
+
+func TestDeleteTopic(t *testing.T) {
+	h, store := newServer(t)
+	n, _ := store.Add("a", "青")
+	rec := call(t, h, http.MethodDelete, "/api/topics/"+url.PathEscape("青"), "")
+	wantStatus(t, rec, http.StatusOK)
+	if got := decodeBody[TopicsResponse](t, rec); len(got.Topics) != 0 {
+		t.Errorf("response = %+v", got)
+	}
+	if got, err := store.Get(n.ID); err != nil || got.Topic != "" {
+		t.Errorf("memo should stay without a topic: %+v, %v", got, err)
+	}
+	wantError(t, call(t, h, http.MethodDelete, "/api/topics/"+url.PathEscape("青"), ""), http.StatusNotFound)
+	wantError(t, call(t, h, http.MethodDelete, "/api/topics/", ""), http.StatusBadRequest)
 }

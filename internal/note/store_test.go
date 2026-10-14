@@ -653,3 +653,190 @@ func countMigrateEvents(t *testing.T, dir string) int {
 	}
 	return n
 }
+
+func topicNames(s *Store) []string { return s.Topics() }
+
+func TestTopicStatsCountsAndLastUsed(t *testing.T) {
+	s, _ := openStore(t)
+	a := mustAdd(t, s, "a", "青")
+	b := mustAdd(t, s, "b", "青")
+	mustAdd(t, s, "c", "赤")
+	if err := s.AddTopic("空"); err != nil {
+		t.Fatal(err)
+	}
+	got := s.TopicStats()
+	if len(got) != 3 || got[0].Name != "青" || got[0].Count != 2 || got[1].Count != 1 || got[2].Count != 0 || got[2].LastUsed != nil {
+		t.Fatalf("TopicStats = %+v", got)
+	}
+	if !got[0].LastUsed.Equal(b.CreatedAt) || !got[0].LastUsed.After(a.CreatedAt) {
+		t.Errorf("LastUsed should be the newest memo's time: %v", got[0].LastUsed)
+	}
+}
+
+func TestRankByRecent(t *testing.T) {
+	at := func(m int) *time.Time { v := time.Date(2026, 10, 1, 0, m, 0, 0, time.UTC); return &v }
+	in := []TopicStat{{Name: "none1"}, {Name: "old", LastUsed: at(1)}, {Name: "none2"}, {Name: "new", LastUsed: at(9)}}
+	var names []string
+	for _, t := range RankByRecent(in) {
+		names = append(names, t.Name)
+	}
+	if want := []string{"new", "old", "none1", "none2"}; !reflect.DeepEqual(names, want) {
+		t.Errorf("RankByRecent = %v, want %v", names, want)
+	}
+	if in[0].Name != "none1" {
+		t.Error("input must not be reordered")
+	}
+}
+
+func TestRenameTopic(t *testing.T) {
+	s, dir := openStore(t)
+	n := mustAdd(t, s, "a", "青")
+	other := mustAdd(t, s, "b", "赤")
+	if err := s.RenameTopic("青", " 青分離 "); err != nil {
+		t.Fatal(err)
+	}
+	if got := topicNames(s); !reflect.DeepEqual(got, []string{"青分離", "赤"}) {
+		t.Errorf("Topics = %v (renamed in place)", got)
+	}
+	if got, _ := s.Get(n.ID); got.Topic != "青分離" {
+		t.Errorf("memo topic = %q", got.Topic)
+	}
+	if got, _ := s.Get(other.ID); got.Topic != "赤" {
+		t.Errorf("other memo changed: %q", got.Topic)
+	}
+	assertEventOps(t, dir, "rename_topic")
+}
+
+func TestRenameTopicOntoExistingMerges(t *testing.T) {
+	s, _ := openStore(t)
+	a := mustAdd(t, s, "a", "あお")
+	b := mustAdd(t, s, "b", "青")
+	if err := s.RenameTopic("あお", "青"); err != nil {
+		t.Fatal(err)
+	}
+	if got := topicNames(s); !reflect.DeepEqual(got, []string{"青"}) {
+		t.Errorf("Topics = %v", got)
+	}
+	for _, id := range []int{a.ID, b.ID} {
+		if got, _ := s.Get(id); got.Topic != "青" {
+			t.Errorf("memo %d topic = %q", id, got.Topic)
+		}
+	}
+}
+
+func TestRenameTopicRejects(t *testing.T) {
+	s, dir := openStore(t)
+	mustAdd(t, s, "a", "青")
+	var inv InvalidError
+	for _, to := range []string{"", "  ", "青"} {
+		if err := s.RenameTopic("青", to); !errors.As(err, &inv) {
+			t.Errorf("RenameTopic(青, %q) err = %v, want InvalidError", to, err)
+		}
+	}
+	if err := s.RenameTopic("無い", "x"); !errors.Is(err, ErrTopicNotFound) {
+		t.Errorf("unknown topic err = %v", err)
+	}
+	if got := topicNames(s); !reflect.DeepEqual(got, []string{"青"}) {
+		t.Errorf("rejected calls changed Topics: %v", got)
+	}
+	assertEventOps(t, dir) // no topic operation was logged
+}
+
+func TestMergeTopic(t *testing.T) {
+	s, dir := openStore(t)
+	a := mustAdd(t, s, "a", "旧")
+	b := mustAdd(t, s, "b", "新")
+	if err := s.MergeTopic("旧", "新"); err != nil {
+		t.Fatal(err)
+	}
+	if got := topicNames(s); !reflect.DeepEqual(got, []string{"新"}) {
+		t.Errorf("Topics = %v", got)
+	}
+	for _, id := range []int{a.ID, b.ID} {
+		if got, _ := s.Get(id); got.Topic != "新" {
+			t.Errorf("memo %d topic = %q", id, got.Topic)
+		}
+	}
+	assertEventOps(t, dir, "merge_topic")
+
+	var inv InvalidError
+	if err := s.MergeTopic("新", "新"); !errors.As(err, &inv) {
+		t.Errorf("merge into itself err = %v", err)
+	}
+	if err := s.MergeTopic("新", "どこにもない"); !errors.As(err, &inv) {
+		t.Errorf("merge into a missing topic err = %v, want InvalidError", err)
+	}
+	if err := s.MergeTopic("どこにもない", "新"); !errors.Is(err, ErrTopicNotFound) {
+		t.Errorf("merge of a missing topic err = %v", err)
+	}
+}
+
+func TestDeleteTopic(t *testing.T) {
+	s, dir := openStore(t)
+	n := mustAdd(t, s, "a", "青")
+	mustAdd(t, s, "b", "赤")
+	if err := s.DeleteTopic("青"); err != nil {
+		t.Fatal(err)
+	}
+	if got := topicNames(s); !reflect.DeepEqual(got, []string{"赤"}) {
+		t.Errorf("Topics = %v", got)
+	}
+	if got, err := s.Get(n.ID); err != nil || got.Topic != "" {
+		t.Errorf("memo should stay, without a topic: %+v, %v", got, err)
+	}
+	assertEventOps(t, dir, "delete_topic")
+	if err := s.DeleteTopic("青"); !errors.Is(err, ErrTopicNotFound) {
+		t.Errorf("second delete err = %v", err)
+	}
+}
+
+func TestTopicChangesSurviveReopen(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir, clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustAdd(t, s, "a", "青")
+	mustAdd(t, s, "b", "赤")
+	if err = s.RenameTopic("青", "青分離"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.DeleteTopic("赤"); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+	s, err = Open(dir, clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	if got := topicNames(s); !reflect.DeepEqual(got, []string{"青分離"}) {
+		t.Errorf("Topics after reopen = %v", got)
+	}
+}
+
+// assertEventOps checks that the topic operations in the log, in order, are
+// exactly want (add_note / add_topic / set_topic lines are not counted).
+func assertEventOps(t *testing.T, dir string, want ...string) {
+	t.Helper()
+	files, _ := filepath.Glob(filepath.Join(dir, "events-*.jsonl"))
+	var got []string
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+			var ev Event
+			if err := json.Unmarshal([]byte(line), &ev); err != nil {
+				t.Fatal(err)
+			}
+			if strings.HasSuffix(ev.Op, "_topic") && ev.Op != "add_topic" && ev.Op != "set_topic" {
+				got = append(got, ev.Op)
+			}
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("topic events = %v, want %v", got, want)
+	}
+}

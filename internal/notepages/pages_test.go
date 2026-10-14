@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -338,4 +339,88 @@ func TestAddPageHasLinkRows(t *testing.T) {
 	h, _ := newPages(t)
 	_, body := get(t, h, "/notes")
 	mustContain(t, body, `id="links"`, `id="link-add"`, "＋ 関連 URL")
+}
+
+// seedTopics adds one memo per topic so the topics have a distinct last-used
+// time, oldest first.
+func seedTopics(t *testing.T, store *note.Store, names ...string) {
+	t.Helper()
+	for _, n := range names {
+		if _, err := store.Add("memo "+n, n); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+func TestSplitTopics(t *testing.T) {
+	at := func(m int) *time.Time { v := time.Date(2026, 10, 1, 0, m, 0, 0, time.UTC); return &v }
+	var stats []note.TopicStat
+	for i, n := range []string{"t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8"} {
+		stats = append(stats, note.TopicStat{Name: n, LastUsed: at(i)})
+	}
+	stats = append(stats, note.TopicStat{Name: "unused"})
+
+	shown, rest := splitTopics(stats, "")
+	if want := []string{"t8", "t7", "t6", "t5", "t4", "t3"}; !reflect.DeepEqual(shown, want) {
+		t.Errorf("shown = %v, want %v", shown, want)
+	}
+	if want := []string{"t2", "t1", "unused"}; !reflect.DeepEqual(rest, want) {
+		t.Errorf("rest = %v, want %v", rest, want)
+	}
+
+	// The selected topic is shown even when it is not among the six.
+	shown, rest = splitTopics(stats, "t1")
+	if want := []string{"t8", "t7", "t6", "t5", "t4", "t3", "t1"}; !reflect.DeepEqual(shown, want) {
+		t.Errorf("shown with selection = %v, want %v", shown, want)
+	}
+	if want := []string{"t2", "unused"}; !reflect.DeepEqual(rest, want) {
+		t.Errorf("rest with selection = %v, want %v", rest, want)
+	}
+
+	// An unknown selection adds nothing.
+	if shown, _ = splitTopics(stats[:2], "nope"); len(shown) != 2 {
+		t.Errorf("shown = %v", shown)
+	}
+}
+
+func TestTimelineFoldsOlderTopicsIntoOther(t *testing.T) {
+	h, store := newPages(t)
+	seedTopics(t, store, "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8")
+
+	_, all := get(t, h, "/notes/timeline")
+	mustContain(t, all, `topic=t8"`, `topic=t3"`, `id="chip-more"`, "他 2 ▾", `data-others="[&#34;t2&#34;,&#34;t1&#34;]"`, `id="organize"`, "話題を整理", `id="organize-dialog"`)
+	mustNotContain(t, all, `topic=t2"`, `topic=t1"`)
+	if strings.Index(all, "topic=t8") > strings.Index(all, "topic=t3") {
+		t.Error("most recently used topic should come first")
+	}
+	if strings.Index(all, "no_topic=1") > strings.Index(all, `id="chip-more"`) {
+		t.Error("他 N comes after 話題なし")
+	}
+
+	_, sel := get(t, h, "/notes/timeline?topic=t1")
+	mustContain(t, sel, `class="chip on" href="/notes/timeline?topic=t1" data-topic="t1"`, "他 1 ▾")
+}
+
+func TestTimelineHasNoOtherChipWhenAllShown(t *testing.T) {
+	h, store := newPages(t)
+	seedTopics(t, store, "a", "b")
+	_, body := get(t, h, "/notes/timeline")
+	mustContain(t, body, `id="chip-more" hidden`)
+}
+
+func TestAddPageFoldsTopics(t *testing.T) {
+	h, store := newPages(t)
+	seedTopics(t, store, "t1", "t2", "t3", "t4", "t5", "t6", "t7")
+	_, body := get(t, h, "/notes")
+	mustContain(t, body, `data-topic="t7"`, `data-topic="t2"`, "他 1 ▾", `id="topic-more"`, `id="pending-title"`, "AI が拾うと一覧から消える", "/notes/static/js/picker.js")
+	mustNotContain(t, body, `data-topic="t1"`, "元に戻す")
+	mustContain(t, body, "&#34;t1&#34;") // every topic is still in the data for the input
+}
+
+func TestAddPageHidesOtherChipWhenNothingFolded(t *testing.T) {
+	h, store := newPages(t)
+	seedTopics(t, store, "a")
+	_, body := get(t, h, "/notes")
+	mustContain(t, body, `id="topic-more" hidden`)
 }

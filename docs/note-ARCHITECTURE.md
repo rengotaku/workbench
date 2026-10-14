@@ -1,5 +1,5 @@
 ---
-last_verified: 2026-10-09   # 最後に実装と突合した日
+last_verified: 2026-10-14   # 最後に実装と突合した日
 ---
 
 # ARCHITECTURE
@@ -15,9 +15,9 @@ last_verified: 2026-10-09   # 最後に実装と突合した日
 | `cmd/server/` | todo と共通のサーバの起動。設定（`LISTEN_ADDR` / `PORT` / `TODO_DATA_DIR` / `NOTE_DATA_DIR`）の読み込み、ストアを開く、シャットダウン |
 | `internal/server/` | todo と note のルートを 1 つの gin エンジンにまとめる。httpguard と `/healthz` はここで 1 回だけ掛ける |
 | `cmd/note/` | CLI。引数・標準入力・サブコマンドを解釈して `internal/noteclient` を呼ぶ。端末かどうかの判定とブラウザを開く処理はここ |
-| `internal/note/` | モデル（Note / Annotation / Link / Filter）とストア。検証、採番、`notes.json` の原子的な書き換え、操作ログの追記。URL の抽出、`[N]` 参照の切り出し（`link.go`）、ソース表示（ホストから導出）もここ |
-| `internal/noteapi/` | `/api` の JSON エンドポイント。ストアの入力エラーを 400、存在しない id を 404 に写す |
-| `internal/notepages/` | 登録画面（`/notes`）とタイムライン（`/notes/timeline`）の描画、`/notes/static`。ルート登録（`Mount`）と API の取り付けもここ。todo の `/`・`/static` とぶつからないよう `/notes` 配下に置く |
+| `internal/note/` | モデル（Note / Annotation / Link / Filter / TopicStat）とストア。検証、採番、`notes.json` の原子的な書き換え、操作ログの追記。話題の名前変更・統合・削除、話題ごとの件数と最終使用日時（`TopicStats`）、最近使った順の並べ替え（`RankByRecent`）もここ。URL の抽出、`[N]` 参照の切り出し（`link.go`）、ソース表示（ホストから導出）もここ |
+| `internal/noteapi/` | `/api` の JSON エンドポイント。ストアの入力エラーを 400、存在しない id・話題を 404 に写す。話題は `GET/POST /api/topics`、`PUT/DELETE /api/topics/*name`（名前変更・統合・削除。名前に `/` が入っても届くようワイルドカード）。応答は名前一覧 `topics` と、件数・最終使用日時つきの `details` |
+| `internal/notepages/` | 登録画面（`/notes`）とタイムライン（`/notes/timeline`）の描画、`/notes/static`。話題チップに出す「最近使った上位 6 個＋選択中」と「他 N」の振り分け（`splitTopics`）もここ。ルート登録（`Mount`）と API の取り付けもここ。todo の `/`・`/static` とぶつからないよう `/notes` 配下に置く |
 | `internal/noteroute/` | `POST /api/notes/:id/route`。AI が拾ったメモの行き先を決める。タスクを作るので task と note の両方のストアを受け取る（ADR note-0004）。`internal/server` が追加の Mounter として取り付ける |
 | `internal/noteclient/` | CLI 用の HTTP クライアント。サーバに届かなければ日本語のエラーで止まる |
 | `web/shared/` | todo と note が共有するレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・基底 CSS・`common.js`（IME ガードと API 呼び出し）。`/shared` で配信し、`internal/server` がガードの内側にマウントする |
@@ -38,6 +38,9 @@ CLI (note) ──────┘                                                
 - ログは補助。追記に失敗しても状態の保存は成功として扱い、エラーログに残す
 - Host が `127.0.0.1:<port>` / `localhost:<port>` 以外、または別 Origin の要求は 403、`/api` への POST/PUT で Content-Type が application/json 以外は 415（`internal/httpguard`。todo と共通）
 - 話題の一覧は登録済みの話題とメモで使われている話題の和集合
+- 話題の名前変更・統合・削除は、話題の一覧とメモの `topic` を 1 回の保存でそろえて書き換え、操作ログに `rename_topic` / `merge_topic` / `delete_topic` を足す。既にある名前への名前変更は統合になる。削除した話題のメモは残り、話題なしになる
+- 話題チップの並びは「その話題が付いたメモの最新の登録日時」の降順で、メモの無い話題は登録順で後ろに回す。サーバが出すのは上位 6 個と選択中の話題で、残りは「他 N」。さらに 1 行に入らない分は JS（`picker.js` の `fitChips`）が末尾の話題チップから隠して「他 N」の数と候補に足す（選択中・すべて・話題なしは隠さない。幅 560px 以下は隠さない）。並びはサーバが決め、登録画面は全話題の名前を data 属性で JS に渡して候補に使う
+- 登録画面の補足待ち一覧は、開いた時点で `GET /api/notes?pending=1` から読む（保存した分は先頭に足し、削除した行は取り消し線で残す）
 - 「補足待ち」は AI がまだ拾っていないメモ（`Note.TriagedAt` が空）。補足の有無では決まらない。拾うと `triaged_at` と `route`（`to`: `todo` / `record`、`todo` のときは `task_id`）が付く
 - 行き先は変えられない。同じ行き先で再実行すると現状を返し、違う行き先は 409。`todo` はタスクを先に作ってからメモを更新し、失敗後の再実行は `source_note_id` で既存のタスクを使う（ADR note-0004）
 - 起動時に、補足があって `triaged_at` が空のメモを「最初の補足の時刻に `record` で拾い済み」へ直す（`note.Open` の `migrateTriage`）。変更があったときだけ保存する
@@ -59,7 +62,11 @@ CLI (note) ──────┘                                                
 | 登録画面の関連 URL 行 | `web/note/static/js/add.js` の `addLinkRow` / `readLinks` |
 | API の項目・ステータス | `internal/noteapi/api.go` |
 | 画面の見た目 | `web/shared/static/css/tokens.css`（色・文字・角丸・余白）、`web/note/static/css/style.css`、`web/note/templates/` |
-| 登録画面の操作（Enter・チップ・元に戻す） | `web/note/static/js/add.js` |
+| 登録画面の操作（Enter・チップ・補足待ち一覧・削除） | `web/note/static/js/add.js` |
+| 候補つきの話題入力、1 行に入らない話題チップを「他 N」へ隠す処理（登録画面とタイムラインで共通） | `web/note/static/js/picker.js` の `createPicker` / `fitChips` |
+| 話題を整理するモーダル・タイムラインの「他 N」 | `web/note/static/js/timeline.js`、`web/note/templates/timeline.html` |
+| 話題チップに出す個数・並び | `internal/notepages/pages.go` の `visibleTopics` / `splitTopics`、`internal/note/store.go` の `RankByRecent` |
+| 話題の名前変更・統合・削除 | `internal/note/store.go` の `RenameTopic` / `MergeTopic` / `DeleteTopic`、`internal/noteapi/api.go` の `updateTopic` / `deleteTopic` |
 | IME 変換中のキーの扱い | `web/shared/static/js/common.js` の `composing()` |
 | CLI のコマンドと出力 | `cmd/note/main.go` |
 | 既定のポート・データの置き場 | `cmd/server/main.go`、`Makefile`、`launchd/*.template`、`scripts/install-agent.sh` |

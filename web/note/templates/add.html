@@ -14,9 +14,10 @@
   <div class="link-rows" id="links" role="group" aria-label="関連 URL（任意）"></div>
   <button type="button" class="chip dashed link-add" id="link-add">＋ 関連 URL</button>
 
-  <div class="filters" id="topics" role="group" aria-label="話題（任意）">
+  <div class="filters one" id="topics" role="group" aria-label="話題（任意）" data-all="{{.AllTopics}}">
     <span>話題（任意）:</span>
     {{range .Topics}}<button type="button" class="chip" aria-pressed="false" data-topic="{{.}}">{{.}}</button>{{end}}
+    <button type="button" class="chip more" id="topic-more"{{if not .Others}} hidden{{end}}>他 {{.Others}} ▾</button>
     <button type="button" class="chip dashed" id="topic-add">＋ 話題を追加</button>
   </div>
 
@@ -25,9 +26,10 @@
     <span><kbd>Enter</kbd> で保存</span>
   </div>
 
-  <div class="status" id="status" role="status" aria-live="polite" hidden></div>
+  <div class="status is-error" id="status" role="alert" hidden></div>
 
-  <ul class="recent" id="recent" aria-label="いま追加したメモ"></ul>
+  <div class="sec"><b id="pending-title">補足待ち 0 件</b><span>AI が拾うと一覧から消える</span></div>
+  <ul class="recent" id="recent" aria-labelledby="pending-title"></ul>
   </div>
 </div>
 {{end}}

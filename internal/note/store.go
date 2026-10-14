@@ -18,6 +18,9 @@ import (
 // ErrNotFound is returned for an id that does not exist.
 var ErrNotFound = errors.New("メモが見つかりません")
 
+// ErrTopicNotFound is returned for a topic name that does not exist.
+var ErrTopicNotFound = errors.New("話題が見つかりません")
+
 // ErrRouteConflict is returned when a memo was already routed somewhere else.
 var ErrRouteConflict = errors.New("このメモはすでに別の行き先に振り分け済みです")
 
@@ -453,4 +456,130 @@ func (s *Store) AddTopic(name string) error {
 	next := s.st
 	next.Topics = withTopic(s.st.Topics, name)
 	return s.commit(next, Event{At: s.now(), Op: "add_topic", Detail: name})
+}
+
+// TopicStat is one topic with how many memos carry it and when the newest of
+// them was registered (nil when none does).
+type TopicStat struct {
+	LastUsed *time.Time `json:"last_used_at"`
+	Name     string     `json:"name"`
+	Count    int        `json:"count"`
+}
+
+// TopicStats lists every topic, in the order Topics gives, with its usage.
+func (s *Store) TopicStats() []TopicStat {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	names := s.topicsLocked()
+	out := make([]TopicStat, len(names))
+	for i, name := range names {
+		out[i] = TopicStat{Name: name}
+	}
+	for _, n := range s.st.Notes {
+		if n.Topic == "" {
+			continue
+		}
+		i := slices.IndexFunc(out, func(t TopicStat) bool { return t.Name == n.Topic })
+		out[i].Count++
+		if out[i].LastUsed == nil || n.CreatedAt.After(*out[i].LastUsed) {
+			at := n.CreatedAt
+			out[i].LastUsed = &at
+		}
+	}
+	return out
+}
+
+// RankByRecent returns stats ordered by the newest memo that carries each
+// topic, newest first. Topics with no memo keep their given order, after the
+// rest.
+func RankByRecent(stats []TopicStat) []TopicStat {
+	out := slices.Clone(stats)
+	slices.SortStableFunc(out, func(a, b TopicStat) int {
+		switch {
+		case a.LastUsed == nil && b.LastUsed == nil:
+			return 0
+		case a.LastUsed == nil:
+			return 1
+		case b.LastUsed == nil:
+			return -1
+		}
+		return b.LastUsed.Compare(*a.LastUsed)
+	})
+	return out
+}
+
+// RenameTopic gives a topic a new name, on the topic list and on every memo
+// that carries it. A name that already exists makes it a merge into that topic.
+func (s *Store) RenameTopic(from, to string) error {
+	to = strings.TrimSpace(to)
+	if to == "" {
+		return InvalidError("新しい名前が空です。名前を入れてください")
+	}
+	return s.moveTopic(from, to, "rename_topic", false)
+}
+
+// MergeTopic moves every memo of from onto into and removes from. into must
+// already exist.
+func (s *Store) MergeTopic(from, into string) error {
+	return s.moveTopic(from, strings.TrimSpace(into), "merge_topic", true)
+}
+
+func (s *Store) moveTopic(from, to, op string, mustExist bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	topics := s.topicsLocked()
+	if !slices.Contains(topics, from) {
+		return ErrTopicNotFound
+	}
+	if from == to {
+		return InvalidError(fmt.Sprintf("話題「%s」と同じ名前です。別の名前を指定してください", to))
+	}
+	exists := slices.Contains(topics, to)
+	if mustExist && !exists {
+		return InvalidError(fmt.Sprintf("統合先の話題「%s」がありません。既にある話題を選んでください", to))
+	}
+
+	next := s.st
+	next.Notes = slices.Clone(s.st.Notes)
+	for i, n := range next.Notes {
+		if n.Topic == from {
+			n.Topic = to
+			next.Notes[i] = n
+		}
+	}
+	next.Topics = make([]string, 0, len(topics))
+	for _, t := range topics {
+		switch {
+		case t == from && exists:
+			// merged into the existing topic: drop the old name
+		case t == from:
+			next.Topics = append(next.Topics, to)
+		default:
+			next.Topics = append(next.Topics, t)
+		}
+	}
+	return s.commit(next, Event{At: s.now(), Op: op, Detail: map[string]string{"from": from, "to": to}})
+}
+
+// DeleteTopic removes a topic from the list. Memos that carried it are kept,
+// without a topic.
+func (s *Store) DeleteTopic(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	topics := s.topicsLocked()
+	if !slices.Contains(topics, name) {
+		return ErrTopicNotFound
+	}
+	next := s.st
+	next.Notes = slices.Clone(s.st.Notes)
+	cleared := 0
+	for i, n := range next.Notes {
+		if n.Topic == name {
+			n.Topic = ""
+			next.Notes[i] = n
+			cleared++
+		}
+	}
+	next.Topics = slices.DeleteFunc(slices.Clone(topics), func(t string) bool { return t == name })
+	return s.commit(next, Event{At: s.now(), Op: "delete_topic", Detail: map[string]any{"name": name, "notes": cleared}})
 }
