@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -32,6 +33,9 @@ func (a *API) Mount(r gin.IRouter) {
 	g.PUT("/notes/:id/topic", a.setTopic)
 	g.GET("/topics", a.listTopics)
 	g.POST("/topics", a.addTopic)
+	// A wildcard, not :name, so a topic name with a "/" in it still routes.
+	g.PUT("/topics/*name", a.updateTopic)
+	g.DELETE("/topics/*name", a.deleteTopic)
 }
 
 type errorBody struct {
@@ -43,7 +47,7 @@ type errorBody struct {
 func fail(c *gin.Context, err error) {
 	var invalid note.InvalidError
 	switch {
-	case errors.Is(err, note.ErrNotFound):
+	case errors.Is(err, note.ErrNotFound), errors.Is(err, note.ErrTopicNotFound):
 		c.JSON(http.StatusNotFound, errorBody{err.Error()})
 	case errors.As(err, &invalid):
 		c.JSON(http.StatusBadRequest, errorBody{err.Error()})
@@ -179,13 +183,19 @@ func (a *API) setTopic(c *gin.Context) {
 	c.JSON(http.StatusOK, n)
 }
 
-// TopicsResponse is the body of the /api/topics endpoints.
+// TopicsResponse is the body of the /api/topics endpoints. Topics is the
+// plain name list; Details has the same topics with their usage.
 type TopicsResponse struct {
-	Topics []string `json:"topics"`
+	Topics  []string         `json:"topics"`
+	Details []note.TopicStat `json:"details"`
+}
+
+func (a *API) topicsResponse() TopicsResponse {
+	return TopicsResponse{Topics: a.store.Topics(), Details: a.store.TopicStats()}
 }
 
 func (a *API) listTopics(c *gin.Context) {
-	c.JSON(http.StatusOK, TopicsResponse{Topics: a.store.Topics()})
+	c.JSON(http.StatusOK, a.topicsResponse())
 }
 
 type addTopicRequest struct {
@@ -202,5 +212,57 @@ func (a *API) addTopic(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, TopicsResponse{Topics: a.store.Topics()})
+	c.JSON(http.StatusCreated, a.topicsResponse())
+}
+
+// Exactly one of the two is set: Name renames (an existing name merges),
+// MergeInto merges into a topic that must exist.
+type updateTopicRequest struct {
+	Name      *string `json:"name"`
+	MergeInto *string `json:"merge_into"`
+}
+
+// topicName reads the *name wildcard, which carries a leading "/".
+func topicName(c *gin.Context) (string, bool) {
+	name := strings.TrimPrefix(c.Param("name"), "/")
+	if name == "" {
+		badRequest(c, "話題の名前をパスに入れてください（例: /api/topics/青分離）")
+		return "", false
+	}
+	return name, true
+}
+
+func (a *API) updateTopic(c *gin.Context) {
+	name, ok := topicName(c)
+	if !ok {
+		return
+	}
+	var req updateTopicRequest
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Name == nil) == (req.MergeInto == nil) {
+		badRequest(c, "リクエストの JSON を読めません。名前を変えるなら {\"name\": \"...\"}、統合するなら {\"merge_into\": \"...\"} のどちらか 1 つだけを送ってください")
+		return
+	}
+	var err error
+	if req.Name != nil {
+		err = a.store.RenameTopic(name, *req.Name)
+	} else {
+		err = a.store.MergeTopic(name, *req.MergeInto)
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, a.topicsResponse())
+}
+
+func (a *API) deleteTopic(c *gin.Context) {
+	name, ok := topicName(c)
+	if !ok {
+		return
+	}
+	if err := a.store.DeleteTopic(name); err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, a.topicsResponse())
 }

@@ -5,12 +5,16 @@
   <div class="frame">
   <header class="hd">
     <h1 class="page-title">タイムライン</h1>
-    <a href="/notes" id="to-add">＋ メモを追加 <kbd>N</kbd></a>
+    <span class="hd-acts">
+      <button type="button" class="organize" id="organize"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h12M2 8h8M2 12h5"/></svg>話題を整理</button>
+      <a href="/notes" id="to-add">＋ メモを追加 <kbd>N</kbd></a>
+    </span>
   </header>
 
-  <nav class="filters" aria-label="話題で絞り込む">
+  <nav class="filters one" id="filters" aria-label="話題で絞り込む" data-others="{{.OtherJSON}}">
     <span>話題:</span>
-    {{range .Chips}}<a class="chip{{if .On}} on{{end}}" href="{{.Href}}"{{if .On}} aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+    {{range .Chips}}<a class="chip{{if .On}} on{{end}}" href="{{.Href}}"{{if .Topic}} data-topic="{{.Topic}}"{{end}}{{if .On}} aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+    <button type="button" class="chip more" id="chip-more"{{if not .Others}} hidden{{end}}>他 {{.Others}} ▾</button>
     <span class="push">補足待ち {{.Pending}}</span>
   </nav>
 
@@ -43,4 +47,12 @@
   {{end}}
   </div>
 </div>
+
+<dialog class="organize-dialog" id="organize-dialog" aria-labelledby="organize-title">
+  <div class="dlg-hd"><h2 id="organize-title">話題を整理</h2><button type="button" class="x" id="organize-close" aria-label="閉じる">×</button></div>
+  <p class="sub">件数はその話題が付いているメモの数。変更はすべて履歴に残る</p>
+  <div class="status is-error" id="organize-error" role="alert" hidden></div>
+  <ul class="rows" id="organize-rows"></ul>
+  <p class="foot">メモが付いている話題を削除すると、そのメモは「話題なし」になる。Esc で閉じる</p>
+</dialog>
 {{end}}

@@ -10,10 +10,12 @@
     memo: document.getElementById('memo'),
     topics: document.getElementById('topics'),
     addTopic: document.getElementById('topic-add'),
+    more: document.getElementById('topic-more'),
     links: document.getElementById('links'),
     addLink: document.getElementById('link-add'),
     status: document.getElementById('status'),
     recent: document.getElementById('recent'),
+    pendingTitle: document.getElementById('pending-title'),
   };
   var selected = '';
   var busy = false;
@@ -29,6 +31,7 @@
     selectionVersion++;
     selected = name;
     chips().forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.topic === name)); });
+    refit();
   }
 
   function wireChip(b) {
@@ -49,65 +52,78 @@
     b.setAttribute('aria-pressed', 'false');
     b.textContent = name;
     wireChip(b);
-    el.topics.insertBefore(b, el.addTopic);
+    el.topics.insertBefore(b, el.more);
     return b;
   }
 
-  // ---- "＋ 話題を追加": type the name in place ----
+  // ---- "他 N" and "＋ 話題を追加": a suggesting input in place of the button ----
 
-  el.addTopic.addEventListener('click', function () {
-    var input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'topic-input';
-    input.setAttribute('aria-label', '新しい話題の名前');
-    input.placeholder = '話題の名前';
-    el.addTopic.hidden = true;
-    el.topics.insertBefore(input, el.addTopic);
-    input.focus();
+  // Every topic, so the input can suggest the ones folded into "他 N" too.
+  var allTopics = JSON.parse(el.topics.dataset.all || '[]');
 
-    // done: the input is gone (saved or cancelled). sending: a POST is in
-    // flight, so another Enter must not send it again. A reply that arrives
-    // after done is stale: the person has moved on, so it must not touch the
-    // current selection.
+  // refit hides the chips that do not fit on the line and counts them, with
+  // the topics that have no chip, on "他 N". It returns all of those names.
+  function refit() {
+    var extra = allTopics.filter(function (t) {
+      return !chips().some(function (b) { return b.dataset.topic === t; });
+    });
+    return extra.concat(shared.fitChips(el.topics, el.more, extra));
+  }
+  shared.watchChips(el.topics, refit);
+
+  // openPicker shows the input where the button was. A pick of an existing
+  // topic selects it; a new name is created on the server first.
+  function openPicker(button, suggest, initial) {
+    var picker = window.noteShared.createPicker({
+      topics: suggest,
+      allowCreate: true,
+      initial: initial,
+      label: '話題を探す・新しい話題の名前',
+      onPick: onPick,
+      onClose: close,
+    });
+    button.hidden = true;
+    el.topics.insertBefore(picker.el, el.addTopic);
+    picker.input.focus();
+
+    // done: the input is gone. A reply that arrives after that is stale: the
+    // person has moved on, so it must not touch the current selection.
     var done = false;
-    var sending = false;
     function close() {
       if (done) return;
       done = true;
-      input.remove();
-      el.addTopic.hidden = false;
+      picker.el.remove();
+      button.hidden = false;
+      refit();
       el.memo.focus();
     }
-    input.addEventListener('keydown', function (e) {
-      if (shared.composing(e)) return;
-      if (e.key === 'Escape') { e.stopPropagation(); close(); return; }
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      if (sending) return;
-      var name = input.value.trim();
-      if (!name) { close(); return; }
-      sending = true;
+    function onPick(name, isNew) {
+      if (!isNew) { select(addChip(name).dataset.topic); close(); return; }
       var sentVersion = selectionVersion;
       shared.request('POST', '/api/topics', { name: name })
         .then(function () {
-          sending = false;
           // The topic exists on the server either way; show its chip, but only
           // select it when the input is still open and nothing else was picked.
+          if (allTopics.indexOf(name) === -1) allTopics.push(name);
           var chip = addChip(name);
           if (done) return;
           if (selectionVersion === sentVersion) select(chip.dataset.topic);
           close();
         })
         .catch(function (err) {
-          sending = false;
           if (done) return;
           // A name that already exists is not a failure for the person: pick it.
-          if (chips().some(function (b) { return b.dataset.topic === name; })) { select(name); close(); return; }
-          show(failure('話題を追加できませんでした', err, 'もう一度 Enter を押してください'), true);
+          if (allTopics.indexOf(name) !== -1) { select(addChip(name).dataset.topic); close(); return; }
+          // Reopen with the typed name so it is not lost.
+          close();
+          show(failure('話題を追加できませんでした', err, 'もう一度名前を入れて Enter を押してください'));
+          openPicker(button, suggest, name);
         });
-    });
-    input.addEventListener('blur', function () { if (!input.value.trim()) close(); });
-  });
+    }
+  }
+
+  el.addTopic.addEventListener('click', function () { openPicker(el.addTopic, allTopics, ''); });
+  el.more.addEventListener('click', function () { openPicker(el.more, refit(), ''); });
 
   // ---- related URLs: one row each, numbered by position ----
 
@@ -149,7 +165,7 @@
       var k = linkRows().indexOf(row) + 1;
       var from = referencedFrom(el.memo.value, k);
       if (from) {
-        show('本文が ' + from + ' を指しているので [' + k + '] は外せません。本文の番号を直してから外してください。', true);
+        show('本文が ' + from + ' を指しているので [' + k + '] は外せません。本文の番号を直してから外してください。');
         return;
       }
       row.remove();
@@ -197,7 +213,7 @@
     for (var i = 0; i < rows.length; i++) {
       var v = rows[i].querySelector('input').value.trim();
       if (v === '') {
-        show('関連 URL [' + (i + 1) + '] が空です。URL を入れるか「外す」を押してください。', true);
+        show('関連 URL [' + (i + 1) + '] が空です。URL を入れるか「外す」を押してください。');
         rows[i].querySelector('input').focus();
         return null;
       }
@@ -211,9 +227,9 @@
 
   // ---- status line ----
 
-  function show(parts, isError) {
+  // The band appears for failures only and stays until the next success.
+  function show(parts) {
     el.status.textContent = '';
-    el.status.classList.toggle('is-error', !!isError);
     [].concat(parts).forEach(function (p) {
       el.status.appendChild(typeof p === 'string' ? document.createTextNode(p) : p);
     });
@@ -228,35 +244,79 @@
     return what + '。' + err.message + '。' + next + '。';
   }
 
-  // ---- save / undo ----
+  // ---- the waiting list: memos the AI has not picked up yet ----
 
-  function remember(n) {
+  function two(n) { return (n < 10 ? '0' : '') + n; }
+  function stamp(iso) {
+    var d = new Date(iso);
+    return two(d.getMonth() + 1) + '/' + two(d.getDate()) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes());
+  }
+
+  // The title counts the rows still waiting; a deleted row stays, struck
+  // through, but no longer counts.
+  function updateTitle() {
+    var n = el.recent.querySelectorAll('li:not(.is-undone)').length;
+    el.pendingTitle.textContent = '補足待ち ' + n + ' 件';
+  }
+
+  function row(n, isNew) {
     var li = document.createElement('li');
+    li.dataset.id = String(n.id);
+    if (isNew) li.className = 'new';
     var t = document.createElement('span');
     t.className = 'rtext';
+    var when = document.createElement('span');
+    when.className = 'when';
+    when.textContent = stamp(n.created_at);
     var links = (n.links || []).length;
-    t.textContent = '#' + n.id + '  ' + n.text + (n.topic ? '  [' + n.topic + ']' : '') + (links ? '  ＋関連 ' + links : '');
-    var undo = document.createElement('button');
-    undo.type = 'button';
-    undo.className = 'linklike';
-    undo.textContent = '元に戻す';
-    undo.addEventListener('click', function () {
+    t.appendChild(when);
+    t.appendChild(document.createTextNode('#' + n.id + '  ' + n.text + (n.topic ? '  [' + n.topic + ']' : '') + (links ? '  ＋関連 ' + links : '')));
+    var del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'linklike danger';
+    del.textContent = '削除';
+    del.setAttribute('aria-label', 'メモ #' + n.id + ' を削除');
+    del.addEventListener('click', function () {
       window.workbench.tell('busy');
       shared.request('DELETE', '/api/notes/' + n.id)
         .then(function () {
           li.classList.add('is-undone');
+          li.classList.remove('new');
           window.workbench.tell('changed');
-          undo.remove();
-          show('取り消しました: ' + n.text, false);
+          el.status.hidden = true;
+          var gone = document.createElement('span');
+          gone.className = 'gone';
+          gone.textContent = '削除しました';
+          del.replaceWith(gone);
+          updateTitle();
           el.memo.focus();
         })
-        .catch(function (err) { show(failure('取り消せませんでした', err, 'もう一度「元に戻す」を押してください'), true); })
+        .catch(function (err) { show(failure('削除できませんでした', err, 'もう一度「削除」を押してください')); })
         .then(function () { window.workbench.tell('idle'); });
     });
     li.appendChild(t);
-    li.appendChild(undo);
-    el.recent.prepend(li);
+    li.appendChild(del);
+    return li;
   }
+
+  function remember(n) {
+    el.recent.prepend(row(n, true));
+    updateTitle();
+  }
+
+  function loadPending() {
+    shared.request('GET', '/api/notes?pending=1')
+      .then(function (res) {
+        // A memo saved while this was in flight is already on the list.
+        (res.notes || []).forEach(function (n) {
+          if (!el.recent.querySelector('li[data-id="' + n.id + '"]')) el.recent.appendChild(row(n, false));
+        });
+        updateTitle();
+      })
+      .catch(function (err) { show(failure('補足待ちのメモを読み込めませんでした', err, 'ページを再読み込みしてください')); });
+  }
+
+  // ---- save ----
 
   function save() {
     var text = el.memo.value.trim();
@@ -275,13 +335,13 @@
       .then(function (n) {
         remember(n);
         window.workbench.tell('changed');
-        show('✓ 保存しました（補足待ち）', false);
+        el.status.hidden = true; // the band is for failures; a success clears an old one
         el.memo.value = '';
         clearLinks();
       })
       .catch(function (err) {
         // Keep what was typed so nothing is lost.
-        show(failure('保存できませんでした', err, 'もう一度 Enter を押してください'), true);
+        show(failure('保存できませんでした', err, 'もう一度 Enter を押してください'));
       })
       .then(function () {
         busy = false;
@@ -302,5 +362,6 @@
     if (e.key === 'Escape') { window.workbench.leave('/notes/timeline'); }
   });
 
+  loadPending();
   el.memo.focus();
 })();
