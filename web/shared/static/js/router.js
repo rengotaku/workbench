@@ -30,6 +30,7 @@
 
   var views = {}; // name -> { view, mounted, scrollY }
   var current = null; // name of the screen on show
+  var shownPath = ''; // its path and query, to tell a hash-only move apart
   var started = false;
 
   function viewFor(pathname) {
@@ -84,6 +85,7 @@
       if (entry.view.mount) entry.view.mount(root);
     }
     current = name;
+    shownPath = url.pathname + url.search;
     if (entry.view.title) document.title = entry.view.title;
     markNav(name);
     if (entry.view.show) entry.view.show(url);
@@ -126,14 +128,21 @@
   });
 
   window.addEventListener('popstate', function () {
+    // A screen that still runs on its own handles its history (a hash change)
+    // itself; the router has nothing to switch.
+    if (!switchable(current)) return;
     var target = viewFor(location.pathname);
-    if (!switchable(current) || !switchable(target)) {
+    if (!switchable(target)) {
       // The entry belongs to a screen this page cannot show in place.
       location.reload();
       return;
     }
+    var url = new URL(location.href);
+    // Same screen, same path and query: only the hash moved, which is the
+    // screen's own business (e.g. /#T007).
+    if (target === current && url.pathname + url.search === shownPath) return;
     if (target !== current) hideCurrent();
-    showView(target, new URL(location.href), true);
+    showView(target, url, true);
   });
 
   // start shows the screen the page was loaded for, once every script has had

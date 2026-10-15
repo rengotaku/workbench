@@ -44,6 +44,10 @@ kbd {
   top: 0;
   z-index: 30;
 }
+/* A link to #note-… scrolls the memo to just below the header, not under
+   it. Kept to the targets: scroll-padding on html would also shift the
+   scroll the router restores, when the clicked tab takes focus. */
+[id^="note-"] { scroll-margin-top: calc(var(--head-h) + 8px); }
 .site-brand {
   font-family: var(--mono); font-size: var(--fs-md); letter-spacing: .06em;
   color: var(--muted);
