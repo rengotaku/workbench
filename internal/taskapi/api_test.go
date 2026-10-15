@@ -79,8 +79,8 @@ func TestList_SplitsSectionsAndCountsTheScope(t *testing.T) {
 
 	counts := countsOf(t, body)
 	assert.EqualValues(t, 1, counts["over"])
-	assert.EqualValues(t, 1, counts["near"])
-	assert.EqualValues(t, 1, counts["rest"], "the far due date sits outside the week")
+	assert.EqualValues(t, 0, counts["near"], "amber counts only today, the same as the row stripe")
+	assert.EqualValues(t, 2, counts["rest"], "a date still ahead is uncoloured, in the week or not")
 
 	first, ok := queue[0].(map[string]any)
 	require.True(t, ok)
@@ -129,19 +129,27 @@ func TestList_WideningTheScopePullsTheFarDueDateIn(t *testing.T) {
 	_, err := store.Add("10日後", "", dateIn(10), task.ActorHuman)
 	require.NoError(t, err)
 
+	inScope := func(body map[string]any) any {
+		rows := rowsOf(t, body, "queue")
+		require.Len(t, rows, 1)
+		row, ok := rows[0].(map[string]any)
+		require.True(t, ok)
+		return row["in_scope"]
+	}
+
 	_, week := call(t, h, http.MethodGet, "/api/tasks?scope=7", nil)
-	assert.EqualValues(t, 1, countsOf(t, week)["rest"])
+	assert.Equal(t, false, inScope(week))
 
 	_, fortnight := call(t, h, http.MethodGet, "/api/tasks?scope=14", nil)
-	assert.EqualValues(t, 1, countsOf(t, fortnight)["near"])
+	assert.Equal(t, true, inScope(fortnight))
 
 	_, all := call(t, h, http.MethodGet, "/api/tasks?scope=all", nil)
-	assert.EqualValues(t, 1, countsOf(t, all)["near"])
+	assert.Equal(t, true, inScope(all))
 }
 
 // The due date is when to start, so "today" and "past it" are told apart: the
-// page shows today in amber and past in red. Both still count as overdue for
-// the header numbers.
+// page shows today in amber and past in red, and the header counts it the same
+// way. overdue stays true for both.
 func TestList_DueTodayIsItsOwnClass(t *testing.T) {
 	store, h := setup(t)
 	_, err := store.Add("今日着手", "", dateIn(0), task.ActorHuman)
@@ -155,7 +163,8 @@ func TestList_DueTodayIsItsOwnClass(t *testing.T) {
 	assert.Equal(t, "today", row["due_class"])
 	assert.Equal(t, "今日", row["due_label"])
 	assert.Equal(t, true, row["overdue"])
-	assert.EqualValues(t, 1, countsOf(t, body)["over"])
+	assert.EqualValues(t, 0, countsOf(t, body)["over"])
+	assert.EqualValues(t, 1, countsOf(t, body)["near"])
 }
 
 // A task with no due date is the top of the queue often enough that hiding it

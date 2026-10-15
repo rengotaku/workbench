@@ -77,7 +77,10 @@ type listResponse struct {
 	Someday []View      `json:"someday"`
 	Done    []View      `json:"done"`
 	Dropped []task.Drop `json:"dropped"`
-	Counts  struct {
+	// Counts splits the queue the same way as the row stripe (ADR todo-0011):
+	// over = start date passed, near = start date is today, rest = everything
+	// else. The keys keep their names because the page and the CLI read them.
+	Counts struct {
 		Over int `json:"over"`
 		Near int `json:"near"`
 		Rest int `json:"rest"`
@@ -136,10 +139,10 @@ func (a *API) build(scope int) listResponse {
 			if t.Focused {
 				res.Focus = append(res.Focus, v)
 			}
-			switch {
-			case v.Overdue:
+			switch v.DueClass {
+			case "over":
 				res.Counts.Over++
-			case t.Due != "" && v.InScope:
+			case "today":
 				res.Counts.Near++
 			default:
 				res.Counts.Rest++
