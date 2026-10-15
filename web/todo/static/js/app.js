@@ -23,6 +23,7 @@
     somedayOpen: false, // and so is the shelf: closed by default, like done
     busy: false, // a drag or a date field is in progress; do not redraw under it
     shownId: null, // the task the detail box is showing; the pointer moves it
+    revealId: null, // the task a link named; its section is unfolded on first load
   };
 
   // The detail box keeps the last task it was given. Letting it empty when the
@@ -89,10 +90,27 @@
     });
   }
 
+  // reveal unfolds whatever hides the task a link named, once, on the first
+  // load: a URL that opens a row is useless if the row sits in a closed
+  // section or outside the scope. It does not save the unfolding — that is
+  // the link's doing, not a choice the viewer made.
+  function reveal(board) {
+    var id = state.revealId;
+    if (!id) return;
+    state.revealId = null;
+    function has(list, extra) {
+      return (list || []).some(function (t) { return t.id === id && (!extra || extra(t)); });
+    }
+    if (has(board.someday)) state.somedayOpen = true;
+    if (has(board.done)) state.doneOpen = true;
+    if (has(board.queue, function (t) { return !t.in_scope; })) state.showOut = true;
+  }
+
   function load() {
     return request('GET', '/api/tasks?scope=' + encodeURIComponent(state.scope))
       .then(function (board) {
         state.board = board;
+        reveal(board);
         render();
         showError(null);
       })
@@ -741,6 +759,8 @@
       actions.appendChild(focusBtn);
     }
 
+    actions.appendChild(copyUrlButton(t));
+
     var saved = document.createElement('span');
     saved.className = 'save-state';
     saved.dataset.save = '1';
@@ -942,6 +962,40 @@
     wrap.appendChild(lab);
     wrap.appendChild(input);
     return { wrap: wrap, input: input };
+  }
+
+  // taskUrl is the address that opens this row: the page reads #Txxx on load.
+  // It is what gets pasted to an AI to say which task is meant.
+  function taskUrl(t) {
+    return location.origin + location.pathname + '#' + t.id;
+  }
+
+  // copyUrlButton puts taskUrl on the clipboard. Success is said on the button
+  // itself, not in the shared notice: a copy often follows a blur that saves,
+  // and the notice is where a failed save is reported. The clipboard API needs
+  // a secure context; 127.0.0.1 counts as one, but if it is refused anyway the
+  // URL is shown so it can still be copied by hand.
+  function copyUrlButton(t) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'URLをコピー';
+    btn.title = taskUrl(t) + '\nAI にこのタスクを伝えるときに貼る';
+    btn.addEventListener('click', function () {
+      var url = taskUrl(t);
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        showError(new Error('クリップボードに書けない: ' + url));
+        return;
+      }
+      navigator.clipboard.writeText(url)
+        .then(function () {
+          btn.textContent = 'コピーした';
+          window.setTimeout(function () { btn.textContent = 'URLをコピー'; }, 1500);
+        })
+        .catch(function (err) {
+          showError(new Error('クリップボードに書けない（' + err.message + '）: ' + url));
+        });
+    });
+    return btn;
   }
 
   // somedayButton shelves a task with one click: unlike waitControl, nobody
@@ -1514,7 +1568,10 @@
 
   // A link can name the task to open: http://127.0.0.1:8085/#T007
   var fromHash = (location.hash || '').replace('#', '');
-  if (/^T\d+$/.test(fromHash)) state.openId = fromHash;
+  if (/^T\d+$/.test(fromHash)) {
+    state.openId = fromHash;
+    state.revealId = fromHash;
+  }
 
   try {
     state.doneOpen = localStorage.getItem(DONE_KEY) === '1';
