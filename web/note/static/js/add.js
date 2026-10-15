@@ -16,7 +16,7 @@
     '  </header>',
     '',
     '  <label class="sr-only" for="memo">メモ</label>',
-    '  <input class="big" id="memo" type="text" autocomplete="off" placeholder="リンクと一言を貼って Enter">',
+    '  <input class="big" id="memo" type="text" autofocus autocomplete="off" placeholder="リンクと一言を貼って Enter">',
     '',
     '  <div class="link-rows" id="links" role="group" aria-label="関連 URL（任意）"></div>',
     '  <button type="button" class="chip dashed link-add" id="link-add">＋ 関連 URL</button>',
@@ -134,12 +134,19 @@
     // The chips come from the server: the most recently used VISIBLE_TOPICS,
     // the rest folded into "他 N" (the same split the timeline uses,
     // splitTopics in internal/notepages).
+    // It runs on every show: a topic renamed, merged or deleted elsewhere must
+    // not keep its chip, or saving with it would bring the topic back. The
+    // picked topic stays picked while it still exists.
+    var watching = false;
     function loadTopics() {
       return shared.request('GET', '/api/topics')
         .then(function (res) {
           allTopics = (res.topics || []).slice();
+          chips().forEach(function (b) { b.remove(); });
           byRecent(res.details || []).slice(0, VISIBLE_TOPICS).forEach(function (t) { addChip(t.name); });
-          shared.watchChips(el.topics, refit);
+          if (selected && allTopics.indexOf(selected) !== -1) addChip(selected);
+          select(allTopics.indexOf(selected) !== -1 ? selected : '');
+          if (!watching) { watching = true; shared.watchChips(el.topics, refit); }
         })
         .catch(function (err) { show(failure('話題を読み込めませんでした', err, 'ページを再読み込みしてください')); });
     }
@@ -377,11 +384,22 @@
       updateTitle();
     }
 
-    function loadPending() {
+    // On a later show (fresh) the list is made to match the server: a memo the
+    // AI picked up meanwhile leaves it, so its 削除 cannot remove a handled
+    // memo. Rows for memos still waiting stay as they are.
+    function loadPending(fresh) {
       shared.request('GET', '/api/notes?pending=1')
         .then(function (res) {
+          var notes = res.notes || [];
+          if (fresh) {
+            var waiting = {};
+            notes.forEach(function (n) { waiting[String(n.id)] = true; });
+            Array.prototype.slice.call(el.recent.querySelectorAll('li')).forEach(function (li) {
+              if (!waiting[li.dataset.id]) li.remove();
+            });
+          }
           // A memo saved while this was in flight is already on the list.
-          (res.notes || []).forEach(function (n) {
+          notes.forEach(function (n) {
             if (!el.recent.querySelector('li[data-id="' + n.id + '"]')) el.recent.appendChild(row(n, false));
           });
           updateTitle();
@@ -440,9 +458,11 @@
     loadPending();
 
     hooks.show = function (again) {
-      // Memos saved elsewhere while another screen was on show join the list.
-      if (again) loadPending();
+      // While another screen was on show, memos may have been saved or picked
+      // up and topics renamed or removed: read both again.
+      if (again) { loadPending(true); loadTopics(); }
       // autofocus only works once per page; the screen is shown many times.
+      // (The attribute stays: the add dialog (modal.js) looks for it.)
       el.memo.focus();
     };
   }
