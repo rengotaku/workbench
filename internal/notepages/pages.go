@@ -47,6 +47,10 @@ const (
 	AddPath      = "/notes"
 	TimelinePath = "/notes/timeline"
 	StaticPath   = "/notes/static"
+
+	// TimelineAPIPath returns the timeline as JSON. It sits beside
+	// /api/notes/:id; gin prefers the static segment.
+	TimelineAPIPath = "/api/notes/timeline"
 )
 
 // New wires the screens and the API together.
@@ -60,6 +64,7 @@ func (p *Pages) Mount(r gin.IRouter) {
 	r.StaticFS(StaticPath, http.FS(p.staticFS))
 	r.GET(AddPath, p.handleAdd)
 	r.GET(TimelinePath, p.handleTimeline)
+	r.GET(TimelineAPIPath, p.handleTimelineJSON)
 	p.api.Mount(r)
 }
 
@@ -127,57 +132,57 @@ func (p *Pages) handleAdd(c *gin.Context) {
 // ---- timeline ----
 
 type chipView struct {
-	Label string
-	Href  string
-	Topic string // the topic a chip filters by; empty for すべて / 話題なし
-	On    bool
+	Label string `json:"label"`
+	Href  string `json:"href"`
+	Topic string `json:"topic,omitempty"` // the topic a chip filters by; empty for すべて / 話題なし
+	On    bool   `json:"on"`
 }
 
 // segmentView is a run of memo text. A reference ([N]) to a related link
 // is shown as a link to that URL; one with no such link stays plain text.
 type segmentView struct {
-	Text string
-	URL  string
-	Ref  int
+	Text string `json:"text"`
+	URL  string `json:"url,omitempty"`
+	Ref  int    `json:"ref,omitempty"`
 }
 
 type linkView struct {
-	URL    string
-	Label  string
-	Source string
-	N      int
+	URL    string `json:"url"`
+	Label  string `json:"label"`
+	Source string `json:"source"`
+	N      int    `json:"n"`
 }
 
 type annotationView struct {
-	Kind   string // quote | analysis | memo
-	Label  string // 引用 | 考察 | メモ
-	Author string
-	When   string
-	Source string
-	Body   string
+	Kind   string `json:"kind"`   // quote | analysis | memo
+	Label  string `json:"label"`  // 引用 | 考察 | メモ
+	Author string `json:"author"` // AI | 人
+	When   string `json:"when"`
+	Source string `json:"source,omitempty"`
+	Body   string `json:"body"`
 }
 
 // routeView says where the AI sent a memo once it picked it up.
 type routeView struct {
-	Label string // → todo | 記録
-	Href  string // the todo list for a task, empty for a record
+	Label string `json:"label"`          // → todo | 記録
+	Href  string `json:"href,omitempty"` // the todo list for a task, empty for a record
 }
 
 type noteView struct {
-	Route       *routeView
-	Time        string
-	Source      string
-	Topic       string
-	Segments    []segmentView
-	Links       []linkView
-	Annotations []annotationView
-	ID          int
-	Pending     bool // the AI has not picked it up yet
+	Route       *routeView       `json:"route,omitempty"`
+	Time        string           `json:"time"`
+	Source      string           `json:"source"`
+	Topic       string           `json:"topic,omitempty"`
+	Segments    []segmentView    `json:"segments"`
+	Links       []linkView       `json:"links"`
+	Annotations []annotationView `json:"annotations"`
+	ID          int              `json:"id"`
+	Pending     bool             `json:"pending"` // the AI has not picked it up yet
 }
 
 type dayView struct {
-	Heading string
-	Notes   []noteView
+	Heading string     `json:"heading"`
+	Notes   []noteView `json:"notes"`
 }
 
 type timelineView struct {
@@ -187,8 +192,30 @@ type timelineView struct {
 	Chips     []chipView // すべて, the shown topics, 話題なし
 	OtherJSON string     // the topics behind "他 N", as a JSON array
 	Days      []dayView
+	other     []string // the topics behind "他 N", for the JSON response
 	Others    int
 	Pending   int
+}
+
+// timelineJSON is the timeline screen's content for a script to draw: the
+// same grouping, chips and counts the page renders, built by buildTimeline so
+// the two cannot disagree.
+type timelineJSON struct {
+	Empty   string     `json:"empty"`
+	Chips   []chipView `json:"chips"`
+	Other   []string   `json:"other"` // the topics folded into "他 N"
+	Days    []dayView  `json:"days"`
+	Pending int        `json:"pending"`
+}
+
+func (v timelineView) toJSON() timelineJSON {
+	return timelineJSON{
+		Empty:   v.Empty,
+		Chips:   v.Chips,
+		Other:   append([]string{}, v.other...),
+		Days:    append([]dayView{}, v.Days...),
+		Pending: v.Pending,
+	}
 }
 
 var kindLabels = map[string]string{
@@ -206,6 +233,14 @@ func (p *Pages) handleTimeline(c *gin.Context) {
 	p.render(c, "timeline.html", buildTimeline(notes, p.store.TopicStats(), topic, noTopic))
 }
 
+// handleTimelineJSON takes the same ?topic= / ?no_topic=1 as the page.
+func (p *Pages) handleTimelineJSON(c *gin.Context) {
+	topic := c.Query("topic")
+	noTopic := c.Query("no_topic") == "1"
+	notes := p.store.List(note.Filter{Topic: topic, NoTopic: noTopic})
+	c.JSON(http.StatusOK, buildTimeline(notes, p.store.TopicStats(), topic, noTopic).toJSON())
+}
+
 func buildTimeline(notes []note.Note, stats []note.TopicStat, topic string, noTopic bool) timelineView {
 	shown, rest := splitTopics(stats, topic)
 	chips := []chipView{{Label: "すべて", Href: TimelinePath, On: topic == "" && !noTopic}}
@@ -214,7 +249,7 @@ func buildTimeline(notes []note.Note, stats []note.TopicStat, topic string, noTo
 	}
 	chips = append(chips, chipView{Label: "話題なし", Href: TimelinePath + "?no_topic=1", On: noTopic})
 
-	v := timelineView{Title: "note タイムライン", Current: "timeline", Chips: chips, Others: len(rest), OtherJSON: namesJSON(rest), Empty: "まだメモがありません。note と打って 1 行入れてください"}
+	v := timelineView{Title: "note タイムライン", Current: "timeline", Chips: chips, Others: len(rest), OtherJSON: namesJSON(rest), other: rest, Empty: "まだメモがありません。note と打って 1 行入れてください"}
 	if topic != "" || noTopic {
 		v.Empty = "この絞り込みに合うメモはありません。「すべて」に戻してください"
 	}
@@ -239,6 +274,10 @@ func toNoteView(n note.Note, at time.Time) noteView {
 		Time:   at.Format("15:04"),
 		Source: note.SourceLabel(n.URL),
 		Topic:  n.Topic,
+		// Empty, not nil, so the JSON response has [] instead of null.
+		Segments:    []segmentView{},
+		Links:       []linkView{},
+		Annotations: []annotationView{},
 		// Pending is the memo's own state, not the absence of annotations.
 		Pending: n.Pending(),
 	}

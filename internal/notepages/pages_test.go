@@ -1,11 +1,15 @@
 package notepages
 
 import (
+	"encoding/json"
 	"html/template"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -423,4 +427,65 @@ func TestAddPageHidesOtherChipWhenNothingFolded(t *testing.T) {
 	seedTopics(t, store, "a")
 	_, body := get(t, h, "/notes")
 	mustContain(t, body, `id="topic-more" hidden`)
+}
+
+// TestTimelineJSONMatchesPage checks that the JSON a script draws from lists
+// the same memos, in the same order, as the page for every filter.
+func TestTimelineJSONMatchesPage(t *testing.T) {
+	h, store := newPages(t)
+	n, _ := store.Add("青のメモ https://example.com/a [1]", "青分離")
+	_, _ = store.Annotate(n.ID, note.AnnotationInput{Kind: note.KindQuote, Body: "引用の本文", Source: "slack"})
+	_, _ = store.Add("CCのメモ", "C&C")
+	_, _ = store.Add("無印のメモ", "")
+
+	idRe := regexp.MustCompile(`id="note-(\d+)"`)
+	for _, q := range []string{"", "?topic=" + url.QueryEscape("青分離"), "?no_topic=1", "?topic=nope"} {
+		_, page := get(t, h, "/notes/timeline"+q)
+		var want []int
+		for _, m := range idRe.FindAllStringSubmatch(page, -1) {
+			id, _ := strconv.Atoi(m[1])
+			want = append(want, id)
+		}
+
+		code, body := get(t, h, "/api/notes/timeline"+q)
+		if code != http.StatusOK {
+			t.Fatalf("%q: status = %d", q, code)
+		}
+		var got timelineJSON
+		if err := json.Unmarshal([]byte(body), &got); err != nil {
+			t.Fatalf("%q: %v", q, err)
+		}
+		var ids []int
+		for _, d := range got.Days {
+			for _, nv := range d.Notes {
+				ids = append(ids, nv.ID)
+			}
+		}
+		if !reflect.DeepEqual(ids, want) {
+			t.Errorf("%q: JSON ids = %v, page ids = %v", q, ids, want)
+		}
+		if !strings.Contains(page, got.Empty) && len(want) == 0 {
+			t.Errorf("%q: empty message %q not on the page", q, got.Empty)
+		}
+		if len(got.Chips) == 0 {
+			t.Errorf("%q: no chips", q)
+		}
+	}
+}
+
+func TestTimelineJSONShape(t *testing.T) {
+	h, store := newPages(t)
+	n, _ := store.Add("メモ https://example.com/a", "青分離")
+	_, _ = store.Annotate(n.ID, note.AnnotationInput{Kind: note.KindAnalysis, Body: "考察", Author: note.AuthorHuman})
+	_, _ = store.Add("補足なし", "")
+
+	_, body := get(t, h, "/api/notes/timeline")
+	mustContain(t, body, `"pending":2`, `"label":"考察"`, `"author":"人"`, `"other":[]`, `"links":[]`, `"annotations":[]`)
+	mustNotContain(t, body, "null")
+
+	// The static segment must not swallow /api/notes/:id.
+	code, one := get(t, h, "/api/notes/"+strconv.Itoa(n.ID))
+	if code != http.StatusOK || !strings.Contains(one, "メモ") {
+		t.Errorf("/api/notes/%d: %d %s", n.ID, code, one)
+	}
 }
