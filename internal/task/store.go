@@ -83,6 +83,9 @@ func Open(dir string, loc *time.Location) (*Store, error) {
 	if s.st.NextEvent < 1 {
 		s.st.NextEvent = 1
 	}
+	// Data written before ADR todo-0012 can have a focused task below an
+	// unfocused one. Normalising in memory is enough: the next write saves it.
+	s.renumber()
 	return s, nil
 }
 
@@ -446,12 +449,27 @@ func (s *Store) Reopen(id string, actor Actor) (Task, error) {
 	return s.mustGet(id), nil
 }
 
-// SetFocus lifts a task into the focus band, or takes it out. The task keeps
-// its place in the queue either way: focusing is about attention, not order.
+// SetFocus lifts a task into the focus band, or takes it out. Focused tasks
+// are the top of the queue (ADR todo-0012): focusing moves the task to the end
+// of the focused block, unfocusing puts it just below that block.
 func (s *Store) SetFocus(id string, on bool, actor Actor) (Task, error) {
+	return s.FocusAt(id, on, -1, 0, actor)
+}
+
+// FocusAt is SetFocus with a place: to is the queue position the task was
+// dropped at, clamped to the block it belongs to once focus has changed. A
+// negative to means the edge of the focused block, as SetFocus does. Tasks
+// outside the queue (waiting) only change their mark.
+//
+// expectRevision guards a drop the same way it guards Reorder: pass the
+// revision the positions were read at, or 0 to skip the check.
+func (s *Store) FocusAt(id string, on bool, to, expectRevision int, actor Actor) (Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if expectRevision != 0 && expectRevision != s.st.Revision {
+		return Task{}, fmt.Errorf("%w (read at %d, now %d)", ErrStale, expectRevision, s.st.Revision)
+	}
 	i, err := s.indexOf(id)
 	if err != nil {
 		return Task{}, err
@@ -463,14 +481,24 @@ func (s *Store) SetFocus(id string, on bool, actor Actor) (Task, error) {
 	if on && t.State == StateDone {
 		return Task{}, fmt.Errorf("%s is done", id)
 	}
+	from := t.Order
 	t.Focused = on
 	s.st.Tasks[i] = t
+	if t.State == StateOpen {
+		open := s.openIndexes()
+		s.move(open, i, s.clampToBlock(open, i, to))
+		s.renumber()
+	}
 
 	kind := KindUnfocused
 	if on {
 		kind = KindFocused
 	}
-	if err := s.record(Event{TaskID: id, Kind: kind, Actor: actor}); err != nil {
+	ev := Event{TaskID: id, Kind: kind, Actor: actor}
+	if t.State == StateOpen {
+		ev.FromOrder, ev.ToOrder = from, s.st.Tasks[i].Order
+	}
+	if err := s.record(ev); err != nil {
 		return Task{}, err
 	}
 	if err := s.persist(); err != nil {
@@ -680,6 +708,9 @@ func (s *Store) Reorder(id string, to, scopeDays, expectRevision int, actor Acto
 	if to < 0 || to >= len(open) {
 		return Task{}, fmt.Errorf("position out of range: %d (queue holds %d)", to, len(open))
 	}
+	// A reorder cannot carry a task across the edge of the focused block;
+	// crossing it is a change of focus, which FocusAt does.
+	to = s.clampToBlock(open, i, to)
 
 	from := s.st.Tasks[i].Order
 	if from == to {
@@ -967,14 +998,47 @@ func (s *Store) move(open []int, storeIdx, to int) {
 	}
 }
 
+// clampToBlock fits a queue position for the task at storeIdx into the block
+// it belongs to: focused tasks sit at the top of the queue, the rest below
+// them. A negative to means the edge of the focused block. open is the queue
+// in order, the task itself included.
+func (s *Store) clampToBlock(open []int, storeIdx, to int) int {
+	focused := 0
+	for _, idx := range open {
+		if idx != storeIdx && s.st.Tasks[idx].Focused {
+			focused++
+		}
+	}
+	lo, hi := focused, len(open)-1
+	if s.st.Tasks[storeIdx].Focused {
+		lo, hi = 0, focused
+	}
+	switch {
+	case to < 0:
+		return focused
+	case to < lo:
+		return lo
+	case to > hi:
+		return hi
+	}
+	return to
+}
+
 // renumber gives the queue positions 0..n-1 and pushes waiting, someday and
 // done tasks past it in that order, so Order alone sorts the whole list the
-// way the page shows it.
+// way the page shows it. Focused tasks come first in the queue, keeping their
+// order among themselves (ADR todo-0012), so a resume or an undo cannot leave
+// one below an unfocused task.
 func (s *Store) renumber() {
 	pos := 0
-	for _, i := range s.openIndexes() {
-		s.st.Tasks[i].Order = pos
-		pos++
+	open := s.openIndexes()
+	for _, focused := range []bool{true, false} {
+		for _, i := range open {
+			if s.st.Tasks[i].Focused == focused {
+				s.st.Tasks[i].Order = pos
+				pos++
+			}
+		}
 	}
 	for _, i := range s.waitingIndexes() {
 		s.st.Tasks[i].Order = pos

@@ -1,8 +1,8 @@
 ---
 adr: todo-0005
 title: フォーカスは状態ではなく印として持つ
-status: accepted
-superseded_by: null
+status: superseded
+superseded_by: todo-0012
 date: 2026-09-11
 issues: []
 tags: [focus, task-model, ui]

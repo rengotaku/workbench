@@ -540,3 +540,35 @@ func TestAPI_PatchWithNothingToChangeIsRejected(t *testing.T) {
 	code, _ = call(t, h, http.MethodPatch, "/api/tasks/T001", map[string]any{})
 	assert.Equal(t, http.StatusBadRequest, code)
 }
+
+// A drop into the band sends where it landed; the queue comes back with the
+// focused block on top and the task at that place in it.
+func TestFocus_TakesThePlaceItWasDroppedAt(t *testing.T) {
+	store, h := setup(t)
+	a, err := store.Add("A", "", "", task.ActorHuman)
+	require.NoError(t, err)
+	b, err := store.Add("B", "", "", task.ActorHuman)
+	require.NoError(t, err)
+	c, err := store.Add("C", "", "", task.ActorHuman)
+	require.NoError(t, err)
+	_, err = store.SetFocus(a.ID, true, task.ActorHuman)
+	require.NoError(t, err)
+
+	code, _ := call(t, h, http.MethodPost, "/api/tasks/"+c.ID+"/focus", map[string]any{"on": true, "to": 0})
+	require.Equal(t, http.StatusOK, code)
+
+	_, body := call(t, h, http.MethodGet, "/api/tasks?scope=7", nil)
+	var order []any
+	for _, r := range rowsOf(t, body, "queue") {
+		row, ok := r.(map[string]any)
+		require.True(t, ok)
+		order = append(order, row["id"])
+	}
+	assert.Equal(t, []any{c.ID, a.ID, b.ID}, order)
+
+	focus := rowsOf(t, body, "focus")
+	require.Len(t, focus, 2)
+	first, ok := focus[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, c.ID, first["id"])
+}

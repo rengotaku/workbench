@@ -236,13 +236,23 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 		if t.Focused == on {
 			return "", errSkipUndo
 		}
+		from := t.Order
 		t.Focused = on
 		s.st.Tasks[i] = t
 		back := KindUnfocused
 		if on {
 			back = KindFocused
 		}
-		if err := s.recordSpent(Event{TaskID: t.ID, Kind: back, Actor: actor}); err != nil {
+		ev := Event{TaskID: t.ID, Kind: back, Actor: actor}
+		if t.State == StateOpen {
+			// Focusing moved the task too (ADR todo-0012); put it back where
+			// it was, within the block it now belongs to.
+			open := s.openIndexes()
+			s.move(open, i, s.clampToBlock(open, i, e.FromOrder))
+			s.renumber()
+			ev.FromOrder, ev.ToOrder = from, s.st.Tasks[i].Order
+		}
+		if err := s.recordSpent(ev); err != nil {
 			return "", err
 		}
 		if on {

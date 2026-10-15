@@ -151,12 +151,23 @@
 .more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---- focus band: the working set, above the queue ---- */
-/* Focused tasks appear here and stay in the queue, marked with ◎ — the queue
-   position is the point of the app, so focusing must not hide it. */
+/* Focused tasks are the top of the queue and are shown here only, as the same
+   rows as the list below (ADR todo-0012). The band stays when empty: it is
+   where a row is dropped to focus it. */
 .focus-band {
   background: var(--accent-soft);
   border-bottom: 1px solid var(--line);
-  padding: 10px 22px 12px;
+  padding: 10px 22px 6px;
+  outline: 2px dashed transparent;
+  outline-offset: -5px;
+}
+.focus-band.drop-ready { outline-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.focus-band .task { border-bottom-color: color-mix(in srgb, var(--accent) 14%, transparent); }
+.focus-empty {
+  margin: 0;
+  padding: 6px 0 8px;
+  font-size: var(--fs-md);
+  color: var(--accent);
 }
 .focus-head {
   display: flex;
@@ -178,30 +189,6 @@
   padding: 1px 6px;
   border-radius: var(--radius-sm);
 }
-.focus-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.focus-item { display: grid; grid-template-columns: 18px 1fr auto auto; gap: 8px; align-items: center; }
-.focus-item .check { margin-top: 0; }
-.focus-item .fname {
-  font-size: var(--fs-xl);
-  color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.focus-item .drop {
-  appearance: none;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  font-family: var(--mono);
-  font-size: var(--fs-md);
-  color: var(--muted);
-  padding: 0 2px;
-}
-.focus-item .drop:hover { color: var(--over); }
-.focus-item .drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-.num.mark-focus { color: var(--accent); font-size: var(--fs-sm); text-align: center; }
 .panel-actions button.focus-on { color: var(--accent); border-color: var(--accent); }
 
 /* ---- sections: same left baseline in all three ---- */

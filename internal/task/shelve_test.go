@@ -126,7 +126,7 @@ func TestUndo_ReversesAShelve(t *testing.T) {
 	added, _ := s.Add("棚上げする", "", "", task.ActorHuman)
 	_, err := s.SetFocus(added.ID, true, task.ActorHuman)
 	require.NoError(t, err)
-	beforeOrder := 1 // added.Order before the shelve (0 = other, 1 = added)
+	beforeOrder := 0 // focusing moved it to the top (ADR todo-0012): 0 = added, 1 = other
 
 	_, err = s.Shelve(added.ID, dateIn(30), task.ActorHuman)
 	require.NoError(t, err)
@@ -143,7 +143,7 @@ func TestUndo_ReversesAShelve(t *testing.T) {
 
 	otherAfter, err := s.Get(other.ID)
 	require.NoError(t, err)
-	assert.Equal(t, 0, otherAfter.Order)
+	assert.Equal(t, 1, otherAfter.Order)
 }
 
 // 8. a shelve event is not asked about — someday is out of scope for reasons.
