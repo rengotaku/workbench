@@ -170,13 +170,11 @@
     el.near.textContent = b.counts.near;
     el.rest.textContent = b.counts.rest;
 
-    // The colour is the whole legend, so each swatch says what it means and
-    // what the current scope is — the meaning of amber moves with the scope.
-    var within = b.scope_days > 365 ? 'いつでも' : b.scope_days + '日以内';
-    setTitle('.count.over', '赤: 期限を過ぎている（今日を含む）— ' + b.counts.over + '件');
-    setTitle('.count.near', '黄: ' + within + 'に期限がある（いまのスコープ）— ' + b.counts.near + '件');
-    setTitle('.count.rest', '灰: 期限なし、または ' + within + 'より先 — ' + b.counts.rest + '件。'
-      + '期限が先のものは末尾に畳まれ、期限なしは常に出る');
+    // The colour is the whole legend, so each swatch says what it means. The
+    // counts split the queue the same way as the row stripes.
+    setTitle('.count.over', '赤: 期限を過ぎている — ' + b.counts.over + '件');
+    setTitle('.count.near', '黄: 期限が今日 — ' + b.counts.near + '件');
+    setTitle('.count.rest', '灰: 期限がまだ先、または期限なし — ' + b.counts.rest + '件');
 
     // The band is hidden when empty: an empty band would only take space.
     var focus = b.focus || [];

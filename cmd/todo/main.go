@@ -139,7 +139,7 @@ func listCmd() *cobra.Command {
 }
 
 func printBoard(b taskclient.Board) {
-	fmt.Printf("着手順  %s  スコープ %d日  超過 %d / 期限内 %d / 外 %d\n",
+	fmt.Printf("着手順  %s  スコープ %d日  超過 %d / 今日 %d / その他 %d\n",
 		b.Today, b.ScopeDays, b.Counts.Over, b.Counts.Near, b.Counts.Rest)
 
 	if len(b.Focus) > 0 {
