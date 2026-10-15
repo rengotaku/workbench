@@ -1475,12 +1475,14 @@
   // queue) and the list below it. Dropping across them changes focus; dropping
   // within one reorders (ADR todo-0012).
   var dragged = null;
+  var dropped = false; // a drag ended by Escape or outside both lists saves nothing
 
   function onDragStart(ev) {
     var li = ev.target.closest('.task');
     if (!li) return;
     state.busy = true;
     dragged = li;
+    dropped = false;
     li.classList.add('dragging');
     el.focusBand.classList.add('drop-ready');
     ev.dataTransfer.effectAllowed = 'move';
@@ -1498,20 +1500,29 @@
         list.insertBefore(dragged, after ? over.nextSibling : over);
         return;
       }
-      // Over the band but not over a row (its heading, the empty-band hint,
-      // or the space below the last row): the row goes to the end of the band.
-      if (!over && list === el.focusList && dragged.parentNode !== list) {
+      // Over the area but not over a row (the band's heading or empty-band
+      // hint, the space below the last row, the add button): the row goes to
+      // the end of that list. This is also how a row reaches an empty list.
+      if (!over && dragged.parentNode !== list) {
         list.appendChild(dragged);
       }
     };
   }
 
+  function onDrop(ev) {
+    ev.preventDefault();
+    dropped = true;
+  }
+
+  // The list's drop area is its whole section, so an empty list (every task
+  // focused, or every one folded under スコープ外) still takes a row.
+  var queueArea = el.queue.closest('.sec') || el.queue;
   el.focusBand.addEventListener('dragstart', onDragStart);
   el.queue.addEventListener('dragstart', onDragStart);
   el.focusBand.addEventListener('dragover', onDragOver(el.focusList));
-  el.queue.addEventListener('dragover', onDragOver(el.queue));
-  el.focusBand.addEventListener('drop', function (ev) { ev.preventDefault(); });
-  el.queue.addEventListener('drop', function (ev) { ev.preventDefault(); });
+  queueArea.addEventListener('dragover', onDragOver(el.queue));
+  el.focusBand.addEventListener('drop', onDrop);
+  queueArea.addEventListener('drop', onDrop);
   el.focusBand.addEventListener('dragend', onDragEnd);
   el.queue.addEventListener('dragend', onDragEnd);
 
@@ -1521,6 +1532,12 @@
     li.classList.remove('dragging');
     el.focusBand.classList.remove('drop-ready');
     dragged = null;
+    if (!dropped) {
+      // Cancelled: the rows were only moved for the preview. Put them back.
+      state.busy = false;
+      render();
+      return;
+    }
 
     var id = li.dataset.id;
     var inBand = li.parentNode === el.focusList;
@@ -1541,11 +1558,15 @@
 
     // Crossing between the band and the list is a change of focus; the
     // server clamps the place to the block the task now belongs to. Within
-    // one list it is a reorder, which carries the revision the positions were
+    // one list it is a reorder. Both carry the revision the positions were
     // read at: if the list changed in between, the server refuses instead of
     // dropping the row somewhere else, and the page re-reads.
     var req = inBand !== task.focused
-      ? request('POST', '/api/tasks/' + encodeURIComponent(id) + '/focus', { on: inBand, to: to })
+      ? request('POST', '/api/tasks/' + encodeURIComponent(id) + '/focus', {
+        on: inBand,
+        to: to,
+        revision: state.board.revision,
+      })
       : request('POST', '/api/tasks/' + encodeURIComponent(id) + '/order', {
         to: to,
         scope_days: Number(state.scope) || 7,

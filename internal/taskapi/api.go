@@ -338,6 +338,8 @@ type focusRequest struct {
 	// To is the queue position the task was dropped at. Without it the task
 	// goes to the edge of the focused block.
 	To *int `json:"to"`
+	// Revision is the one the drop position was read at, as for /order.
+	Revision *int `json:"revision"`
 }
 
 // focusTask lifts a task into the band at the top, or takes it out. Focused
@@ -360,7 +362,11 @@ func (a *API) focusTask(c *gin.Context) {
 		}
 		to = *req.To
 	}
-	t, err := a.store.FocusAt(c.Param("id"), *req.On, to, actorOf(c.Query("actor")))
+	expect := 0
+	if req.Revision != nil {
+		expect = *req.Revision
+	}
+	t, err := a.store.FocusAt(c.Param("id"), *req.On, to, expect, actorOf(c.Query("actor")))
 	a.respond(c, t, err)
 }
 

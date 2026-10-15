@@ -453,17 +453,23 @@ func (s *Store) Reopen(id string, actor Actor) (Task, error) {
 // are the top of the queue (ADR todo-0012): focusing moves the task to the end
 // of the focused block, unfocusing puts it just below that block.
 func (s *Store) SetFocus(id string, on bool, actor Actor) (Task, error) {
-	return s.FocusAt(id, on, -1, actor)
+	return s.FocusAt(id, on, -1, 0, actor)
 }
 
 // FocusAt is SetFocus with a place: to is the queue position the task was
 // dropped at, clamped to the block it belongs to once focus has changed. A
 // negative to means the edge of the focused block, as SetFocus does. Tasks
 // outside the queue (waiting) only change their mark.
-func (s *Store) FocusAt(id string, on bool, to int, actor Actor) (Task, error) {
+//
+// expectRevision guards a drop the same way it guards Reorder: pass the
+// revision the positions were read at, or 0 to skip the check.
+func (s *Store) FocusAt(id string, on bool, to, expectRevision int, actor Actor) (Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if expectRevision != 0 && expectRevision != s.st.Revision {
+		return Task{}, fmt.Errorf("%w (read at %d, now %d)", ErrStale, expectRevision, s.st.Revision)
+	}
 	i, err := s.indexOf(id)
 	if err != nil {
 		return Task{}, err

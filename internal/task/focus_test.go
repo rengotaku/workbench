@@ -70,19 +70,19 @@ func TestFocusAt_PutsTheTaskWhereItWasDropped(t *testing.T) {
 	_, err = s.SetFocus(id["B"], true, task.ActorHuman)
 	require.NoError(t, err)
 
-	_, err = s.FocusAt(id["D"], true, 1, task.ActorHuman)
+	_, err = s.FocusAt(id["D"], true, 1, 0, task.ActorHuman)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"A", "D", "B", "C"}, queueNames(t, s))
 
-	_, err = s.FocusAt(id["A"], false, 3, task.ActorHuman)
+	_, err = s.FocusAt(id["A"], false, 3, 0, task.ActorHuman)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"D", "B", "C", "A"}, queueNames(t, s))
 
 	// A position inside the other block is clamped to the edge of its own.
-	_, err = s.FocusAt(id["C"], true, 3, task.ActorHuman)
+	_, err = s.FocusAt(id["C"], true, 3, 0, task.ActorHuman)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"D", "B", "C", "A"}, queueNames(t, s))
-	_, err = s.FocusAt(id["D"], false, 0, task.ActorHuman)
+	_, err = s.FocusAt(id["D"], false, 0, 0, task.ActorHuman)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"B", "C", "D", "A"}, queueNames(t, s))
 }
@@ -189,4 +189,21 @@ func TestUndo_ReversesFocus(t *testing.T) {
 	got, err := s.Get(added.ID)
 	require.NoError(t, err)
 	assert.False(t, got.Focused)
+}
+
+// A drop across the band carries the revision it was read at, the same as a
+// reorder: a list that moved in between is refused, not changed elsewhere.
+func TestFocusAt_RefusesAStaleRevision(t *testing.T) {
+	s := newStore(t)
+	id := addAll(t, s, "A", "B", "C")
+	read := s.Revision()
+	_, err := s.Add("D", "", "", task.ActorHuman)
+	require.NoError(t, err)
+
+	_, err = s.FocusAt(id["C"], true, 0, read, task.ActorHuman)
+	require.ErrorIs(t, err, task.ErrStale)
+
+	got, err := s.Get(id["C"])
+	require.NoError(t, err)
+	assert.False(t, got.Focused, "nothing changes on a refused drop")
 }
