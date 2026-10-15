@@ -719,7 +719,9 @@
     var actions = document.createElement('div');
     actions.className = 'panel-actions';
 
-    if (t.state !== 'done') {
+    // Only queue rows offer focus: the band shows nothing else, so the button
+    // would claim a move that does not happen for waiting or someday rows.
+    if (t.state === 'open') {
       var focusBtn = document.createElement('button');
       focusBtn.type = 'button';
       focusBtn.className = t.focused ? 'focus-on' : '';
