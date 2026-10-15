@@ -114,6 +114,7 @@ func namesJSON(names []string) string {
 type addView struct {
 	Title     string
 	Current   string // which header link is the current screen
+	View      string // which screen this is, for the router (router.js)
 	AllTopics string // every topic as a JSON array, for the topic input
 	Topics    []string
 	Others    int // topics folded into "他 N"
@@ -126,7 +127,7 @@ func (p *Pages) handleAdd(c *gin.Context) {
 	for i, t := range stats {
 		all[i] = t.Name
 	}
-	p.render(c, "add.html", addView{Title: "note", Current: "note", Topics: shown, Others: len(rest), AllTopics: namesJSON(all)})
+	p.render(c, "add.html", addView{Title: "note", Current: "note", View: "note-add", Topics: shown, Others: len(rest), AllTopics: namesJSON(all)})
 }
 
 // ---- timeline ----
@@ -188,6 +189,7 @@ type dayView struct {
 type timelineView struct {
 	Title     string
 	Current   string
+	View      string
 	Empty     string
 	Chips     []chipView // すべて, the shown topics, 話題なし
 	OtherJSON string     // the topics behind "他 N", as a JSON array
@@ -249,7 +251,7 @@ func buildTimeline(notes []note.Note, stats []note.TopicStat, topic string, noTo
 	}
 	chips = append(chips, chipView{Label: "話題なし", Href: TimelinePath + "?no_topic=1", On: noTopic})
 
-	v := timelineView{Title: "note タイムライン", Current: "timeline", Chips: chips, Others: len(rest), OtherJSON: namesJSON(rest), other: rest, Empty: "まだメモがありません。note と打って 1 行入れてください"}
+	v := timelineView{Title: "note タイムライン", Current: "timeline", View: "timeline", Chips: chips, Others: len(rest), OtherJSON: namesJSON(rest), other: rest, Empty: "まだメモがありません。note と打って 1 行入れてください"}
 	if topic != "" || noTopic {
 		v.Empty = "この絞り込みに合うメモはありません。「すべて」に戻してください"
 	}

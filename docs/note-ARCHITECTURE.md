@@ -20,7 +20,7 @@ last_verified: 2026-10-14   # 最後に実装と突合した日
 | `internal/notepages/` | 登録画面（`/notes`）とタイムライン（`/notes/timeline`）の描画、`/notes/static`。話題チップに出す「最近使った上位 6 個＋選択中」と「他 N」の振り分け（`splitTopics`）もここ。ルート登録（`Mount`）と API の取り付けもここ。`GET /api/notes/timeline` はタイムラインと同じ組み立て（`buildTimeline`）の結果を JSON で返す（`?topic=` / `?no_topic=1` も同じ意味）。todo の `/`・`/static` とぶつからないよう `/notes` 配下に置く |
 | `internal/noteroute/` | `POST /api/notes/:id/route`。AI が拾ったメモの行き先を決める。タスクを作るので task と note の両方のストアを受け取る（ADR note-0004）。`internal/server` が追加の Mounter として取り付ける |
 | `internal/noteclient/` | CLI 用の HTTP クライアント。サーバに届かなければ日本語のエラーで止まる |
-| `web/shared/` | todo と note が共有するレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・基底 CSS・`common.js`（IME ガードと API 呼び出し）。`/shared` で配信し、`internal/server` がガードの内側にマウントする |
+| `web/shared/` | todo と note が共有するレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・基底 CSS・`common.js`（IME ガードと API 呼び出し）・`router.js`（画面の切り替え。登録した画面どうしはページを読み直さずに切り替え、画面ごとのスクロール位置を戻す。未登録の画面へはページごと読み込む）。サイトヘッダは上部に固定する。`/shared` で配信し、`internal/server` がガードの内側にマウントする |
 | `web/note/` | 埋め込みのテンプレートと静的ファイル（CSS / JS）。フレームワークも CDN も使わない |
 | `launchd/` `scripts/install-agent.sh` | 常駐用の plist テンプレートと配置スクリプト（読み込みはしない） |
 

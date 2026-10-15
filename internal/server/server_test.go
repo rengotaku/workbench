@@ -134,11 +134,11 @@ func todoTemplates() (map[string]*template.Template, error) {
 func TestSiteHeaderOnEveryScreen(t *testing.T) {
 	h := newServer(t)
 	links := []string{`href="/"`, `href="/notes"`, `href="/notes/timeline"`}
-	screens := []struct{ path, current string }{
-		{"/", `<a href="/" aria-current="page">`},
-		{"/add", `<a href="/" aria-current="page">`},
-		{"/notes", `<a href="/notes" aria-current="page">`},
-		{"/notes/timeline", `<a href="/notes/timeline" aria-current="page">`},
+	screens := []struct{ path, current, view string }{
+		{"/", `<a href="/" aria-current="page">`, "todo"},
+		{"/add", `<a href="/" aria-current="page">`, "todo-add"},
+		{"/notes", `<a href="/notes" aria-current="page">`, "note-add"},
+		{"/notes/timeline", `<a href="/notes/timeline" aria-current="page">`, "timeline"},
 	}
 	for _, s := range screens {
 		rec := do(h, http.MethodGet, s.path, "")
@@ -154,6 +154,9 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 		assert.Equal(t, 1, strings.Count(nav, `aria-current="page"`), s.path)
 		assert.Contains(t, body, "/shared/css/tokens.css", s.path)
 		assert.Contains(t, body, "/shared/js/common.js", s.path)
+		// The router (router.js) finds the screen by its root's data-view.
+		assert.Contains(t, body, "/shared/js/router.js", s.path)
+		assert.Contains(t, body, `data-view="`+s.view+`"`, s.path)
 		// Every screen shows the one workbench icon.
 		assert.Contains(t, body, `<link rel="icon" href="/shared/icon.svg"`, s.path)
 		// No screen loads anything from a CDN (fonts included).
@@ -164,7 +167,7 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 
 func TestSharedStaticServedBehindGuard(t *testing.T) {
 	h := newServer(t)
-	for _, p := range []string{"/shared/css/tokens.css", "/shared/css/base.css", "/shared/js/common.js", "/shared/js/modal.js", "/shared/icon.svg"} {
+	for _, p := range []string{"/shared/css/tokens.css", "/shared/css/base.css", "/shared/js/common.js", "/shared/js/router.js", "/shared/js/modal.js", "/shared/icon.svg"} {
 		assert.Equal(t, http.StatusOK, do(h, http.MethodGet, p, "").Code, p)
 
 		req := httptest.NewRequest(http.MethodGet, p, nil)

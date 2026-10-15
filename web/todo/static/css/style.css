@@ -31,8 +31,8 @@
     box-shadow: var(--shadow);
     padding: 15px 17px;
     position: sticky;
-    top: 18px;
-    max-height: calc(100vh - 36px);
+    top: calc(var(--head-h) + 18px); /* below the sticky site header */
+    max-height: calc(100vh - var(--head-h) - 36px);
     overflow-y: auto;
   }
 }
