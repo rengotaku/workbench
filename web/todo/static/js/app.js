@@ -103,16 +103,19 @@
   var hooks = {}; // show / hide, set once the screen is built
   var built = false;
 
-  // todayLabel is the date beside the heading, as the server used to print it:
-  // 1/2 (曜).
-  function todayLabel() {
-    var d = new Date();
-    return (d.getMonth() + 1) + '/' + d.getDate() + ' (' + '日月火水木金土'.charAt(d.getDay()) + ')';
+  // dateLabel turns the board's today (YYYY-MM-DD, the server's date, which
+  // the due colours are judged against) into the heading's 1/2 (曜). The
+  // weekday comes from the date itself, not the browser's time zone.
+  function dateLabel(today) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today || '');
+    if (!m) return '';
+    var day = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay();
+    return (+m[2]) + '/' + (+m[3]) + ' (' + '日月火水木金土'.charAt(day) + ')';
   }
 
   function mount(root) {
     root.innerHTML = MARKUP;
-    root.querySelector('.app-date').textContent = todayLabel();
+    var dateEl = root.querySelector('.app-date');
 
     var shared = window.todoShared;
     var composing = shared.composing;
@@ -278,6 +281,9 @@
     function render() {
       var b = state.board;
       if (!b) return;
+
+      // The date follows the board, so it moves when the day does.
+      dateEl.textContent = dateLabel(b.today);
 
       el.over.textContent = b.counts.over;
       el.near.textContent = b.counts.near;
