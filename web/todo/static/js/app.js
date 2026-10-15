@@ -54,6 +54,7 @@
     focusBand: document.getElementById('focus-band'),
     focusList: document.getElementById('focus-list'),
     focusCount: document.getElementById('focus-count'),
+    focusEmpty: document.getElementById('focus-empty'),
     addTrigger: document.getElementById('add-trigger'),
     detail: document.getElementById('detail'),
     doneFold: document.getElementById('done-fold'),
@@ -176,14 +177,16 @@
     setTitle('.count.near', '黄: 期限が今日 — ' + b.counts.near + '件');
     setTitle('.count.rest', '灰: 期限がまだ先、または期限なし — ' + b.counts.rest + '件');
 
-    // The band is hidden when empty: an empty band would only take space.
+    // Focused tasks are the top of the queue (ADR todo-0012) and are shown in
+    // the band only, so each task appears once. The band stays when empty: it
+    // is where a row is dropped to focus it.
     var focus = b.focus || [];
-    el.focusBand.hidden = focus.length === 0;
     el.focusCount.textContent = focus.length;
+    el.focusEmpty.hidden = focus.length > 0;
     el.focusList.textContent = '';
-    focus.forEach(function (t) { el.focusList.appendChild(focusItem(t)); });
+    focus.forEach(function (t) { el.focusList.appendChild(queueRow(t, true)); });
 
-    var queue = b.queue || [];
+    var queue = unfocusedQueue();
     el.queue.textContent = '';
     queue.forEach(function (t) {
       var inScope = t.in_scope;
@@ -424,57 +427,14 @@
     return btn;
   }
 
-  // focusItem is one line in the band: finish it, open it, or drop it out.
-  function focusItem(t) {
-    var li = document.createElement('li');
-    li.className = 'focus-item';
-
-    var check = document.createElement('input');
-    check.type = 'checkbox';
-    check.className = 'check';
-    check.setAttribute('aria-label', '完了にする');
-    check.addEventListener('change', function () {
-      check.disabled = true;
-      request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/done')
-        .then(function () { return load().then(function () { flash('完了にした: ' + t.name); }); })
-        .catch(function (err) { check.checked = false; check.disabled = false; showError(err); });
-    });
-
-    var name = document.createElement('span');
-    name.className = 'fname';
-    name.title = t.name + '（押すと着手順の行が開く）';
-    name.textContent = t.name;
-    name.addEventListener('click', function () {
-      state.openId = t.id;
-      render();
-      var row = document.querySelector('.task[data-id="' + t.id + '"]');
-      if (row) row.scrollIntoView({ block: 'center' });
-    });
-
-    var due = document.createElement('span');
-    var chip = dueChip(t);
-    due.className = 'due' + (chip ? ' ' + chip : '');
-    due.textContent = t.due_label;
-
-    var drop = document.createElement('button');
-    drop.type = 'button';
-    drop.className = 'drop';
-    drop.textContent = '✕';
-    drop.title = 'フォーカスから外す';
-    drop.addEventListener('click', function () {
-      drop.disabled = true;
-      request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/focus', { on: false })
-        .then(function () { return load().then(function () { flash('フォーカスから外した'); }); })
-        .catch(function (err) { drop.disabled = false; showError(err); });
-    });
-
-    li.appendChild(check);
-    li.appendChild(name);
-    li.appendChild(due);
-    li.appendChild(drop);
-    return li;
+  // unfocusedQueue is the queue below the band. Focused tasks lead the queue
+  // and are shown in the band instead, so the list starts after them.
+  function unfocusedQueue() {
+    return ((state.board && state.board.queue) || []).filter(function (t) { return !t.focused; });
   }
 
+  // queueRow draws a queue task, in the band or in the list below it: the same
+  // row either way, so a focused task opens where it is.
   function queueRow(t, inScope) {
     var cls = inScope ? dueStripe(t) : 'out';
     var li = row({
@@ -483,9 +443,9 @@
       // The position is not shown. The order is what the list is for, and the
       // row above/below already says it; a number only adds a value that goes
       // stale the moment anything moves. It is still kept server-side, and
-      // `todo order` uses it. The column carries ◎ when the task is focused.
-      mark: t.focused ? '◎' : '',
-      markClass: t.focused ? 'mark-focus' : '',
+      // `todo order` uses it.
+      mark: '',
+      markClass: '',
       dueLabel: t.due_label,
       dueClass: dueChip(t),
       hasPanel: true,
@@ -764,7 +724,11 @@
       focusBtn.type = 'button';
       focusBtn.className = t.focused ? 'focus-on' : '';
       focusBtn.textContent = t.focused ? 'フォーカスを外す' : 'フォーカス';
-      focusBtn.title = t.focused ? '上部の一覧から外す' : '上部の一覧に入れる（着手順の位置は動かない）';
+      // The button is the keyboard's way to do what dragging between the band
+      // and the list does.
+      focusBtn.title = t.focused
+        ? 'フォーカスから外す（一覧の先頭へ移る）'
+        : 'フォーカスに入れる（フォーカスの末尾へ移る）';
       focusBtn.addEventListener('click', function () {
         focusBtn.disabled = true;
         var was = t.focused;
@@ -1505,83 +1469,100 @@
     return days < 0 ? 0 : days;
   }
 
-  // ---- drag to reorder ----
+  // ---- drag to reorder, and to focus ----
 
+  // Rows move between two lists: the band (focused tasks, the top of the
+  // queue) and the list below it. Dropping across them changes focus; dropping
+  // within one reorders (ADR todo-0012).
   var dragged = null;
 
-  el.queue.addEventListener('dragstart', function (ev) {
+  function onDragStart(ev) {
     var li = ev.target.closest('.task');
     if (!li) return;
     state.busy = true;
     dragged = li;
     li.classList.add('dragging');
+    el.focusBand.classList.add('drop-ready');
     ev.dataTransfer.effectAllowed = 'move';
     ev.dataTransfer.setData('text/plain', li.dataset.id);
-  });
+  }
 
-  el.queue.addEventListener('dragover', function (ev) {
-    if (!dragged) return;
-    ev.preventDefault();
-    var over = ev.target.closest('.task');
-    if (!over || over === dragged) return;
-    var box = over.getBoundingClientRect();
-    var after = (ev.clientY - box.top) > box.height / 2;
-    el.queue.insertBefore(dragged, after ? over.nextSibling : over);
-  });
+  function onDragOver(list) {
+    return function (ev) {
+      if (!dragged) return;
+      ev.preventDefault();
+      var over = ev.target.closest('.task');
+      if (over && over !== dragged && over.parentNode === list) {
+        var box = over.getBoundingClientRect();
+        var after = (ev.clientY - box.top) > box.height / 2;
+        list.insertBefore(dragged, after ? over.nextSibling : over);
+        return;
+      }
+      // Over the band but not over a row (its heading, the empty-band hint,
+      // or the space below the last row): the row goes to the end of the band.
+      if (!over && list === el.focusList && dragged.parentNode !== list) {
+        list.appendChild(dragged);
+      }
+    };
+  }
 
+  el.focusBand.addEventListener('dragstart', onDragStart);
+  el.queue.addEventListener('dragstart', onDragStart);
+  el.focusBand.addEventListener('dragover', onDragOver(el.focusList));
+  el.queue.addEventListener('dragover', onDragOver(el.queue));
+  el.focusBand.addEventListener('drop', function (ev) { ev.preventDefault(); });
   el.queue.addEventListener('drop', function (ev) { ev.preventDefault(); });
+  el.focusBand.addEventListener('dragend', onDragEnd);
+  el.queue.addEventListener('dragend', onDragEnd);
 
-  el.queue.addEventListener('dragend', function () {
+  function onDragEnd() {
     if (!dragged) return;
     var li = dragged;
     li.classList.remove('dragging');
+    el.focusBand.classList.remove('drop-ready');
     dragged = null;
 
-    // Position is read off the rows on screen. With "スコープ外" collapsed the
-    // hidden rows are not shown, so the whole queue is sent from the board
-    // rather than from the DOM.
-    var ids = Array.prototype.map.call(el.queue.children, function (n) { return n.dataset.id; });
-    var to = ids.indexOf(li.dataset.id);
-    var visibleBefore = (state.board.queue || [])
-      .filter(function (t) { return state.showOut || t.in_scope; })
-      .map(function (t) { return t.id; });
-    var target = fullIndexOf(li.dataset.id, to, visibleBefore);
+    var id = li.dataset.id;
+    var inBand = li.parentNode === el.focusList;
+    var task = (state.board.queue || []).filter(function (t) { return t.id === id; })[0];
+    if (!task) { state.busy = false; load(); return; }
 
-    // The revision the positions were read at travels with the move. If the
-    // list changed in between, the server refuses instead of dropping the row
-    // somewhere else, and the page re-reads.
-    request('POST', '/api/tasks/' + encodeURIComponent(li.dataset.id) + '/order', {
-      to: target,
-      scope_days: Number(state.scope) || 7,
-      revision: state.board.revision,
-    })
-      .then(function () { state.busy = false; return load(); })
+    // The place is "just after the row above it", read against the whole
+    // queue without the moved task. Rows hidden under スコープ外 are not on
+    // screen, so counting rows on screen would land somewhere else.
+    var rest = (state.board.queue || []).filter(function (t) { return t.id !== id; });
+    var prev = li.previousElementSibling;
+    var to;
+    if (prev && prev.dataset.id) {
+      to = rest.map(function (t) { return t.id; }).indexOf(prev.dataset.id) + 1;
+    } else {
+      to = inBand ? 0 : rest.filter(function (t) { return t.focused; }).length;
+    }
+
+    // Crossing between the band and the list is a change of focus; the
+    // server clamps the place to the block the task now belongs to. Within
+    // one list it is a reorder, which carries the revision the positions were
+    // read at: if the list changed in between, the server refuses instead of
+    // dropping the row somewhere else, and the page re-reads.
+    var req = inBand !== task.focused
+      ? request('POST', '/api/tasks/' + encodeURIComponent(id) + '/focus', { on: inBand, to: to })
+      : request('POST', '/api/tasks/' + encodeURIComponent(id) + '/order', {
+        to: to,
+        scope_days: Number(state.scope) || 7,
+        revision: state.board.revision,
+      });
+    req
+      .then(function () {
+        state.busy = false;
+        return load().then(function () {
+          if (inBand !== task.focused) flash(inBand ? 'フォーカスに入れた' : 'フォーカスから外した');
+        });
+      })
       .catch(function (err) {
         state.busy = false;
         showError(err);
         load();
       });
-  });
-
-  // fullIndexOf converts a position among visible rows into a position in the
-  // whole queue, so collapsing scope-out rows cannot move a task somewhere
-  // other than where it was dropped.
-  function fullIndexOf(id, visibleIndex, visibleBefore) {
-    var all = (state.board.queue || []).map(function (t) { return t.id; });
-    if (visibleBefore.length === all.length) return visibleIndex;
-
-    var neighbourId = null;
-    if (visibleIndex > 0) {
-      var seen = 0;
-      for (var i = 0; i < visibleBefore.length; i++) {
-        if (visibleBefore[i] === id) continue;
-        if (seen === visibleIndex - 1) { neighbourId = visibleBefore[i]; break; }
-        seen++;
-      }
-    }
-    if (neighbourId === null) return 0;
-    var at = all.indexOf(neighbourId);
-    return at < 0 ? visibleIndex : at + 1;
   }
 
   // ---- boot ----

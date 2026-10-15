@@ -335,10 +335,13 @@ func (a *API) reopenTask(c *gin.Context) {
 
 type focusRequest struct {
 	On *bool `json:"on"`
+	// To is the queue position the task was dropped at. Without it the task
+	// goes to the edge of the focused block.
+	To *int `json:"to"`
 }
 
-// focusTask lifts a task into the band at the top, or takes it out. Focus is a
-// working set: the task keeps its place in the queue either way.
+// focusTask lifts a task into the band at the top, or takes it out. Focused
+// tasks are the top of the queue (ADR todo-0012), so this moves the task too.
 func (a *API) focusTask(c *gin.Context) {
 	var req focusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -349,7 +352,15 @@ func (a *API) focusTask(c *gin.Context) {
 		badRequest(c, errors.New("pass on: true or false"))
 		return
 	}
-	t, err := a.store.SetFocus(c.Param("id"), *req.On, actorOf(c.Query("actor")))
+	to := -1
+	if req.To != nil {
+		if *req.To < 0 {
+			badRequest(c, errors.New("to must be 0 or more"))
+			return
+		}
+		to = *req.To
+	}
+	t, err := a.store.FocusAt(c.Param("id"), *req.On, to, actorOf(c.Query("actor")))
 	a.respond(c, t, err)
 }
 
