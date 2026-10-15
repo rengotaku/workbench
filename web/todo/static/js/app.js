@@ -1543,6 +1543,9 @@
     var inBand = li.parentNode === el.focusList;
     var task = (state.board.queue || []).filter(function (t) { return t.id === id; })[0];
     if (!task) { state.busy = false; load(); return; }
+    // focused is omitted from the JSON when false, so compare a boolean:
+    // undefined !== false would send every reorder to /focus as a no-op.
+    var crossed = inBand !== Boolean(task.focused);
 
     // The place is "just after the row above it", read against the whole
     // queue without the moved task. Rows hidden under スコープ外 are not on
@@ -1561,7 +1564,7 @@
     // one list it is a reorder. Both carry the revision the positions were
     // read at: if the list changed in between, the server refuses instead of
     // dropping the row somewhere else, and the page re-reads.
-    var req = inBand !== task.focused
+    var req = crossed
       ? request('POST', '/api/tasks/' + encodeURIComponent(id) + '/focus', {
         on: inBand,
         to: to,
@@ -1576,7 +1579,7 @@
       .then(function () {
         state.busy = false;
         return load().then(function () {
-          if (inBand !== task.focused) flash(inBand ? 'フォーカスに入れた' : 'フォーカスから外した');
+          if (crossed) flash(inBand ? 'フォーカスに入れた' : 'フォーカスから外した');
         });
       })
       .catch(function (err) {
