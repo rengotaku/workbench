@@ -284,7 +284,6 @@
 .live:empty::before { content: attr(data-placeholder); color: var(--muted); }
 .name .live { cursor: text; }
 .name .live:focus { box-shadow: inset 0 -1px 0 var(--accent); }
-.task.row-open { background: var(--surface-sunk); }
 
 .save-state {
   font-family: var(--mono);
@@ -351,6 +350,14 @@ ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction
 .task.overdue {
   border-left-color: var(--over);
   background: linear-gradient(90deg, var(--over-soft) 0, var(--over-soft) 44px, transparent 68px);
+}
+/* The open row. It comes after the stripe tints because their `background`
+   shorthand resets the colour; only the colour is set here, so the stripe and
+   its tint stay. The accent lines mark where the open row starts and ends;
+   the fill stays grey so it does not read as the focus band. */
+.task.row-open {
+  background-color: var(--surface-sunk);
+  box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent);
 }
 .task.dragging { opacity: .4; }
 .task.openable { cursor: pointer; }
