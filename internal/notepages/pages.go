@@ -111,23 +111,16 @@ func namesJSON(names []string) string {
 
 // ---- add screen ----
 
+// The add screen draws itself from the API (web/note/static/js/add.js), so
+// the page is the layout with the screen's root and nothing else.
 type addView struct {
-	Title     string
-	Current   string // which header link is the current screen
-	View      string // which screen this is, for the router (router.js)
-	AllTopics string // every topic as a JSON array, for the topic input
-	Topics    []string
-	Others    int // topics folded into "他 N"
+	Title   string
+	Current string // which header link is the current screen
+	View    string // which screen this is, for the router (router.js)
 }
 
 func (p *Pages) handleAdd(c *gin.Context) {
-	stats := p.store.TopicStats()
-	shown, rest := splitTopics(stats, "")
-	all := make([]string, len(stats))
-	for i, t := range stats {
-		all[i] = t.Name
-	}
-	p.render(c, "add.html", addView{Title: "note", Current: "note", View: "note-add", Topics: shown, Others: len(rest), AllTopics: namesJSON(all)})
+	p.render(c, "add.html", addView{Title: "note", Current: "note", View: "note-add"})
 }
 
 // ---- timeline ----

@@ -71,7 +71,7 @@ func TestScreensAndHealth(t *testing.T) {
 	for path, want := range map[string]string{
 		"/":               "着手順",
 		"/add":            "着手順に追加",
-		"/notes":          `id="memo"`,
+		"/notes":          `<div class="view view-note-add" data-view="note-add">`,
 		"/notes/timeline": "note タイムライン",
 		"/healthz":        `"status":"ok"`,
 	} {
