@@ -79,6 +79,9 @@
         .then(function (r) {
           if (r.revision !== state.board.revision) {
             load().then(function () { flash('外で変更があったので読み直した', false); });
+          } else if (r.today && r.today !== state.board.today) {
+            // The date moved with no write: the due colours are for yesterday.
+            load();
           }
         })
         .catch(function () { /* a blip: the next tick tries again */ });

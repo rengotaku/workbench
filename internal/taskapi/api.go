@@ -178,9 +178,14 @@ func (a *API) undo(c *gin.Context) {
 }
 
 // revision is what the page polls to notice a change made elsewhere — by the
-// CLI, or by another window — without re-fetching the whole list.
+// CLI, or by another window — without re-fetching the whole list. It also
+// carries today: the due colours change at midnight with no write, so the page
+// reloads when the date it was drawn for is no longer today.
 func (a *API) revision(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"revision": a.store.Revision()})
+	c.JSON(http.StatusOK, gin.H{
+		"revision": a.store.Revision(),
+		"today":    a.today().Format(task.DateLayout),
+	})
 }
 
 func (a *API) view(t task.Task, today time.Time, scope int) View {

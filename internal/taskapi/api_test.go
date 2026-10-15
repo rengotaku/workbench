@@ -400,6 +400,17 @@ func TestRevision_IsServedAndMatchesTheList(t *testing.T) {
 	assert.NotEqual(t, rev["revision"], after["revision"])
 }
 
+// The colours follow the date, which moves without any write. The revision
+// carries the server's today so a page left open overnight reloads.
+func TestRevision_CarriesTheSameTodayAsTheList(t *testing.T) {
+	_, h := setup(t)
+
+	_, list := call(t, h, http.MethodGet, "/api/tasks", nil)
+	_, rev := call(t, h, http.MethodGet, "/api/revision", nil)
+	assert.NotEmpty(t, rev["today"])
+	assert.Equal(t, list["today"], rev["today"])
+}
+
 // A drag built on a list that has since moved comes back as a conflict, so the
 // page can re-read instead of putting the row in the wrong place.
 func TestOrder_AStaleRevisionIsAConflict(t *testing.T) {
