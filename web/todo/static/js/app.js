@@ -741,6 +741,8 @@
       actions.appendChild(focusBtn);
     }
 
+    actions.appendChild(copyUrlButton(t));
+
     var saved = document.createElement('span');
     saved.className = 'save-state';
     saved.dataset.save = '1';
@@ -942,6 +944,35 @@
     wrap.appendChild(lab);
     wrap.appendChild(input);
     return { wrap: wrap, input: input };
+  }
+
+  // taskUrl is the address that opens this row: the page reads #Txxx on load.
+  // It is what gets pasted to an AI to say which task is meant.
+  function taskUrl(t) {
+    return location.origin + location.pathname + '#' + t.id;
+  }
+
+  // copyUrlButton puts taskUrl on the clipboard. The clipboard API needs a
+  // secure context; 127.0.0.1 counts as one, but if it is refused anyway the
+  // URL is shown so it can still be copied by hand.
+  function copyUrlButton(t) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'URLをコピー';
+    btn.title = taskUrl(t) + '\nAI にこのタスクを伝えるときに貼る';
+    btn.addEventListener('click', function () {
+      var url = taskUrl(t);
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        showError(new Error('クリップボードに書けない: ' + url));
+        return;
+      }
+      navigator.clipboard.writeText(url)
+        .then(function () { flash('URLをコピーした: ' + url, false); })
+        .catch(function (err) {
+          showError(new Error('クリップボードに書けない（' + err.message + '）: ' + url));
+        });
+    });
+    return btn;
   }
 
   // somedayButton shelves a task with one click: unlike waitControl, nobody
