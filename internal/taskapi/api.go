@@ -213,7 +213,10 @@ func (a *API) view(t task.Task, today time.Time, scope int) View {
 		v.DueClass = "over"
 		v.Overdue, v.InScope = true, true
 	case diff == 0:
-		v.DueLabel, v.DueClass = "今日", "over"
+		// The due date is when to start. Today is the day to start, which is
+		// not the same as having let it pass, so it gets its own class; it
+		// still counts as overdue for the header numbers.
+		v.DueLabel, v.DueClass = "今日", "today"
 		v.Overdue, v.InScope = true, true
 	case diff <= scope:
 		v.DueLabel = "あと" + strconv.Itoa(diff) + "日"

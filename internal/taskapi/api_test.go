@@ -139,6 +139,25 @@ func TestList_WideningTheScopePullsTheFarDueDateIn(t *testing.T) {
 	assert.EqualValues(t, 1, countsOf(t, all)["near"])
 }
 
+// The due date is when to start, so "today" and "past it" are told apart: the
+// page shows today in amber and past in red. Both still count as overdue for
+// the header numbers.
+func TestList_DueTodayIsItsOwnClass(t *testing.T) {
+	store, h := setup(t)
+	_, err := store.Add("今日着手", "", dateIn(0), task.ActorHuman)
+	require.NoError(t, err)
+
+	_, body := call(t, h, http.MethodGet, "/api/tasks?scope=7", nil)
+	queue := rowsOf(t, body, "queue")
+	require.Len(t, queue, 1)
+	row, ok := queue[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "today", row["due_class"])
+	assert.Equal(t, "今日", row["due_label"])
+	assert.Equal(t, true, row["overdue"])
+	assert.EqualValues(t, 1, countsOf(t, body)["over"])
+}
+
 // A task with no due date is the top of the queue often enough that hiding it
 // under "スコープ外" loses the first thing to work on.
 func TestList_ATaskWithNoDueDateStaysVisible(t *testing.T) {

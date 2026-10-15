@@ -255,6 +255,22 @@
     if (node) node.title = text;
   }
 
+  // The due date is when to start, and the order already says what comes
+  // first. Colour is only for a start date that has arrived while the row sits
+  // where it is: red once it has passed, amber on the day. A date still ahead
+  // and no date at all stay uncoloured, so the few that need moving stand out.
+  // dueChip is the chip's colour class; dueStripe is the row's.
+  function dueChip(t) {
+    if (t.due_class === 'over') return 'over';
+    if (t.due_class === 'today') return 'near';
+    return '';
+  }
+  function dueStripe(t) {
+    if (t.due_class === 'over') return 'overdue';
+    if (t.due_class === 'today') return 'in-window';
+    return '';
+  }
+
   // dueTitle explains the row's colour in words. The stripe on the left edge
   // is a border and cannot be hovered on its own, so the chip — which carries
   // the same colour — is where the explanation lives.
@@ -264,8 +280,10 @@
     switch (t.due_class) {
       case 'over':
         return '赤: 期限 ' + t.due + ' を過ぎている（' + t.due_label + '）\nクリックで変更';
+      case 'today':
+        return '黄: 期限 ' + t.due + ' が今日\nクリックで変更';
       case 'near':
-        return '黄: 期限 ' + t.due + ' が ' + within + '（' + t.due_label + '）\nクリックで変更';
+        return '灰: 期限 ' + t.due + ' が ' + within + '（' + t.due_label + '）\nクリックで変更';
       case 'plain':
         return '灰: 期限 ' + t.due + ' は ' + within + 'より先。行は末尾に畳まれる\nクリックで変更';
       default:
@@ -433,7 +451,8 @@
     });
 
     var due = document.createElement('span');
-    due.className = 'due' + (t.due_class === 'over' || t.due_class === 'near' ? ' ' + t.due_class : '');
+    var chip = dueChip(t);
+    due.className = 'due' + (chip ? ' ' + chip : '');
     due.textContent = t.due_label;
 
     var drop = document.createElement('button');
@@ -456,7 +475,7 @@
   }
 
   function queueRow(t, inScope) {
-    var cls = t.overdue ? 'overdue' : (inScope ? 'in-window' : 'out');
+    var cls = inScope ? dueStripe(t) : 'out';
     var li = row({
       task: t,
       draggable: true,
@@ -467,7 +486,7 @@
       mark: t.focused ? '◎' : '',
       markClass: t.focused ? 'mark-focus' : '',
       dueLabel: t.due_label,
-      dueClass: t.due_class === 'plain' || t.due_class === 'none' ? '' : t.due_class,
+      dueClass: dueChip(t),
       hasPanel: true,
       editableDue: true,
       dueTitle: dueTitle(t),
