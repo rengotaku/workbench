@@ -216,6 +216,10 @@ todo import --ledger <旧 TODO ファイル> --order <旧 順序ファイル>
 - 日本語入力の変換中の Enter / Esc は無視する
 - 補足が 0 件のメモには「補足待ち」と出る
 
+### タイムラインの API
+
+`GET /api/notes/timeline` はタイムライン画面と同じ内容を JSON で返す。`?topic=<話題>` と `?no_topic=1` は画面と同じ意味。応答は `{"empty", "chips": [{"label", "href", "topic", "on"}…], "other": [「他 N」に畳む話題…], "days": [{"heading", "notes": [{"id", "time", "source", "topic", "segments", "links", "annotations", "route", "pending"}…]}…], "pending"}`。
+
 ### 話題の API
 
 | メソッド・パス | 中身 |
