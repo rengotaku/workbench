@@ -546,7 +546,9 @@ a.ticket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
   padding: 2px 7px;
   border-radius: var(--radius-sm);
   margin-top: 3px;
-  color: var(--muted);
+  /* --ink-soft, not --muted: an uncoloured chip still carries a date to read,
+     and --muted on the sunk fill is below 4.5:1 at this size. */
+  color: var(--ink-soft);
   background: var(--surface-sunk);
 }
 .due.near { background: var(--near-soft); color: var(--near); font-weight: 500; }
