@@ -86,7 +86,9 @@ func TestAddPage(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("status = %d", code)
 	}
-	mustContain(t, body, `id="memo"`, "autofocus", `data-topic="青分離"`, `data-topic="C&amp;C"`, "＋ 話題を追加", "/notes/static/js/add.js")
+	// The screen draws itself (add.js) from /api/topics and /api/notes; the page
+	// carries its root and its scripts.
+	mustContain(t, body, `data-view="note-add"`, "/notes/static/js/add.js", "/notes/static/js/picker.js", "/notes/static/css/style.css")
 	mustNotContain(t, body, "https://fonts.", "cdn.")
 }
 
@@ -339,12 +341,6 @@ func TestToNoteViewLeavesUnmatchedRefAsText(t *testing.T) {
 	}
 }
 
-func TestAddPageHasLinkRows(t *testing.T) {
-	h, _ := newPages(t)
-	_, body := get(t, h, "/notes")
-	mustContain(t, body, `id="links"`, `id="link-add"`, "＋ 関連 URL")
-}
-
 // seedTopics adds one memo per topic so the topics have a distinct last-used
 // time, oldest first.
 func seedTopics(t *testing.T, store *note.Store, names ...string) {
@@ -411,22 +407,6 @@ func TestTimelineHasNoOtherChipWhenAllShown(t *testing.T) {
 	seedTopics(t, store, "a", "b")
 	_, body := get(t, h, "/notes/timeline")
 	mustContain(t, body, `id="chip-more" hidden`)
-}
-
-func TestAddPageFoldsTopics(t *testing.T) {
-	h, store := newPages(t)
-	seedTopics(t, store, "t1", "t2", "t3", "t4", "t5", "t6", "t7")
-	_, body := get(t, h, "/notes")
-	mustContain(t, body, `data-topic="t7"`, `data-topic="t2"`, "他 1 ▾", `id="topic-more"`, `id="pending-title"`, "AI が拾うと一覧から消える", "/notes/static/js/picker.js")
-	mustNotContain(t, body, `data-topic="t1"`, "元に戻す")
-	mustContain(t, body, "&#34;t1&#34;") // every topic is still in the data for the input
-}
-
-func TestAddPageHidesOtherChipWhenNothingFolded(t *testing.T) {
-	h, store := newPages(t)
-	seedTopics(t, store, "a")
-	_, body := get(t, h, "/notes")
-	mustContain(t, body, `id="topic-more" hidden`)
 }
 
 // TestTimelineJSONMatchesPage checks that the JSON a script draws from lists

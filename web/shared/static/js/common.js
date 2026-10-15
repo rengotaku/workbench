@@ -46,9 +46,11 @@
     if (embedded) window.parent.postMessage({ workbench: type }, location.origin);
   }
 
-  // leave goes to href, or closes the dialog the screen is in.
+  // leave goes to href, or closes the dialog the screen is in. The router
+  // (router.js) shows a registered screen in place and loads anything else.
   function leave(href) {
     if (embedded) { tell('close'); return; }
+    if (window.workbench.router) { window.workbench.router.navigate(href); return; }
     location.href = href;
   }
 

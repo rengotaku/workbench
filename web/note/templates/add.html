@@ -1,35 +1,4 @@
-{{define "scripts"}}<script src="/notes/static/js/add.js" defer></script>{{end}}
-
-{{define "content"}}
-<div class="page">
-  <div class="frame">
-  <header class="hd">
-    <h1 class="page-title">メモを残す</h1>
-    <a href="/notes/timeline" data-leave>タイムラインへ <kbd>Esc</kbd></a>
-  </header>
-
-  <label class="sr-only" for="memo">メモ</label>
-  <input class="big" id="memo" type="text" autofocus autocomplete="off" placeholder="リンクと一言を貼って Enter">
-
-  <div class="link-rows" id="links" role="group" aria-label="関連 URL（任意）"></div>
-  <button type="button" class="chip dashed link-add" id="link-add">＋ 関連 URL</button>
-
-  <div class="filters one" id="topics" role="group" aria-label="話題（任意）" data-all="{{.AllTopics}}">
-    <span>話題（任意）:</span>
-    {{range .Topics}}<button type="button" class="chip" aria-pressed="false" data-topic="{{.}}">{{.}}</button>{{end}}
-    <button type="button" class="chip more" id="topic-more"{{if not .Others}} hidden{{end}}>他 {{.Others}} ▾</button>
-    <button type="button" class="chip dashed" id="topic-add">＋ 話題を追加</button>
-  </div>
-
-  <div class="hint">
-    <span>リンクと一言をそのまま貼る。関連 URL は本文で [1] [2] と書いて指せる。補足は後で AI が付ける</span>
-    <span><kbd>Enter</kbd> で保存</span>
-  </div>
-
-  <div class="status is-error" id="status" role="alert" hidden></div>
-
-  <div class="sec"><b id="pending-title">補足待ち 0 件</b><span>AI が拾うと一覧から消える</span></div>
-  <ul class="recent" id="recent" aria-labelledby="pending-title"></ul>
-  </div>
-</div>
-{{end}}
+{{/* The add screen draws itself (web/note/static/js/add.js) into its root,
+     which the layout provides on every page so the router can show it in
+     place. Nothing is rendered here. */}}
+{{define "content"}}{{end}}

@@ -1,2 +1,6 @@
-{{define "styles"}}<link rel="stylesheet" href="/notes/static/css/style.css">{{end}}
-{{define "toolshared"}}<script src="/notes/static/js/shared.js" defer></script><script src="/notes/static/js/picker.js" defer></script>{{end}}
+{{/* The note screens' stylesheet and shared scripts are loaded by the layout on
+     every page (the router shows the add screen in place from any screen), so
+     the tool adds nothing of its own. */}}
+{{define "styles"}}{{end}}
+{{define "toolshared"}}{{end}}
+{{define "scripts"}}{{end}}
