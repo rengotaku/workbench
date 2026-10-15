@@ -121,10 +121,9 @@ func (a *API) build(scope int) listResponse {
 		v := a.view(t, today, scope)
 		switch t.State {
 		case task.StateWaiting:
+			// Focused stays set, but the band is what to do next and the ball
+			// is with someone else; resuming puts it back in the band.
 			res.Waiting = append(res.Waiting, v)
-			if t.Focused {
-				res.Focus = append(res.Focus, v)
-			}
 		case task.StateSomeday:
 			res.Someday = append(res.Someday, v)
 		case task.StateDone:

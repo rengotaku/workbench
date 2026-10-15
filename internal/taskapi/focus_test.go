@@ -54,3 +54,26 @@ func TestFocus_ClearedByCompleting(t *testing.T) {
 	_, list := call(t, h, http.MethodGet, "/api/tasks", nil)
 	assert.Empty(t, rowsOf(t, list, "focus"))
 }
+
+// A waiting task keeps its focus mark but leaves the band: the ball is with
+// someone else, so it is not what to do next. Resuming brings it back.
+func TestFocus_WaitingTaskStaysMarkedButLeavesTheBand(t *testing.T) {
+	store, h := setup(t)
+	added, _ := store.Add("渡す", "", "", task.ActorHuman)
+
+	code, _ := call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/focus", map[string]any{"on": true})
+	require.Equal(t, http.StatusOK, code)
+	code, body := call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/wait",
+		map[string]any{"to": "相手"})
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, true, taskOf(t, body)["focused"], "the mark is kept")
+
+	_, list := call(t, h, http.MethodGet, "/api/tasks", nil)
+	assert.Empty(t, rowsOf(t, list, "focus"))
+	assert.Len(t, rowsOf(t, list, "waiting"), 1)
+
+	code, _ = call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/resume", map[string]any{})
+	require.Equal(t, http.StatusOK, code)
+	_, list = call(t, h, http.MethodGet, "/api/tasks", nil)
+	assert.Len(t, rowsOf(t, list, "focus"), 1, "back in the band once resumed")
+}

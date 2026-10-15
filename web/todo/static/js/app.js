@@ -464,8 +464,10 @@
     var level = days >= 10 ? '赤: 10日以上' : (days >= 5 ? '黄: 5日以上' : '灰: 5日未満');
     return row({
       task: t,
-      mark: '◷',
-      markClass: 'mark-wait',
+      // No mark: ◷ sat in the same column as the focus ◎ and read alike.
+      // The section heading already says these are waiting.
+      mark: '',
+      markClass: '',
       dueLabel: days + '日',
       dueClass: days >= 10 ? 'over' : (days >= 5 ? 'near' : ''),
       dueTitle: level + '経過\n' + (t.handed_on || '?') + ' に ' + (t.handed_to || '?')
@@ -717,7 +719,9 @@
     var actions = document.createElement('div');
     actions.className = 'panel-actions';
 
-    if (t.state !== 'done') {
+    // Only queue rows offer focus: the band shows nothing else, so the button
+    // would claim a move that does not happen for waiting or someday rows.
+    if (t.state === 'open') {
       var focusBtn = document.createElement('button');
       focusBtn.type = 'button';
       focusBtn.className = t.focused ? 'focus-on' : '';
