@@ -32,7 +32,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | `internal/taskclient/` | CLI からサーバを叩く HTTP クライアント |
 | `internal/legacy/` | 旧台帳（テキストの TODO ファイルと順序 YAML）の読み取りと移行計画の組み立て |
 | `internal/taskweb/` | 画面（`/`・`/add`）と `/static` の配信、`/api` のマウント（`Mount`） |
-| `web/shared/` | todo と note 共通のレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・`common.js`。`/shared` で配信 |
+| `web/shared/` | todo と note 共通のレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・`common.js`・`router.js`（画面の切り替え。登録した画面どうしはページを読み直さない）。`/shared` で配信 |
 | `web/todo/` | テンプレート・CSS・JS。`embed` でバイナリに焼き込む |
 | `launchd/`, `scripts/` | 常駐させるための plist テンプレートと配置スクリプト |
 

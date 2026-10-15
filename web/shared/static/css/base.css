@@ -37,6 +37,12 @@ kbd {
   padding-inline: var(--space-4);
   background: var(--surface);
   border-bottom: 1px solid var(--line);
+  /* The tabs stay in reach at any scroll: switching screens keeps each
+     screen's scroll (router.js), which means nothing if reaching the tabs
+     first scrolls the screen back to the top. Above the due menu (20). */
+  position: sticky;
+  top: 0;
+  z-index: 30;
 }
 .site-brand {
   font-family: var(--mono); font-size: var(--fs-md); letter-spacing: .06em;

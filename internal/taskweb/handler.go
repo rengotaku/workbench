@@ -45,6 +45,7 @@ func (h *Handler) handleIndex(c *gin.Context) {
 	h.render(c, "index.html", http.StatusOK, gin.H{
 		"Title":   "着手順",
 		"Current": "todo",
+		"View":    "todo",
 		"Today":   today(now),
 	})
 }
@@ -55,6 +56,7 @@ func (h *Handler) handleAdd(c *gin.Context) {
 	h.render(c, "add.html", http.StatusOK, gin.H{
 		"Title":   "着手順に追加",
 		"Current": "todo",
+		"View":    "todo-add",
 		"Today":   today(time.Now()),
 	})
 }
