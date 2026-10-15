@@ -1,3 +1,6 @@
-{{define "styles"}}<link rel="stylesheet" href="/static/css/style.css">{{end}}
-{{define "toolshared"}}<script src="/static/js/shared.js" defer></script>{{end}}
-{{define "scripts"}}<script src="/static/js/app.js" defer></script>{{end}}
+{{/* The todo list's stylesheet and scripts are loaded by the layout on every
+     page (the router shows it in place from any screen), so the tool adds
+     nothing of its own. */}}
+{{define "styles"}}{{end}}
+{{define "toolshared"}}{{end}}
+{{define "scripts"}}{{end}}
