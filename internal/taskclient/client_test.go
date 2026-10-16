@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/rengotaku/workbench/internal/task"
 	"github.com/rengotaku/workbench/internal/taskclient"
 )
 
@@ -94,6 +95,17 @@ func TestAdd_SendsTheNameDetailAndDue(t *testing.T) {
 	assert.Equal(t, "詳しい話", rec.body["detail"])
 	assert.Equal(t, "2026-09-12", rec.body["due"])
 	assert.Equal(t, "T007", got.ID)
+}
+
+func TestAdd_SendsLinksOnlyWhenGiven(t *testing.T) {
+	c, rec := serve(t, http.StatusOK, `{"task":{"id":"T007"}}`)
+	_, _, err := c.Add("やる", "", "")
+	require.NoError(t, err)
+	assert.NotContains(t, rec.body, "links")
+
+	_, _, err = c.Add("やる [1]", "", "", task.LinkInput{URL: "https://a.example/", Label: "a"})
+	require.NoError(t, err)
+	assert.Equal(t, []any{map[string]any{"url": "https://a.example/", "label": "a"}}, rec.body["links"])
 }
 
 // The event log tells a person's change from an assistant's, so the CLI has to

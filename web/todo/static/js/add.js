@@ -16,7 +16,7 @@
     '  <main class="ap-main">',
     '    <label class="ap-label" for="ap-name">なにをやる？</label>',
     '    <input class="ap-name" id="ap-name" autofocus autocomplete="off" placeholder="タスク名を入力して Enter">',
-    '    <div class="ap-link" id="ap-link" hidden></div>',
+    '    <div class="ap-links" id="ap-links"></div>',
     '',
     '    <div class="ap-row">',
     '      <div class="ap-field">',
@@ -65,7 +65,7 @@
     var shared = window.todoShared;
     var el = {
       name: document.getElementById('ap-name'),
-      link: document.getElementById('ap-link'),
+      links: document.getElementById('ap-links'),
       chips: document.getElementById('ap-chips'),
       pick: document.getElementById('ap-pick'),
       resolved: document.getElementById('ap-resolved'),
@@ -158,21 +158,20 @@
       el.name.focus();
     });
 
-    // ---- link pasted into the name ----
+    // ---- related URLs ----
 
-    shared.wirePaste(el.name, true);
-
-    function showLink() {
-      if (!el.name.pastedURL) { el.link.hidden = true; return; }
-      el.link.hidden = false;
-      el.link.textContent = '🔗 ' + (el.name.pastedLinkText || el.name.value) + ' → ' + el.name.pastedURL;
-      el.link.title = el.name.pastedURL;
-    }
-    el.name.addEventListener('input', function () {
-      if (!el.name.value) { el.name.pastedURL = null; el.name.pastedLinkText = null; }
-      showLink();
+    // The name points at them with [N]. A link pasted into the name goes in as
+    // "text [N]" with its URL as related URL N (/shared/js/paste.js).
+    var links = shared.linkEditor({
+      text: function () { return el.name.value; },
+      onError: function (msg) { toast([text(msg)], true); },
+      onEnter: function () { submit(); },
     });
-    el.name.addEventListener('paste', function () { window.setTimeout(showLink, 0); });
+    el.links.appendChild(links.el);
+    window.workbench.paste.wireLinkPaste(el.name, function (link) {
+      if (busy) return 0;
+      return links.add(link.url + (link.label ? ' ' + link.label : ''), true);
+    }, true);
 
     // ---- add / undo ----
 
@@ -219,10 +218,8 @@
 
     function reset() {
       el.name.value = '';
-      el.name.pastedURL = null;
-      el.name.pastedLinkText = null;
       el.detail.value = '';
-      showLink();
+      links.set([]);
       setDue('', 0);
       el.name.focus();
     }
@@ -234,13 +231,13 @@
       if (due) body.due = due;
       var detail = el.detail.value.trim();
       if (detail) body.detail = detail;
-      if (el.name.pastedURL) {
-        body.url = el.name.pastedURL;
-        body.link_text = el.name.pastedLinkText || '';
-      }
+      var related = links.read(false);
+      if (!related) return;
+      if (related.length) body.links = related;
 
       busy = true;
       el.name.disabled = true;
+      links.lock(true);
       var told = window.workbench.tell('busy');
       shared.request('POST', '/api/tasks', body)
         .then(function (data) {
@@ -253,11 +250,13 @@
           again.addEventListener('click', function () { undo(li, t.name); });
           toast([text('追加しました: ' + t.name), again]);
           el.name.disabled = false;
+          links.lock(false);
           reset();
         })
         .catch(function (err) {
           // Keep what was typed so nothing is lost; the message says why.
           el.name.disabled = false;
+          links.lock(false);
           el.name.focus();
           toast([text('追加できませんでした: ' + reason(err))], true);
         })

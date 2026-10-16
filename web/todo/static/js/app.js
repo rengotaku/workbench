@@ -700,6 +700,9 @@
       body.textContent = t.detail || '詳細なし';
       el.detail.appendChild(body);
 
+      var related = relatedList(t);
+      if (related) el.detail.appendChild(related);
+
       var supplements = supplementsBlock(t);
       if (supplements) el.detail.appendChild(supplements);
 
@@ -742,6 +745,93 @@
     // trail) and the link back to the memo it was made from. Every value goes in
     // through textContent, so a body is shown as text and never read as HTML.
     // It returns null when there is nothing to show.
+    // relatedList shows a task's related URLs ([N] 一言 / URL) in the detail
+    // box, or null when it has none. A task from before related URLs keeps its
+    // one link in the name and has no list.
+    function relatedList(t) {
+      if (!t.links || t.links.length === 0) return null;
+      var sec = document.createElement('div');
+      sec.className = 'd-sec';
+      var h = document.createElement('h2');
+      h.textContent = '関連 URL';
+      sec.appendChild(h);
+      var ul = document.createElement('ul');
+      ul.className = 'd-links';
+      t.links.forEach(function (l) {
+        var li = document.createElement('li');
+        var n = document.createElement('span');
+        n.className = 'ln';
+        n.textContent = '[' + l.n + ']';
+        var a = document.createElement('a');
+        a.href = l.url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = l.label || l.url;
+        a.title = l.url;
+        li.appendChild(n);
+        li.appendChild(a);
+        ul.appendChild(li);
+      });
+      sec.appendChild(ul);
+      return sec;
+    }
+
+    // linkEditors holds the open row's related-URL rows, so a paste into its
+    // name can add one.
+    var linkEditors = {};
+
+    // linksBlock is the open row's related URLs, edited in place like the name:
+    // adding (or pasting) a URL, editing a row and removing one save at once.
+    // Numbers follow the rows' order, and a row the name still points at (or
+    // one before it) cannot be removed, so a [N] never moves to another URL.
+    function linksBlock(t) {
+      function nameNow() {
+        var n = document.querySelector('.task[data-id="' + t.id + '"] .txt.live');
+        return n ? n.textContent : t.name;
+      }
+      var last = JSON.stringify((t.links || []).map(function (l) { return { url: l.url, label: l.label || '' }; }));
+      var ed = shared.linkEditor({
+        text: nameNow,
+        onError: function (msg) { showError(new Error(msg)); },
+        onChange: save,
+        onEnter: function () { if (document.activeElement) document.activeElement.blur(); },
+      });
+      // One save at a time: each PATCH replaces the whole list, so two in
+      // flight could land in either order and the older list would win. A save
+      // asked for meanwhile runs once the one in flight has answered, and
+      // compares with what the server last confirmed (last), so changing a row
+      // and changing it back while a save is out still reaches the server.
+      var inFlight = false;
+      var again = false;
+      function save() {
+        if (inFlight) { again = true; return; }
+        var links = ed.read(true);
+        if (!links) return; // an empty row: saved once it has a URL
+        var now = JSON.stringify(links);
+        if (now === last) return;
+        inFlight = true;
+        mark(ed.el, '保存中…');
+        request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), { links: links })
+          .then(function (res) {
+            last = now;
+            t.links = (res && res.task && res.task.links) || links.map(function (l, i) { return { n: i + 1, url: l.url, label: l.label }; });
+            mark(ed.el, '保存した', true);
+          })
+          .catch(function (err) { showError(err); })
+          .then(function () {
+            inFlight = false;
+            if (again) { again = false; save(); }
+          });
+      }
+      ed.set(t.links || []);
+      // Typing in a row holds the poll, as the name and detail do.
+      ed.el.addEventListener('focusin', function () { state.busy = true; });
+      ed.el.addEventListener('focusout', function () { state.busy = false; });
+      linkEditors = {};
+      linkEditors[t.id] = ed;
+      return ed.el;
+    }
+
     function supplementsBlock(t) {
       var anns = t.annotations || [];
       if (anns.length === 0 && !t.source_note_id) return null;
@@ -828,6 +918,8 @@
       detail.textContent = t.detail || '';
       wireLiveField(detail, t, 'detail', { single: false });
       panel.appendChild(detail);
+
+      panel.appendChild(linksBlock(t));
 
       var supplements = supplementsBlock(t);
       if (supplements) panel.appendChild(supplements);
@@ -941,26 +1033,29 @@
 
         var body = {};
         body[key] = value;
-        // A link pasted into the name carries its URL with it; the same save
-        // stores both, so the row links where the paste came from.
-        if (key === 'name' && node.pastedURL) {
-          body.url = node.pastedURL;
-          body.link_text = node.pastedLinkText || '';
-          node.pastedURL = null;
-          node.pastedLinkText = null;
-        }
         mark(node, '保存中…');
         request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), body)
           .then(function () {
             last = value;
             t[key] = value;
             mark(node, '保存した', true);
-            if (reload) load();
+            // Not while another field of the row is being typed in (its related
+            // URL rows): redrawing would drop what is typed there.
+            if (reload && !state.busy) load();
           })
           .catch(function (err) { showError(err); node.textContent = last; });
       }
 
-      wirePaste(node, !!opts.single);
+      if (key === 'name') {
+        // A link pasted into the name goes in as "text [N]" with its URL as
+        // related URL N, in the open row's rows below (/shared/js/paste.js).
+        window.workbench.paste.wireLinkPaste(node, function (link) {
+          var ed = linkEditors[t.id];
+          return ed ? ed.add(link.url + (link.label ? ' ' + link.label : ''), true) : 0;
+        }, true);
+      } else {
+        wirePaste(node, !!opts.single);
+      }
       if (opts.single) paintLink(node, t);
       node.addEventListener('focus', function () { state.busy = true; });
       node.addEventListener('input', function () {
@@ -1008,12 +1103,16 @@
     // rest as plain text. Text goes in as text nodes, never as HTML.
     function writeName(el, t) {
       el.textContent = '';
+      // Each [N] naming one of the task's related URLs is a link to it (ADR
+      // todo-0014). A task from before them also keeps its one link over the
+      // words it covered (ADR todo-0008), related URLs added later or not.
+      var links = t.links || [];
       var r = linkRange(t);
       if (!r) {
-        el.textContent = t.name;
+        shared.writeLinkedText(el, t.name, links);
         return;
       }
-      if (r.start > 0) el.appendChild(document.createTextNode(t.name.slice(0, r.start)));
+      if (r.start > 0) shared.writeLinkedText(el, t.name.slice(0, r.start), links);
       var a = document.createElement('a');
       a.className = 'ticket';
       a.href = t.url;
@@ -1023,7 +1122,7 @@
       a.title = t.url;
       a.draggable = false; // dragging a row must not drag the link instead
       el.appendChild(a);
-      if (r.end < t.name.length) el.appendChild(document.createTextNode(t.name.slice(r.end)));
+      if (r.end < t.name.length) shared.writeLinkedText(el, t.name.slice(r.end), links);
     }
 
     // paintLink marks the link range inside an editable name. It uses the
@@ -1037,9 +1136,7 @@
       CSS.highlights.delete(HIGHLIGHT_NAME);
       var text = node.firstChild;
       if (!text || text.nodeType !== 3) return;
-      var url = node.pastedURL || t.url;
-      var label = node.pastedURL ? node.pastedLinkText : t.link_text;
-      var r = linkRange({ url: url, name: text.data, link_text: label });
+      var r = linkRange({ url: t.url, name: text.data, link_text: t.link_text });
       if (!r) return;
       var range = document.createRange();
       range.setStart(text, r.start);
@@ -1165,6 +1262,7 @@
       created: '追加',
       renamed: '名前を変更',
       linked: 'リンクを設定',
+      links_set: '関連 URL を変更',
       focused: 'フォーカスに入れた',
       unfocused: 'フォーカスから外した',
       reordered: '順序変更',

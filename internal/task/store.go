@@ -152,7 +152,14 @@ func (s *Store) Add(name, detail, due string, actor Actor) (Task, error) {
 // Adding and linking are one change, so a single undo takes the task back out
 // instead of leaving it behind without its link.
 func (s *Store) AddLinked(name, detail, due, url, linkText string, actor Actor) (Task, error) {
-	return s.add(name, detail, due, url, linkText, 0, actor)
+	return s.add(name, detail, due, url, linkText, nil, 0, actor)
+}
+
+// AddWithLinks appends a task together with its related URLs, numbered from 1
+// in the order given. Adding and linking are one event, so one undo removes
+// the task.
+func (s *Store) AddWithLinks(name, detail, due string, links []LinkInput, actor Actor) (Task, error) {
+	return s.add(name, detail, due, "", "", links, 0, actor)
 }
 
 // AddFromNote appends a task made from a memo. When a task for that memo
@@ -162,7 +169,7 @@ func (s *Store) AddFromNote(name, detail, due string, noteID int, actor Actor) (
 	if noteID < 1 {
 		return Task{}, errors.New("source note id is required")
 	}
-	return s.add(name, detail, due, "", "", noteID, actor)
+	return s.add(name, detail, due, "", "", nil, noteID, actor)
 }
 
 // FindBySourceNote returns the task made from a memo.
@@ -184,7 +191,7 @@ func (s *Store) findBySourceNote(noteID int) (Task, bool) {
 	return Task{}, false
 }
 
-func (s *Store) add(name, detail, due, url, linkText string, noteID int, actor Actor) (Task, error) {
+func (s *Store) add(name, detail, due, url, linkText string, linkInputs []LinkInput, noteID int, actor Actor) (Task, error) {
 	if name == "" {
 		return Task{}, errors.New("name is required")
 	}
@@ -192,6 +199,11 @@ func (s *Store) add(name, detail, due, url, linkText string, noteID int, actor A
 		if _, err := ParseDate(due, s.loc); err != nil {
 			return Task{}, err
 		}
+	}
+
+	links, err := buildLinks(linkInputs)
+	if err != nil {
+		return Task{}, err
 	}
 
 	s.mu.Lock()
@@ -212,6 +224,7 @@ func (s *Store) add(name, detail, due, url, linkText string, noteID int, actor A
 		Detail:       detail,
 		Due:          due,
 		URL:          url,
+		Links:        links,
 		State:        StateOpen,
 		Order:        len(s.openIndexes()),
 		CreatedAt:    s.now(),
@@ -672,6 +685,39 @@ func (s *Store) SetLink(id, url, linkText string, actor Actor) (Task, error) {
 	s.st.Tasks[i] = t
 
 	if err := s.record(Event{TaskID: id, Kind: KindLinked, Actor: actor, FromValue: from, ToValue: url}); err != nil {
+		return Task{}, err
+	}
+	if err := s.persist(); err != nil {
+		return Task{}, err
+	}
+	return s.mustGet(id), nil
+}
+
+// SetLinks replaces the task's related URLs with links, numbered from 1 by
+// position; an empty list removes them all. A list equal to the current one
+// records nothing.
+func (s *Store) SetLinks(id string, linkInputs []LinkInput, actor Actor) (Task, error) {
+	links, err := buildLinks(linkInputs)
+	if err != nil {
+		return Task{}, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	i, err := s.indexOf(id)
+	if err != nil {
+		return Task{}, err
+	}
+	t := s.st.Tasks[i]
+	if sameLinks(t.Links, links) {
+		return t, nil
+	}
+	from := encodeLinks(t.Links)
+	t.Links = links
+	s.st.Tasks[i] = t
+
+	if err := s.record(Event{TaskID: id, Kind: KindLinks, Actor: actor, FromValue: from, ToValue: encodeLinks(links)}); err != nil {
 		return Task{}, err
 	}
 	if err := s.persist(); err != nil {

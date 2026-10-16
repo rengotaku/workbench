@@ -244,6 +244,8 @@ type addRequest struct {
 	LinkText string `json:"link_text"`
 	Due      string `json:"due"`
 	Actor    string `json:"actor"`
+	// Links are the related URLs, numbered 1..k in the order given.
+	Links []task.LinkInput `json:"links"`
 }
 
 func (a *API) addTask(c *gin.Context) {
@@ -253,17 +255,27 @@ func (a *API) addTask(c *gin.Context) {
 		return
 	}
 	actor := actorOf(req.Actor)
-	t, err := a.store.AddLinked(req.Name, req.Detail, req.Due, req.URL, req.LinkText, actor)
+	var (
+		t   task.Task
+		err error
+	)
+	if len(req.Links) > 0 {
+		t, err = a.store.AddWithLinks(req.Name, req.Detail, req.Due, req.Links, actor)
+	} else {
+		t, err = a.store.AddLinked(req.Name, req.Detail, req.Due, req.URL, req.LinkText, actor)
+	}
 	a.respond(c, t, err)
 }
 
 type patchRequest struct {
-	Name     *string `json:"name"`
-	Due      *string `json:"due"`
-	Detail   *string `json:"detail"`
-	URL      *string `json:"url"`
-	LinkText string  `json:"link_text"`
-	Actor    string  `json:"actor"`
+	Name   *string `json:"name"`
+	Due    *string `json:"due"`
+	Detail *string `json:"detail"`
+	URL    *string `json:"url"`
+	// Links is the task's full new list; absent leaves it alone, [] clears it.
+	Links    *[]task.LinkInput `json:"links"`
+	LinkText string            `json:"link_text"`
+	Actor    string            `json:"actor"`
 }
 
 func (a *API) patchTask(c *gin.Context) {
@@ -274,6 +286,14 @@ func (a *API) patchTask(c *gin.Context) {
 	}
 	id := c.Param("id")
 	actor := actorOf(req.Actor)
+	// Invalid links refuse the whole request: checked before the name or the
+	// due date change, so a 400 never leaves half of it applied.
+	if req.Links != nil {
+		if err := task.ValidateLinks(*req.Links); err != nil {
+			a.fail(c, err)
+			return
+		}
+	}
 
 	var (
 		t   task.Task
@@ -303,8 +323,14 @@ func (a *API) patchTask(c *gin.Context) {
 			return
 		}
 	}
-	if req.Name == nil && req.Due == nil && req.Detail == nil && req.URL == nil {
-		badRequest(c, errors.New("nothing to change: pass name, due, detail or url"))
+	if req.Links != nil {
+		if t, err = a.store.SetLinks(id, *req.Links, actor); err != nil {
+			a.respond(c, t, err)
+			return
+		}
+	}
+	if req.Name == nil && req.Due == nil && req.Detail == nil && req.URL == nil && req.Links == nil {
+		badRequest(c, errors.New("nothing to change: pass name, due, detail, url or links"))
 		return
 	}
 	a.respond(c, t, nil)

@@ -46,6 +46,9 @@ const (
 	KindRemoved   Kind = "removed"
 	KindRenamed   Kind = "renamed"
 	KindLinked    Kind = "linked"
+	// KindLinks is a change to the task's related URL list; from/to hold the
+	// old and new lists as JSON.
+	KindLinks     Kind = "links_set"
 	KindFocused   Kind = "focused"
 	KindUnfocused Kind = "unfocused"
 	// KindAnnotated is a supplement appended to a task. It is not undoable:
@@ -99,7 +102,10 @@ type Task struct {
 	WaitNote string `json:"wait_note,omitempty"`
 	// Annotations are appended supplements, oldest first. Undo leaves them.
 	Annotations []Annotation `json:"annotations,omitempty"`
-	Order       int          `json:"order"`
+	// Links are the related URLs the name refers to as [1], [2] …. The old
+	// single URL above is left as it is on tasks that have it (ADR todo-0008).
+	Links []Link `json:"links,omitempty"`
+	Order int    `json:"order"`
 	// Focused lifts a task into the band at the top of the page. It is a
 	// working set, not a state: the task keeps its place in the queue.
 	Focused bool `json:"focused,omitempty"`

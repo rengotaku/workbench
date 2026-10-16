@@ -90,11 +90,13 @@ func (c *Client) List(scope string) (Board, []byte, error) {
 	return b, raw, err
 }
 
-// Add creates a task.
-func (c *Client) Add(name, detail, due string) (Task, []byte, error) {
-	return c.taskCall(http.MethodPost, "/api/tasks", map[string]any{
-		"name": name, "detail": detail, "due": due, "actor": actor(),
-	})
+// Add creates a task. links are its related URLs, numbered in the order given.
+func (c *Client) Add(name, detail, due string, links ...task.LinkInput) (Task, []byte, error) {
+	body := map[string]any{"name": name, "detail": detail, "due": due, "actor": actor()}
+	if len(links) > 0 {
+		body["links"] = links
+	}
+	return c.taskCall(http.MethodPost, "/api/tasks", body)
 }
 
 // Done completes a task.

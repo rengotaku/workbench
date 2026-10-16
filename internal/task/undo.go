@@ -78,7 +78,7 @@ func (s *Store) recordSpent(e Event) error {
 func undoable(k Kind) bool {
 	switch k {
 	case KindCreated, KindRemoved, KindRenamed, KindDetail, KindDueSet,
-		KindLinked, KindDone, KindReopened, KindWaiting, KindResumed,
+		KindLinked, KindLinks, KindDone, KindReopened, KindWaiting, KindResumed,
 		KindShelved, KindReordered, KindFocused, KindUnfocused:
 		return true
 	default:
@@ -158,6 +158,19 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("リンクを戻した: %s %s", t.ID, t.Name), nil
+
+	case KindLinks:
+		back, err := decodeLinks(e.FromValue)
+		if err != nil {
+			return "", errSkipUndo
+		}
+		t.Links = back
+		s.st.Tasks[i] = t
+		if err := s.recordSpent(Event{TaskID: t.ID, Kind: KindLinks, Actor: actor,
+			FromValue: e.ToValue, ToValue: e.FromValue}); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("関連 URL を戻した: %s %s", t.ID, t.Name), nil
 
 	case KindDueSet:
 		t.Due = e.FromValue
