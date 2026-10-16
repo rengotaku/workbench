@@ -70,6 +70,10 @@
 
   function hideCurrent() {
     if (!current) return;
+    // A dialog belongs to the screen it was opened on; a page load used to
+    // take it away, so leaving the screen closes it (Back while 話題を整理 or
+    // the add dialog is open).
+    Array.prototype.slice.call(document.querySelectorAll('dialog[open]')).forEach(function (d) { d.close(); });
     var entry = views[current];
     entry.scrollY = window.scrollY;
     rootOf(current).hidden = true;
