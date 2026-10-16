@@ -17,7 +17,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 - **書き手はサーバだけ**。CLI もブラウザも REST を叩く。CLI はサーバが落ちていればエラーで止まり、ファイルを直接書かない
 - サーバはループバック固定で認証を持たない。LAN へは出さない
-- 画面は素の JS で、ビルド工程は無い。todo 一覧はルーター（`web/shared/static/js/router.js`）に登録した画面で、初めて表示したときに `app.js` が自分の HTML を描く。サーバの `index.html` は空で、レイアウトがどのページにも todo 一覧のルート要素（`data-view="todo"`）と `style.css`・`app.js` を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
+- 画面は素の JS で、ビルド工程は無い。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の HTML を描く。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
 
 ## ディレクトリ
 
@@ -32,7 +32,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | `internal/taskclient/` | CLI からサーバを叩く HTTP クライアント |
 | `internal/legacy/` | 旧台帳（テキストの TODO ファイルと順序 YAML）の読み取りと移行計画の組み立て |
 | `internal/taskweb/` | 画面（`/`・`/add`）の外枠と `/static` の配信、`/api` のマウント（`Mount`）。中身は `app.js` / `add.js` がルーターの画面として描く |
-| `web/shared/` | todo と note 共通のレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・`common.js`・`router.js`（画面の切り替え。登録した画面どうしはページを読み直さない）。`/shared` で配信 |
+| `web/shared/` | todo と note 共通のレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・`common.js`（API 呼び出し、追加ダイアログへの通知 `tell` / `leave`）・`router.js`（画面の切り替えとダイアログへの貸し出し `lend`）・`modal.js`（追加ダイアログ）。`/shared` で配信 |
 | `web/todo/` | テンプレート・CSS・JS。`embed` でバイナリに焼き込む |
 | `launchd/`, `scripts/` | 常駐させるための plist テンプレートと配置スクリプト |
 
@@ -182,6 +182,8 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | 理由を聞く条件 | `internal/task/task.go` の `NeedsReason` / `AskReason`、待ちの閾値は `AskThresholdDays` |
 | 画面の見た目 | `web/shared/static/css/tokens.css`（変数）、`web/todo/static/css/style.css` |
 | 画面の挙動（ドラッグ・開閉・スコープ） | `web/todo/static/js/app.js` |
+| 追加画面（`/add` と追加ダイアログの中身） | `web/todo/static/js/add.js`、`web/todo/static/css/add.css` |
+| 画面の切り替え・追加ダイアログ | `web/shared/static/js/router.js`、`web/shared/static/js/modal.js` |
 | 補足の追加・検証 | `internal/task/store.go` の `Annotate`、`internal/taskapi/api.go` の `annotateTask`、`cmd/todo/main.go` の `annotateCmd` |
 | 詳細での補足と「元のメモ」の表示 | `web/todo/static/js/app.js` の `supplementsBlock` |
 | CLI の出力 | `cmd/todo/main.go`（サーバへの呼び出しは `internal/taskclient`） |

@@ -20,7 +20,7 @@ last_verified: 2026-10-14   # 最後に実装と突合した日
 | `internal/notepages/` | 登録画面（`/notes`）とタイムライン（`/notes/timeline`）の外枠（中身は `add.js` / `timeline.js` がルーターの画面として描く）、`/notes/static`。話題チップに出す「最近使った上位 6 個＋選択中」と「他 N」の振り分け（`splitTopics`）もここ。ルート登録（`Mount`）と API の取り付けもここ。`GET /api/notes/timeline` はタイムラインと同じ組み立て（`buildTimeline`）の結果を JSON で返す（`?topic=` / `?no_topic=1` も同じ意味）。todo の `/`・`/static` とぶつからないよう `/notes` 配下に置く |
 | `internal/noteroute/` | `POST /api/notes/:id/route`。AI が拾ったメモの行き先を決める。タスクを作るので task と note の両方のストアを受け取る（ADR note-0004）。`internal/server` が追加の Mounter として取り付ける |
 | `internal/noteclient/` | CLI 用の HTTP クライアント。サーバに届かなければ日本語のエラーで止まる |
-| `web/shared/` | todo と note が共有するレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・基底 CSS・`common.js`（IME ガードと API 呼び出し）・`router.js`（画面の切り替え。登録した画面どうしはページを読み直さずに切り替え、画面ごとのスクロール位置を戻す。未登録の画面へはページごと読み込む）。サイトヘッダは上部に固定する。`/shared` で配信し、`internal/server` がガードの内側にマウントする |
+| `web/shared/` | todo と note が共有するレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・基底 CSS・`common.js`（IME ガードと API 呼び出し）・`router.js`（画面の切り替え。ページを読み直さずに切り替え、画面ごとのスクロール位置を戻す。追加ダイアログへ画面を貸し出す `lend`）・`modal.js`（追加ダイアログ）。4 画面は 1 ページに置く（ADR todo-0013）。サイトヘッダは上部に固定する。`/shared` で配信し、`internal/server` がガードの内側にマウントする |
 | `web/note/` | 埋め込みのテンプレートと静的ファイル（CSS / JS）。フレームワークも CDN も使わない |
 | `launchd/` `scripts/install-agent.sh` | 常駐用の plist テンプレートと配置スクリプト（読み込みはしない） |
 
@@ -42,7 +42,8 @@ CLI (note) ──────┘                                                
 - 話題チップの並びは「その話題が付いたメモの最新の登録日時」の降順で、メモの無い話題は登録順で後ろに回す。タイムラインではサーバ（`GET /api/notes/timeline` の `chips` / `other`）が上位 6 個と選択中の話題を出し、残りは「他 N」。登録画面は `GET /api/topics` の `details` から JS（`add.js` の `byRecent`）が同じ規則で上位 6 個を出す。さらに 1 行に入らない分は JS（`picker.js` の `fitChips`）が末尾の話題チップから隠して「他 N」の数と候補に足す（選択中・すべて・話題なしは隠さない。幅 560px 以下は隠さない）。登録画面は `topics` の全話題を入力欄の候補に使う
 - 登録画面はルーター（`router.js`）に登録した画面で、初めて表示したときに `add.js` が自分の HTML を描く。レイアウトがどのページにもルート要素（`data-view="note-add"`）と note の CSS・JS を置くので、todo 一覧との行き来でページを読み直さず、書きかけが残る。CSS は `:where(.view-note-add, .view-timeline)` の下に絞ってある。`Esc` は登録画面を表示しているときだけ受け、表示するたびにメモ欄へフォーカスを当てる
 - タイムラインもルーターに登録した画面で、`timeline.js` が `GET /api/notes/timeline` から描く（本文などはすべて `textContent` で入れ、HTML としては解釈しない）。表示するたびに読み直す。話題チップはリンクのままで、ルーターがクエリ（`?topic=` / `?no_topic=1`）だけ変えて読み直すので、絞り込みでページを読み直さない（新しい絞り込みは先頭から表示する）。追加ダイアログや「話題を整理」で変更があったときも、ページではなくタイムラインだけを読み直す。`N` はタイムラインを表示しているときだけ受ける
-- 登録画面の補足待ち一覧は、初めて表示した時点で `GET /api/notes?pending=1` から読み、別の画面から戻ったときに増えた分を足す（保存した分は先頭に足し、削除した行は取り消し線で残す）
+- 登録画面の補足待ち一覧は、初めて表示した時点で `GET /api/notes?pending=1` から読み、別の画面から戻ったときはサーバに合わせる（AI が拾ったものは消し、増えたものは足す。読み始めたあとに保存したものは消さない）。保存した分は先頭に足し、削除した行は取り消し線で残す
+- タイムラインの `N` で開く追加ダイアログは、登録画面そのものをダイアログへ貸し出す（iframe ではない）。書きかけはダイアログと note タブで共通
 - 「補足待ち」は AI がまだ拾っていないメモ（`Note.TriagedAt` が空）。補足の有無では決まらない。拾うと `triaged_at` と `route`（`to`: `todo` / `record`、`todo` のときは `task_id`）が付く
 - 行き先は変えられない。同じ行き先で再実行すると現状を返し、違う行き先は 409。`todo` はタスクを先に作ってからメモを更新し、失敗後の再実行は `source_note_id` で既存のタスクを使う（ADR note-0004）
 - 起動時に、補足があって `triaged_at` が空のメモを「最初の補足の時刻に `record` で拾い済み」へ直す（`note.Open` の `migrateTriage`）。変更があったときだけ保存する
@@ -63,7 +64,7 @@ CLI (note) ──────┘                                                
 | `[N]` 参照の書き方・関連 URL の検証 | `internal/note/link.go` の `refPattern` / `buildLinks` / `checkRefs` |
 | 登録画面の関連 URL 行 | `web/note/static/js/add.js` の `addLinkRow` / `readLinks` |
 | API の項目・ステータス | `internal/noteapi/api.go` |
-| 画面の見た目 | `web/shared/static/css/tokens.css`（色・文字・角丸・余白）、`web/note/static/css/style.css`、`web/note/templates/` |
+| 画面の見た目 | `web/shared/static/css/tokens.css`（色・文字・角丸・余白）、`web/note/static/css/style.css` |
 | 登録画面の操作（Enter・チップ・補足待ち一覧・削除） | `web/note/static/js/add.js` |
 | 候補つきの話題入力、1 行に入らない話題チップを「他 N」へ隠す処理（登録画面とタイムラインで共通） | `web/note/static/js/picker.js` の `createPicker` / `fitChips` |
 | タイムラインの描画・話題を整理するモーダル・タイムラインの「他 N」 | `web/note/static/js/timeline.js` |

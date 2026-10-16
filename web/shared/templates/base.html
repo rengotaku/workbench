@@ -7,11 +7,11 @@
   <link rel="icon" href="/shared/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/shared/css/tokens.css">
   <link rel="stylesheet" href="/shared/css/base.css">
-  {{/* Screens the router shows in place are loaded on every page. */}}
+  {{/* Every screen is one page (router.js), so every page loads every
+       screen's stylesheet and script; each screen draws itself into its root. */}}
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="stylesheet" href="/static/css/add.css">
   <link rel="stylesheet" href="/notes/static/css/style.css">
-  {{block "styles" .}}{{end}}
 </head>
 <body>
   <header class="site-head">
@@ -43,8 +43,6 @@
   <script src="/notes/static/js/picker.js" defer></script>
   <script src="/notes/static/js/add.js" defer></script>
   <script src="/notes/static/js/timeline.js" defer></script>
-  {{template "toolshared" .}}
-  {{block "scripts" .}}{{end}}
 </body>
 </html>
 {{end}}

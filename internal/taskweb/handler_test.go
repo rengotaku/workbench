@@ -29,8 +29,8 @@ func makeTestTemplates() map[string]*template.Template {
 		return template.Must(template.New("base").Parse(`{{define "base"}}` + src + `{{end}}`))
 	}
 	return map[string]*template.Template{
-		"index.html": parse(`<h1>着手順</h1><span>{{.Today}}</span>`),
-		"add.html":   parse(`<h1>{{.Title}}</h1><span>{{.Today}}</span>`),
+		"index.html": parse(`<h1>着手順</h1><span>{{.View}}</span>`),
+		"add.html":   parse(`<h1>{{.Title}}</h1><span>{{.View}}</span>`),
 	}
 }
 
