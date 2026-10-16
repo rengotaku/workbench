@@ -229,7 +229,8 @@
         var n = '[' + (i + 1) + ']';
         row.querySelector('.ln').textContent = n;
         row.querySelector('input').setAttribute('aria-label', '関連 URL ' + n + '（URL と一言）');
-        row.querySelector('button').setAttribute('aria-label', '関連 URL ' + n + ' を外す');
+        row.querySelector('.link-remove').setAttribute('aria-label', '関連 URL ' + n + ' を外す');
+        row.querySelector('.link-edit').setAttribute('aria-label', '関連 URL ' + n + ' を直す');
       });
     }
 
@@ -253,7 +254,7 @@
       });
       var remove = document.createElement('button');
       remove.type = 'button';
-      remove.className = 'linklike';
+      remove.className = 'linklike link-remove';
       remove.textContent = '外す';
       remove.addEventListener('click', function () {
         if (busy) return;
@@ -273,6 +274,8 @@
       row.appendChild(n);
       row.appendChild(input);
       row.appendChild(remove);
+      // A row with a URL shows as a link; 直す turns it back into the input.
+      window.workbench.paste.linkRowView(row, input, remove);
       el.links.appendChild(row);
       renumber();
       if (!keepFocus) input.focus();
@@ -305,7 +308,8 @@
       el.addLink.disabled = locked;
       linkRows().forEach(function (row) {
         row.querySelector('input').disabled = locked;
-        row.querySelector('button').disabled = locked;
+        row.querySelector('.link-edit').disabled = locked;
+        row.querySelector('.link-remove').disabled = locked;
       });
     }
 
@@ -319,6 +323,7 @@
         var v = rows[i].querySelector('input').value.trim();
         if (v === '') {
           show('関連 URL [' + (i + 1) + '] が空です。URL を入れるか「外す」を押してください。');
+          rows[i].querySelector('input').hidden = false;
           rows[i].querySelector('input').focus();
           return null;
         }
@@ -375,7 +380,10 @@
       when.textContent = stamp(n.created_at);
       var links = (n.links || []).length;
       t.appendChild(when);
-      t.appendChild(document.createTextNode('#' + n.id + '  ' + n.text + (n.topic ? '  [' + n.topic + ']' : '') + (links ? '  ＋関連 ' + links : '')));
+      // The memo's [N] link to its related URLs, as on the timeline.
+      t.appendChild(document.createTextNode('#' + n.id + '  '));
+      window.workbench.paste.writeLinkedText(t, n.text, n.links || [], 'ref');
+      t.appendChild(document.createTextNode((n.topic ? '  [' + n.topic + ']' : '') + (links ? '  ＋関連 ' + links : '')));
       var del = document.createElement('button');
       del.type = 'button';
       del.className = 'linklike danger';

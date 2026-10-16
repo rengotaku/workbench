@@ -780,6 +780,14 @@
     // name can add one.
     var linkEditors = {};
 
+    // linkSaves keeps one save queue per task, outside the rows: a row closed
+    // and opened again while a save is out gets a new editor, and two editors
+    // must not send two whole-list PATCHes that could land in either order.
+    //   busy  a PATCH is out
+    //   next  the save to run once it answers (the newest editor's)
+    //   last  the list the server last confirmed, as JSON
+    var linkSaves = {};
+
     // linksBlock is the open row's related URLs, edited in place like the name:
     // adding (or pasting) a URL, editing a row and removing one save at once.
     // Numbers follow the rows' order, and a row the name still points at (or
@@ -789,38 +797,43 @@
         var n = document.querySelector('.task[data-id="' + t.id + '"] .txt.live');
         return n ? n.textContent : t.name;
       }
-      var last = JSON.stringify((t.links || []).map(function (l) { return { url: l.url, label: l.label || '' }; }));
+      var q = linkSaves[t.id] || (linkSaves[t.id] = { busy: false, next: null, last: '' });
+      // With no save out, the list just read is what the server holds (it may
+      // have moved through the CLI meanwhile).
+      if (!q.busy) q.last = JSON.stringify((t.links || []).map(function (l) { return { url: l.url, label: l.label || '' }; }));
       var ed = shared.linkEditor({
-        text: nameNow,
+        // A row the name points at cannot go. Both the name being typed and the
+        // saved one count: the typed one may yet fail to save and come back.
+        text: function () { return nameNow() + ' ' + t.name; },
         onError: function (msg) { showError(new Error(msg)); },
         onChange: save,
         onEnter: function () { if (document.activeElement) document.activeElement.blur(); },
       });
-      // One save at a time: each PATCH replaces the whole list, so two in
-      // flight could land in either order and the older list would win. A save
-      // asked for meanwhile runs once the one in flight has answered, and
-      // compares with what the server last confirmed (last), so changing a row
-      // and changing it back while a save is out still reaches the server.
-      var inFlight = false;
-      var again = false;
+      // One save at a time per task (linkSaves): each PATCH replaces the whole
+      // list, so two in flight could land in either order and the older list
+      // would win. A save asked for meanwhile runs once the one out has
+      // answered, and compares with what the server last confirmed, so
+      // changing a row and changing it back while a save is out still lands.
       function save() {
-        if (inFlight) { again = true; return; }
+        if (q.busy) { q.next = save; return; }
         var links = ed.read(true);
         if (!links) return; // an empty row: saved once it has a URL
         var now = JSON.stringify(links);
-        if (now === last) return;
-        inFlight = true;
+        if (now === q.last) return;
+        q.busy = true;
         mark(ed.el, '保存中…');
         request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), { links: links })
           .then(function (res) {
-            last = now;
+            q.last = now;
             t.links = (res && res.task && res.task.links) || links.map(function (l, i) { return { n: i + 1, url: l.url, label: l.label }; });
             mark(ed.el, '保存した', true);
           })
           .catch(function (err) { showError(err); })
           .then(function () {
-            inFlight = false;
-            if (again) { again = false; save(); }
+            q.busy = false;
+            var next = q.next;
+            q.next = null;
+            if (next) next();
           });
       }
       ed.set(t.links || []);
