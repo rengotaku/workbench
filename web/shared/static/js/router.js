@@ -97,6 +97,33 @@
     window.scrollTo(0, restoreScroll ? entry.scrollY : 0);
   }
 
+  // lend shows a screen inside container (the add dialog, modal.js) while
+  // another screen stays on show. It returns release(), which hides the screen
+  // and puts its root back where it was, or null when the screen cannot be
+  // lent (not registered, not in this page, or the one on show).
+  function lend(name, container, href) {
+    var entry = views[name];
+    var root = rootOf(name);
+    if (!entry || !root || name === current) return null;
+    var home = root.parentNode;
+    var next = root.nextSibling;
+    container.appendChild(root);
+    root.hidden = false;
+    if (!entry.mounted) {
+      entry.mounted = true;
+      if (entry.view.mount) entry.view.mount(root);
+    }
+    if (entry.view.show) entry.view.show(new URL(href, location.href));
+    var released = false;
+    return function release() {
+      if (released) return;
+      released = true;
+      if (entry.view.hide) entry.view.hide();
+      root.hidden = true;
+      home.insertBefore(root, next);
+    };
+  }
+
   // navigate shows the screen for href. It returns false when it left the
   // page to the browser (the target cannot be switched to in place).
   function navigate(href, opts) {
@@ -178,6 +205,8 @@
   window.workbench.router = {
     register: register,
     navigate: navigate,
+    lend: lend,
+    viewFor: viewFor,
     current: function () { return current; },
   };
 })();

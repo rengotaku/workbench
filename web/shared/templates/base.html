@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/shared/css/base.css">
   {{/* Screens the router shows in place are loaded on every page. */}}
   <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/add.css">
   <link rel="stylesheet" href="/notes/static/css/style.css">
   {{block "styles" .}}{{end}}
 </head>
@@ -28,6 +29,7 @@
     {{- /* A root for each screen the router can show in place, besides the one
          this page was loaded for. */}}
     {{if ne .View "todo"}}<div class="view view-todo" data-view="todo" hidden></div>{{end}}
+    {{if ne .View "todo-add"}}<div class="view view-todo-add" data-view="todo-add" hidden></div>{{end}}
     {{if ne .View "note-add"}}<div class="view view-note-add" data-view="note-add" hidden></div>{{end}}
     {{if ne .View "timeline"}}<div class="view view-timeline" data-view="timeline" hidden></div>{{end}}
   </div>
@@ -36,6 +38,7 @@
   <script src="/shared/js/modal.js" defer></script>
   <script src="/static/js/shared.js" defer></script>
   <script src="/static/js/app.js" defer></script>
+  <script src="/static/js/add.js" defer></script>
   <script src="/notes/static/js/shared.js" defer></script>
   <script src="/notes/static/js/picker.js" defer></script>
   <script src="/notes/static/js/add.js" defer></script>
