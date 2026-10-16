@@ -41,10 +41,15 @@
 
   // tell sends the dialog a message: 'busy' / 'idle' around a request that
   // writes, 'changed' after something was added or undone, 'close' when the
-  // screen is left. Outside a dialog it does nothing.
-  function tell(type) {
+  // screen is left. Outside a dialog it does nothing. It returns the dialog it
+  // told (or null); a request passes that back as `to` for its 'changed' and
+  // 'idle', so the end of a save started elsewhere (another screen, an earlier
+  // dialog) never reaches a dialog that did not see it begin.
+  function tell(type, to) {
     var d = dialog();
+    if (arguments.length > 1 && to !== d) return null;
     if (d) d.message(type);
+    return d;
   }
 
   // leave goes to href, or closes the dialog the screen is in. The router

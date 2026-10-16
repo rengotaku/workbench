@@ -206,15 +206,15 @@
     }
 
     function undo(li, name) {
-      window.workbench.tell('busy');
+      var told = window.workbench.tell('busy');
       shared.request('POST', '/api/undo')
         .then(function () {
           li.classList.add('is-undone');
-          window.workbench.tell('changed');
+          window.workbench.tell('changed', told);
           toast([text('取り消しました: ' + name)]);
         })
         .catch(function (err) { toast([text('取り消せませんでした: ' + reason(err))], true); })
-        .then(function () { window.workbench.tell('idle'); });
+        .then(function () { window.workbench.tell('idle', told); });
     }
 
     function reset() {
@@ -241,12 +241,12 @@
 
       busy = true;
       el.name.disabled = true;
-      window.workbench.tell('busy');
+      var told = window.workbench.tell('busy');
       shared.request('POST', '/api/tasks', body)
         .then(function (data) {
           var t = data.task || body;
           var li = remember(t);
-          window.workbench.tell('changed');
+          window.workbench.tell('changed', told);
           var again = document.createElement('button');
           again.type = 'button';
           again.textContent = '元に戻す';
@@ -261,7 +261,7 @@
           el.name.focus();
           toast([text('追加できませんでした: ' + reason(err))], true);
         })
-        .then(function () { busy = false; window.workbench.tell('idle'); });
+        .then(function () { busy = false; window.workbench.tell('idle', told); });
     }
 
     el.submit.addEventListener('click', submit);
@@ -280,8 +280,16 @@
     });
 
     renderChips();
+    var shownOn = ymd(new Date()); // the day the chips were drawn for
 
     hooks.show = function () {
+      // The chips hold dates (今日, 明日 …): drawn on another day, they would
+      // save that day's dates. Draw them again once the day has moved.
+      if (shownOn !== ymd(new Date())) {
+        shownOn = ymd(new Date());
+        root.querySelector('.ap-date').textContent = '· ' + todayLabel();
+        renderChips();
+      }
       // The toast was about the last visit; what went in stays listed below.
       el.toast.hidden = true;
       // autofocus only works once per page; the screen is shown many times.
