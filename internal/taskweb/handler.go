@@ -4,7 +4,6 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -41,12 +40,10 @@ func (h *Handler) Mount(r gin.IRouter) {
 // handleIndex renders the shell. The list itself is fetched from the API on
 // load, so the page and the CLI always read the same numbers.
 func (h *Handler) handleIndex(c *gin.Context) {
-	now := time.Now()
 	h.render(c, "index.html", http.StatusOK, gin.H{
 		"Title":   "着手順",
 		"Current": "todo",
 		"View":    "todo",
-		"Today":   today(now),
 	})
 }
 
@@ -57,7 +54,6 @@ func (h *Handler) handleAdd(c *gin.Context) {
 		"Title":   "着手順に追加",
 		"Current": "todo",
 		"View":    "todo-add",
-		"Today":   today(time.Now()),
 	})
 }
 
@@ -72,12 +68,4 @@ func (h *Handler) render(c *gin.Context, name string, status int, data any) {
 	if err := t.ExecuteTemplate(c.Writer, "base", data); err != nil {
 		c.String(http.StatusInternalServerError, "Template error")
 	}
-}
-
-func today(now time.Time) string {
-	return now.Format("1/2") + " (" + weekdayJA(now.Weekday()) + ")"
-}
-
-func weekdayJA(d time.Weekday) string {
-	return [...]string{"日", "月", "火", "水", "木", "金", "土"}[int(d)]
 }

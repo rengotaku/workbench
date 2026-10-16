@@ -156,6 +156,9 @@
         })
         .catch(function (err) {
           if (mine !== topicSeq) return;
+          // The picked topic may have been renamed or removed meanwhile; saving
+          // with it would bring it back.
+          select('');
           show(failure('話題を読み込めませんでした', err, 'ページを再読み込みしてください'));
         });
     }
@@ -402,10 +405,16 @@
     // On a later show (fresh) the list is made to match the server: a memo the
     // AI picked up meanwhile leaves it, so its 削除 cannot remove a handled
     // memo. Rows for memos still waiting stay as they are.
+    // pendingSeq numbers the reads: only the newest reply is used, so an old
+    // list cannot bring back a memo the AI has picked up since (its 削除 would
+    // then remove a handled memo).
+    var pendingSeq = 0;
     function loadPending(fresh) {
+      var mine = ++pendingSeq;
       var savedAtRead = saved;
       shared.request('GET', '/api/notes?pending=1')
         .then(function (res) {
+          if (mine !== pendingSeq) return;
           var notes = res.notes || [];
           if (fresh) {
             var waiting = {};
@@ -422,12 +431,21 @@
           });
           updateTitle();
         })
-        .catch(function (err) { show(failure('補足待ちのメモを読み込めませんでした', err, 'ページを再読み込みしてください')); });
+        .catch(function (err) {
+          if (mine !== pendingSeq) return;
+          show(failure('補足待ちのメモを読み込めませんでした', err, 'ページを再読み込みしてください'));
+        });
     }
 
     // ---- save ----
 
+    // A save waits for the topic read in flight: until it lands, the picked
+    // topic may be one renamed or removed while another screen was on show.
     function save() {
+      topicsReady.then(saveNow);
+    }
+
+    function saveNow() {
       var text = el.memo.value.trim();
       if (!text || busy) { el.memo.focus(); return; }
       var links = readLinks();
@@ -472,13 +490,13 @@
       if (e.key === 'Escape') { window.workbench.leave('/notes/timeline'); }
     });
 
-    loadTopics();
+    var topicsReady = loadTopics();
     loadPending();
 
     hooks.show = function (again) {
       // While another screen was on show, memos may have been saved or picked
       // up and topics renamed or removed: read both again.
-      if (again) { loadPending(true); loadTopics(); }
+      if (again) { loadPending(true); topicsReady = loadTopics(); }
       // autofocus only works once per page; the screen is shown many times.
       // (The attribute stays: the add dialog (modal.js) looks for it.)
       el.memo.focus();

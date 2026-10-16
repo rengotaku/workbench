@@ -17,15 +17,16 @@ var FS embed.FS
 // StaticPath is where the server mounts the static bundle.
 const StaticPath = "/shared"
 
-// Parse builds the template set for one page: the shared layout, the tool's
-// own tool.html (icon, default styles and scripts) and the page itself. Later
-// files win, so a page may redefine what tool.html provides.
+// Parse builds the template set for one page: the shared layout and the page
+// itself. Every screen draws itself in the browser (router.js), so a page only
+// defines its (empty) content; the layout gives it the screens' roots, styles
+// and scripts.
 func Parse(tool fs.FS, page string) (*template.Template, error) {
 	t, err := template.ParseFS(FS, "templates/base.html")
 	if err != nil {
 		return nil, fmt.Errorf("shared layout: %w", err)
 	}
-	if _, err := t.ParseFS(tool, "templates/tool.html", "templates/"+page); err != nil {
+	if _, err := t.ParseFS(tool, "templates/"+page); err != nil {
 		return nil, fmt.Errorf("page %s: %w", page, err)
 	}
 	return t, nil
