@@ -115,10 +115,11 @@
           if (opts.onError) opts.onError('名前が ' + from + ' を指しているので [' + k + '] は外せません。名前の番号を直してから外してください。');
           return;
         }
-        var filled = input.value.trim() !== '';
         row.remove();
         renumber();
-        if (filled) changed();
+        // Always a change to look at: a saved URL emptied before its removal
+        // was never saved empty, so the removal is what takes it off.
+        changed();
       });
       row.appendChild(n);
       row.appendChild(input);

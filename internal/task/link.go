@@ -36,6 +36,13 @@ func ParseLinkInput(s string) LinkInput {
 
 func isSpace(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '　' }
 
+// ValidateLinks reports what buildLinks would refuse, without storing
+// anything, so a request can be refused before any of its other changes land.
+func ValidateLinks(in []LinkInput) error {
+	_, err := buildLinks(in)
+	return err
+}
+
 // buildLinks validates the inputs and numbers them in order. No links gives
 // nil, so a task without links is stored without a "links" key.
 func buildLinks(in []LinkInput) ([]Link, error) {

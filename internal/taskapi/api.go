@@ -286,6 +286,14 @@ func (a *API) patchTask(c *gin.Context) {
 	}
 	id := c.Param("id")
 	actor := actorOf(req.Actor)
+	// Invalid links refuse the whole request: checked before the name or the
+	// due date change, so a 400 never leaves half of it applied.
+	if req.Links != nil {
+		if err := task.ValidateLinks(*req.Links); err != nil {
+			a.fail(c, err)
+			return
+		}
+	}
 
 	var (
 		t   task.Task

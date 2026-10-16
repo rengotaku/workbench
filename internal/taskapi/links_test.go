@@ -106,3 +106,19 @@ func TestPatchTask_InvalidLinksIs400(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, code)
 	assert.Contains(t, body["error"], "http(s)")
 }
+
+// Invalid links refuse the whole PATCH: the name sent with them stays as it was.
+func TestPatchTask_InvalidLinksLeaveTheNameAlone(t *testing.T) {
+	store, h := setup(t)
+	tk, err := store.Add("元の名前", "", "", task.ActorHuman)
+	require.NoError(t, err)
+
+	code, _ := call(t, h, http.MethodPatch, "/api/tasks/"+tk.ID, map[string]any{
+		"name":  "変更後 [1]",
+		"links": []map[string]string{{"url": "javascript:alert(1)"}},
+	})
+	assert.Equal(t, http.StatusBadRequest, code)
+	got, err := store.Get(tk.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "元の名前", got.Name)
+}

@@ -796,11 +796,20 @@
         onChange: save,
         onEnter: function () { if (document.activeElement) document.activeElement.blur(); },
       });
+      // One save at a time: each PATCH replaces the whole list, so two in
+      // flight could land in either order and the older list would win. A save
+      // asked for meanwhile runs once the one in flight has answered, and
+      // compares with what the server last confirmed (last), so changing a row
+      // and changing it back while a save is out still reaches the server.
+      var inFlight = false;
+      var again = false;
       function save() {
+        if (inFlight) { again = true; return; }
         var links = ed.read(true);
         if (!links) return; // an empty row: saved once it has a URL
         var now = JSON.stringify(links);
         if (now === last) return;
+        inFlight = true;
         mark(ed.el, '保存中…');
         request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), { links: links })
           .then(function (res) {
@@ -808,7 +817,11 @@
             t.links = (res && res.task && res.task.links) || links.map(function (l, i) { return { n: i + 1, url: l.url, label: l.label }; });
             mark(ed.el, '保存した', true);
           })
-          .catch(function (err) { showError(err); });
+          .catch(function (err) { showError(err); })
+          .then(function () {
+            inFlight = false;
+            if (again) { again = false; save(); }
+          });
       }
       ed.set(t.links || []);
       // Typing in a row holds the poll, as the name and detail do.
@@ -1026,7 +1039,9 @@
             last = value;
             t[key] = value;
             mark(node, '保存した', true);
-            if (reload) load();
+            // Not while another field of the row is being typed in (its related
+            // URL rows): redrawing would drop what is typed there.
+            if (reload && !state.busy) load();
           })
           .catch(function (err) { showError(err); node.textContent = last; });
       }
@@ -1088,17 +1103,16 @@
     // rest as plain text. Text goes in as text nodes, never as HTML.
     function writeName(el, t) {
       el.textContent = '';
-      // A task with related URLs links each [N] in its name (ADR todo-0014).
-      if (t.links && t.links.length) {
-        shared.writeLinkedText(el, t.name, t.links);
-        return;
-      }
+      // Each [N] naming one of the task's related URLs is a link to it (ADR
+      // todo-0014). A task from before them also keeps its one link over the
+      // words it covered (ADR todo-0008), related URLs added later or not.
+      var links = t.links || [];
       var r = linkRange(t);
       if (!r) {
-        el.textContent = t.name;
+        shared.writeLinkedText(el, t.name, links);
         return;
       }
-      if (r.start > 0) el.appendChild(document.createTextNode(t.name.slice(0, r.start)));
+      if (r.start > 0) shared.writeLinkedText(el, t.name.slice(0, r.start), links);
       var a = document.createElement('a');
       a.className = 'ticket';
       a.href = t.url;
@@ -1108,7 +1122,7 @@
       a.title = t.url;
       a.draggable = false; // dragging a row must not drag the link instead
       el.appendChild(a);
-      if (r.end < t.name.length) el.appendChild(document.createTextNode(t.name.slice(r.end)));
+      if (r.end < t.name.length) shared.writeLinkedText(el, t.name.slice(r.end), links);
     }
 
     // paintLink marks the link range inside an editable name. It uses the
