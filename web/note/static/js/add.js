@@ -367,12 +367,12 @@
       del.textContent = '削除';
       del.setAttribute('aria-label', 'メモ #' + n.id + ' を削除');
       del.addEventListener('click', function () {
-        window.workbench.tell('busy');
+        var told = window.workbench.tell('busy');
         shared.request('DELETE', '/api/notes/' + n.id)
           .then(function () {
             li.classList.add('is-undone');
             li.classList.remove('new');
-            window.workbench.tell('changed');
+            window.workbench.tell('changed', told);
             el.status.hidden = true;
             var gone = document.createElement('span');
             gone.className = 'gone';
@@ -382,7 +382,7 @@
             el.memo.focus();
           })
           .catch(function (err) { show(failure('削除できませんでした', err, 'もう一度「削除」を押してください')); })
-          .then(function () { window.workbench.tell('idle'); });
+          .then(function () { window.workbench.tell('idle', told); });
       });
       li.appendChild(t);
       li.appendChild(del);
@@ -439,11 +439,11 @@
       busy = true;
       el.memo.disabled = true;
       lockLinks(true);
-      window.workbench.tell('busy');
+      var told = window.workbench.tell('busy');
       shared.request('POST', '/api/notes', body)
         .then(function (n) {
           remember(n);
-          window.workbench.tell('changed');
+          window.workbench.tell('changed', told);
           el.status.hidden = true; // the band is for failures; a success clears an old one
           el.memo.value = '';
           clearLinks();
@@ -457,7 +457,7 @@
           el.memo.disabled = false;
           lockLinks(false);
           el.memo.focus();
-          window.workbench.tell('idle');
+          window.workbench.tell('idle', told);
         });
     }
 

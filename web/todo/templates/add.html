@@ -1,43 +1,4 @@
-{{define "styles"}}<link rel="stylesheet" href="/static/css/add.css">{{end}}
-
-{{define "scripts"}}<script src="/static/js/add.js" defer></script>{{end}}
-
-{{define "content"}}
-<div class="ap-page">
-  <header class="ap-head">
-    <span>着手順に追加 <span class="ap-date">· {{.Today}}</span></span>
-    <a href="/" id="to-list" data-leave>一覧へ →</a>
-  </header>
-
-  <main class="ap-main">
-    <label class="ap-label" for="ap-name">なにをやる？</label>
-    <input class="ap-name" id="ap-name" autofocus autocomplete="off" placeholder="タスク名を入力して Enter">
-    <div class="ap-link" id="ap-link" hidden></div>
-
-    <div class="ap-row">
-      <div class="ap-field">
-        <p class="ap-label">期限</p>
-        <div class="ap-chips" id="ap-chips"></div>
-        <input type="date" id="ap-pick" class="ap-pick" tabindex="-1" aria-label="期限の日付">
-        <div class="ap-resolved" id="ap-resolved"></div>
-      </div>
-      <div class="ap-field">
-        <label class="ap-label" for="ap-detail">詳細（任意）</label>
-        <textarea class="ap-detail" id="ap-detail" placeholder="メモや URL"></textarea>
-      </div>
-    </div>
-
-    <div class="ap-actions">
-      <button type="button" class="ap-submit" id="ap-submit">追加する</button>
-      <span class="ap-hint"><kbd>⏎</kbd> 追加して次を入力 · <kbd>⌥</kbd>+数字 で期限 · <kbd>Esc</kbd> 一覧へ</span>
-    </div>
-
-    <div class="ap-toast" id="ap-toast" role="status" hidden></div>
-
-    <section class="ap-recent" id="ap-recent-wrap" hidden>
-      <p class="ap-label">いま追加したもの</p>
-      <ul id="ap-recent"></ul>
-    </section>
-  </main>
-</div>
-{{end}}
+{{/* The add screen draws itself (web/todo/static/js/add.js) into its root,
+     which the layout provides on every page so the router can show it in
+     place and the add dialog can borrow it. Nothing is rendered here. */}}
+{{define "content"}}{{end}}

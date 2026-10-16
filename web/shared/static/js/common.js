@@ -33,34 +33,41 @@
     });
   }
 
-  // An add screen also runs inside the add dialog (modal.js) as a framed page.
-  // There it has no site header, and leaving it closes the dialog instead of
-  // navigating the frame.
-  var embedded = window.parent !== window;
-  if (embedded) document.documentElement.classList.add('embedded');
+  // An add screen also shows inside the add dialog (modal.js), which borrows
+  // it from the router. dialog() is that dialog while it is open.
+  function dialog() {
+    return window.workbench.addDialog ? window.workbench.addDialog() : null;
+  }
 
   // tell sends the dialog a message: 'busy' / 'idle' around a request that
   // writes, 'changed' after something was added or undone, 'close' when the
-  // screen is left. Outside a dialog it does nothing.
-  function tell(type) {
-    if (embedded) window.parent.postMessage({ workbench: type }, location.origin);
+  // screen is left. Outside a dialog it does nothing. It returns the dialog it
+  // told (or null); a request passes that back as `to` for its 'changed' and
+  // 'idle', so the end of a save started elsewhere (another screen, an earlier
+  // dialog) never reaches a dialog that did not see it begin.
+  function tell(type, to) {
+    var d = dialog();
+    if (arguments.length > 1 && to !== d) return null;
+    if (d) d.message(type);
+    return d;
   }
 
   // leave goes to href, or closes the dialog the screen is in. The router
   // (router.js) shows a registered screen in place and loads anything else.
   function leave(href) {
-    if (embedded) { tell('close'); return; }
+    if (dialog()) { tell('close'); return; }
     if (window.workbench.router) { window.workbench.router.navigate(href); return; }
     location.href = href;
   }
 
-  // A link marked data-leave closes the dialog rather than open in the frame.
+  // A link marked data-leave (the add screens' way back) closes the dialog
+  // when the screen is in one.
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('a[data-leave]');
-    if (!a || !embedded) return;
+    if (!a || !dialog()) return;
     e.preventDefault();
     tell('close');
   });
 
-  window.workbench = { composing: composing, request: request, embedded: embedded, tell: tell, leave: leave };
+  window.workbench = { composing: composing, request: request, tell: tell, leave: leave };
 })();
