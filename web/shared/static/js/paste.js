@@ -118,10 +118,88 @@
     });
   }
 
+  // ---- related URLs on screen ----
+
+  // splitLinkInput reads a related-URL row ("URL 一言") into {url, label}.
+  function splitLinkInput(v) {
+    var m = /^(\S+)(?:[\s　]+([\s\S]*))?$/.exec((v || '').trim());
+    return m ? { url: m[1], label: (m[2] || '').trim() } : null;
+  }
+
+  // linkRowView shows a related-URL row as a link ("一言", or the URL when
+  // there is none) that opens in a new tab, with a 直す button that turns it
+  // back into the input. The row returns to a link when the input loses focus
+  // holding an http(s) URL; an empty or unusable value stays in the input to
+  // be fixed. remove is the row's 外す button; 直す goes just before it.
+  function linkRowView(row, input, remove) {
+    var view = document.createElement('a');
+    view.className = 'link-view';
+    view.target = '_blank';
+    view.rel = 'noopener noreferrer';
+    view.draggable = false; // dragging a row must not drag the link instead
+    var edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'linklike link-edit';
+    edit.textContent = '直す';
+    row.insertBefore(view, input);
+    row.insertBefore(edit, remove);
+
+    function show() {
+      var l = splitLinkInput(input.value);
+      if (!l || !/^https?:\/\//i.test(l.url)) return false;
+      view.href = l.url;
+      view.textContent = l.label || l.url;
+      view.title = l.url;
+      view.hidden = false;
+      edit.hidden = false;
+      input.hidden = true;
+      return true;
+    }
+    function editing() {
+      view.hidden = true;
+      edit.hidden = true;
+      input.hidden = false;
+    }
+    edit.addEventListener('click', function () { editing(); input.focus(); });
+    input.addEventListener('blur', show);
+    if (!show()) editing();
+    return { show: show, edit: edit };
+  }
+
+  // writeLinkedText puts text into el with each [N] that names one of links
+  // ({n, url, label}) as a link to its URL, and the rest as plain text nodes
+  // (never HTML). cls is the links' class.
+  function writeLinkedText(el, text, links, cls) {
+    var byN = {};
+    (links || []).forEach(function (l) { byN[l.n] = l; });
+    var re = /\[([1-9][0-9]{0,3})\]/g;
+    var at = 0;
+    var m;
+    while ((m = re.exec(text)) !== null) {
+      var l = byN[Number(m[1])];
+      if (!l) continue;
+      if (m.index > at) el.appendChild(document.createTextNode(text.slice(at, m.index)));
+      var a = document.createElement('a');
+      a.className = cls || 'ref';
+      a.href = l.url;
+      a.textContent = m[0];
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.title = l.label ? l.label + ' — ' + l.url : l.url;
+      a.draggable = false; // dragging a row must not drag the link instead
+      el.appendChild(a);
+      at = m.index + m[0].length;
+    }
+    if (at < text.length) el.appendChild(document.createTextNode(text.slice(at)));
+  }
+
   window.workbench.paste = {
     pastedLink: pastedLink,
     pastedLinks: pastedLinks,
     insertText: insertText,
     wireLinkPaste: wireLinkPaste,
+    splitLinkInput: splitLinkInput,
+    linkRowView: linkRowView,
+    writeLinkedText: writeLinkedText,
   };
 })();

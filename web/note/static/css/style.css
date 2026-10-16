@@ -42,6 +42,12 @@
     padding: 4px 2px; outline: none; border-radius: 0;
   }
   .link-input:focus { border-bottom-color: var(--accent); }
+  /* A row with a URL reads as a link; 直す turns it back into the input. */
+  .link-view {
+    flex: 1; min-width: 0; padding: 4px 2px; font-size: var(--fs-lg); color: var(--accent);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .recent a.ref { color: var(--accent); }
   .link-input::placeholder { color: var(--muted); }
   .link-add { margin-top: var(--space-2); }
   .ln { color: var(--muted); font-family: var(--mono); font-size: var(--fs-md); font-variant-numeric: tabular-nums; }

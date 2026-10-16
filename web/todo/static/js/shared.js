@@ -81,7 +81,8 @@
         var n = '[' + (i + 1) + ']';
         row.querySelector('.ln').textContent = n;
         row.querySelector('input').setAttribute('aria-label', '関連 URL ' + n + '（URL と一言）');
-        row.querySelector('button').setAttribute('aria-label', '関連 URL ' + n + ' を外す');
+        row.querySelector('.link-remove').setAttribute('aria-label', '関連 URL ' + n + ' を外す');
+        row.querySelector('.link-edit').setAttribute('aria-label', '関連 URL ' + n + ' を直す');
       });
     }
 
@@ -106,7 +107,7 @@
       input.addEventListener('change', changed);
       var remove = document.createElement('button');
       remove.type = 'button';
-      remove.className = 'linklike';
+      remove.className = 'linklike link-remove';
       remove.textContent = '外す';
       remove.addEventListener('click', function () {
         var k = all().indexOf(row) + 1;
@@ -124,6 +125,8 @@
       row.appendChild(n);
       row.appendChild(input);
       row.appendChild(remove);
+      // A row with a URL shows as a link; 直す turns it back into the input.
+      window.workbench.paste.linkRowView(row, input, remove);
       rows.appendChild(row);
       renumber();
       if (!keepFocus) input.focus();
@@ -163,7 +166,8 @@
       addBtn.disabled = locked;
       all().forEach(function (row) {
         row.querySelector('input').disabled = locked;
-        row.querySelector('button').disabled = locked;
+        row.querySelector('.link-edit').disabled = locked;
+        row.querySelector('.link-remove').disabled = locked;
       });
     }
 
@@ -171,29 +175,9 @@
   }
 
   // writeLinkedText puts text into el with each [N] that names one of links as
-  // a link to its URL, and the rest as plain text nodes (never HTML).
+  // a link to its URL (/shared/js/paste.js), styled as the name's links.
   function writeLinkedText(el, text, links) {
-    var byN = {};
-    (links || []).forEach(function (l) { byN[l.n] = l; });
-    var re = /\[([1-9][0-9]{0,3})\]/g;
-    var at = 0;
-    var m;
-    while ((m = re.exec(text)) !== null) {
-      var l = byN[Number(m[1])];
-      if (!l) continue;
-      if (m.index > at) el.appendChild(document.createTextNode(text.slice(at, m.index)));
-      var a = document.createElement('a');
-      a.className = 'ticket ref';
-      a.href = l.url;
-      a.textContent = m[0];
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.title = l.label ? l.label + ' — ' + l.url : l.url;
-      a.draggable = false; // dragging a row must not drag the link instead
-      el.appendChild(a);
-      at = m.index + m[0].length;
-    }
-    if (at < text.length) el.appendChild(document.createTextNode(text.slice(at)));
+    window.workbench.paste.writeLinkedText(el, text, links, 'ticket ref');
   }
 
   window.todoShared = {
