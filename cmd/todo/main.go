@@ -36,7 +36,8 @@ func rootCmd() *cobra.Command {
 		Short: "着手順で持つ TODO リスト",
 		Long: "着手順で持つ TODO リスト。\n\n" +
 			"引数にタスク名を渡すと末尾に追加する。順序は人が決めるもので、期限からは導出しない。\n" +
-			"端末から引数なしで実行すると、ブラウザで追加画面を開く。",
+			"端末から引数なしで実行すると、ブラウザで追加画面を開く。\n\n" +
+			"  todo \"名前 [1]\" --link \"<URL> 一言\"   関連 URL を添えて追加する。名前の [1] は 1 つ目の --link を指す",
 		Args:         cobra.ArbitraryArgs,
 		SilenceUsage: true,
 		RunE:         runAdd,
@@ -46,6 +47,7 @@ func rootCmd() *cobra.Command {
 	root.PersistentFlags().BoolVar(&asJSON, "json", false, "print the raw JSON response")
 	root.Flags().String("due", "", "due date (YYYY-MM-DD)")
 	root.Flags().String("detail", "", "detail text")
+	root.Flags().StringArray("link", nil, "関連 URL（\"<URL> 一言\" の形。一言は省略可）。書いた順に [1] [2] … と番号が付く")
 
 	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), removeCmd(), waitCmd(), resumeCmd(),
 		somedayCmd(), orderCmd(), dueCmd(), detailCmd(), annotateCmd(), renameCmd(), focusCmd(true), focusCmd(false),
@@ -67,12 +69,17 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	due, _ := cmd.Flags().GetString("due")
 	detail, _ := cmd.Flags().GetString("detail")
 	name := strings.Join(args, " ")
+	rawLinks, _ := cmd.Flags().GetStringArray("link")
+	links := make([]task.LinkInput, 0, len(rawLinks))
+	for _, l := range rawLinks {
+		links = append(links, task.ParseLinkInput(l))
+	}
 
 	c, err := newClient()
 	if err != nil {
 		return err
 	}
-	t, raw, err := c.Add(name, detail, due)
+	t, raw, err := c.Add(name, detail, due, links...)
 	if err != nil {
 		return err
 	}

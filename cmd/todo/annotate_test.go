@@ -85,3 +85,29 @@ func TestAnnotateCommand_WritesThroughTheAPIAsTheActor(t *testing.T) {
 	assert.Contains(t, root.UsageString(), "annotate")
 	assert.Contains(t, annotateCmd().Long, "undo")
 }
+
+func TestAddCommand_LinkFlagSendsLinksInOrder(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store, err := task.Open(t.TempDir(), time.Local)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	r := gin.New()
+	taskapi.New(store, time.Local).Mount(r)
+	srv := httptest.NewServer(r)
+	t.Cleanup(srv.Close)
+
+	_, err = runTodo(t, srv.URL, "読む [1] [2]",
+		"--link", "https://a.example/x 仕様書", "--link", "https://b.example/")
+	require.NoError(t, err)
+
+	list, _ := store.List()
+	require.Len(t, list, 1)
+	assert.Equal(t, "読む [1] [2]", list[0].Name, "the name is not touched")
+	assert.Equal(t, []task.Link{
+		{N: 1, URL: "https://a.example/x", Label: "仕様書"},
+		{N: 2, URL: "https://b.example/"},
+	}, list[0].Links)
+
+	assert.Error(t, failTodo(t, srv.URL, "x", "--link", "not-a-url"))
+	assert.Contains(t, rootCmd().Long, "--link")
+}

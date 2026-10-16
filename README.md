@@ -90,6 +90,7 @@ todo context T004             # そのタスクの経緯を時系列で出す
 
 ```bash
 todo "タスク名" --due 2026-09-12 [--detail "詳しい話"]  # 追加
+todo "タスク名 [1]" --link "https://… 一言"            # 関連 URL を添えて追加（--link を書いた順に [1] [2] …）
 todo list [--scope 7|14|all]                          # 一覧
 todo done T007                                        # 完了（複数可）
 todo reopen T007                                      # 完了を取り消して着手順の末尾へ

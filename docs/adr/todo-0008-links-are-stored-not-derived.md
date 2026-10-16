@@ -1,8 +1,8 @@
 ---
 adr: todo-0008
 title: リンクは貼られたものを保存する。名前から組み立てない
-status: accepted
-superseded_by: null
+status: superseded
+superseded_by: todo-0014
 date: 2026-09-16
 issues: []
 tags: [links, paste, config, ui]
