@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -92,21 +91,90 @@ func TestAddPage(t *testing.T) {
 	mustNotContain(t, body, "https://fonts.", "cdn.")
 }
 
+// timeline fetches the timeline API (the screen draws from it) and decodes it.
+func timeline(t *testing.T, h http.Handler, query string) timelineJSON {
+	t.Helper()
+	code, body := get(t, h, "/api/notes/timeline"+query)
+	if code != http.StatusOK {
+		t.Fatalf("%q: status = %d", query, code)
+	}
+	var got timelineJSON
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("%q: %v", query, err)
+	}
+	return got
+}
+
+// noteIDs is the ids in the order the screen shows them.
+func noteIDs(tl timelineJSON) []int {
+	var ids []int
+	for _, d := range tl.Days {
+		for _, nv := range d.Notes {
+			ids = append(ids, nv.ID)
+		}
+	}
+	return ids
+}
+
+// findNote returns the note with id in tl.
+func findNote(t *testing.T, tl timelineJSON, id int) noteView {
+	t.Helper()
+	for _, d := range tl.Days {
+		for _, nv := range d.Notes {
+			if nv.ID == id {
+				return nv
+			}
+		}
+	}
+	t.Fatalf("note %d not in timeline", id)
+	return noteView{}
+}
+
+// chipOn is the href of the chip that is on, or "" when none is.
+func chipOn(tl timelineJSON) string {
+	for _, c := range tl.Chips {
+		if c.On {
+			return c.Href
+		}
+	}
+	return ""
+}
+
+func hasChip(tl timelineJSON, href string) bool {
+	for _, c := range tl.Chips {
+		if c.Href == href {
+			return true
+		}
+	}
+	return false
+}
+
+func TestTimelinePage(t *testing.T) {
+	h, _ := newPages(t)
+	code, body := get(t, h, "/notes/timeline")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d", code)
+	}
+	// The screen draws itself (timeline.js) from /api/notes/timeline.
+	mustContain(t, body, `data-view="timeline"`)
+}
+
 func TestTimelineGroupsByDayNewestFirst(t *testing.T) {
 	h, store := newPages(t)
 	// The store stamps notes with the real clock, so group by the dates it produced.
-	_, _ = store.Add("古いメモ", "")
-	_, _ = store.Add("新しいメモ", "")
+	old, _ := store.Add("古いメモ", "")
+	newer, _ := store.Add("新しいメモ", "")
 
-	_, body := get(t, h, "/notes/timeline")
-	if strings.Index(body, "新しいメモ") > strings.Index(body, "古いメモ") {
-		t.Error("newest memo should come first")
+	tl := timeline(t, h, "")
+	if want := []int{newer.ID, old.ID}; !reflect.DeepEqual(noteIDs(tl), want) {
+		t.Errorf("ids = %v, want newest first %v", noteIDs(tl), want)
 	}
-	today := time.Now().Format("1/2")
-	if got := strings.Count(body, `class="day"`); got != 1 {
-		t.Errorf("both memos were added today, want one day heading, got %d", got)
+	if len(tl.Days) != 1 {
+		t.Fatalf("both memos were added today, want one day heading, got %d", len(tl.Days))
 	}
-	mustContain(t, body, today+"（")
+	if want := time.Now().Format("1/2") + "（"; !strings.HasPrefix(tl.Days[0].Heading, want) {
+		t.Errorf("heading = %q, want prefix %q", tl.Days[0].Heading, want)
+	}
 }
 
 func TestBuildTimelineDayHeadings(t *testing.T) {
@@ -137,60 +205,111 @@ func TestTimelineShowsLinksSourceAndAnnotations(t *testing.T) {
 	n, _ := store.Add("https://fundinno-inc.slack.com/archives/C1/p1 staging が変わった", "青分離")
 	_, _ = store.Annotate(n.ID, note.AnnotationInput{Kind: note.KindQuote, Body: "剣持: 変更します\n・deploy_staging", Source: "slack"})
 	_, _ = store.Annotate(n.ID, note.AnnotationInput{Kind: note.KindAnalysis, Body: "考察の本文", Author: note.AuthorHuman})
-	_, _ = store.Add("補足のないメモ", "")
+	bare, _ := store.Add("補足のないメモ", "")
 	_, _ = store.SetRoute(n.ID, note.Route{To: note.RouteTodo, TaskID: "T007"})
 	rec, _ := store.Add("記録にしたメモ", "")
 	_, _ = store.SetRoute(rec.ID, note.Route{To: note.RouteRecord})
 
-	_, body := get(t, h, "/notes/timeline")
-	mustContain(t, body,
-		`<a href="https://fundinno-inc.slack.com/archives/C1/p1" target="_blank" rel="noopener noreferrer">`,
-		`<span class="src">Slack</span>`,
-		`<blockquote class="body">剣持: 変更します`,
-		"引用 · AI", "考察 · 人", " · slack",
-		"補足待ち 1",
-		`<div class="pending">補足待ち</div>`,
-		`<a class="route" href="/">→ todo T007</a>`,
-		`<span class="route">記録</span>`,
-	)
+	tl := timeline(t, h, "")
+	if tl.Pending != 1 {
+		t.Errorf("pending = %d, want 1", tl.Pending)
+	}
+	got := findNote(t, tl, n.ID)
+	if got.Source != "Slack" {
+		t.Errorf("source = %q", got.Source)
+	}
+	if len(got.Segments) == 0 || got.Segments[0].URL != "https://fundinno-inc.slack.com/archives/C1/p1" {
+		t.Errorf("segments = %+v", got.Segments)
+	}
+	if got.Route == nil || got.Route.Label != "→ todo T007" || got.Route.Href != "/" {
+		t.Errorf("route = %+v", got.Route)
+	}
+	if len(got.Annotations) != 2 {
+		t.Fatalf("annotations = %+v", got.Annotations)
+	}
+	q, a := got.Annotations[0], got.Annotations[1]
+	if q.Label != "引用" || q.Author != "AI" || q.Source != "slack" || !strings.HasPrefix(q.Body, "剣持: 変更します") {
+		t.Errorf("quote = %+v", q)
+	}
+	if a.Label != "考察" || a.Author != "人" || a.Body != "考察の本文" {
+		t.Errorf("analysis = %+v", a)
+	}
+	if b := findNote(t, tl, bare.ID); !b.Pending || b.Route != nil {
+		t.Errorf("bare memo = %+v", b)
+	}
+	if r := findNote(t, tl, rec.ID).Route; r == nil || r.Label != "記録" || r.Href != "" {
+		t.Errorf("record route = %+v", r)
+	}
 }
 
-func TestTimelineEscapesUserContent(t *testing.T) {
+// HTML escaping happens in the client (the script draws with textContent), so
+// the API must hand user text back verbatim.
+func TestTimelineReturnsUserContentVerbatim(t *testing.T) {
 	h, store := newPages(t)
 	n, _ := store.Add(`<script>alert(1)</script> https://example.com/?a=1&b="2"`, `<b>話題</b>`)
 	_, _ = store.Annotate(n.ID, note.AnnotationInput{Kind: note.KindAnalysis, Body: `<img src=x onerror=alert(2)>`})
 
-	_, body := get(t, h, "/notes/timeline")
-	mustNotContain(t, body, "<script>alert(1)", "<img src=x", "<b>話題</b>")
-	mustContain(t, body, "&lt;script&gt;alert(1)&lt;/script&gt;", "&lt;img src=x onerror=alert(2)&gt;")
+	got := findNote(t, timeline(t, h, ""), n.ID)
+	var text strings.Builder
+	for _, s := range got.Segments {
+		text.WriteString(s.Text)
+	}
+	if want := `<script>alert(1)</script> https://example.com/?a=1&b="2"`; text.String() != want {
+		t.Errorf("segments text = %q, want %q", text.String(), want)
+	}
+	if got.Topic != `<b>話題</b>` {
+		t.Errorf("topic = %q", got.Topic)
+	}
+	if len(got.Annotations) != 1 || got.Annotations[0].Body != `<img src=x onerror=alert(2)>` {
+		t.Errorf("annotations = %+v", got.Annotations)
+	}
 }
 
 func TestTimelineFilters(t *testing.T) {
 	h, store := newPages(t)
-	_, _ = store.Add("青のメモ", "青分離")
+	blue, _ := store.Add("青のメモ", "青分離")
 	_, _ = store.Add("CCのメモ", "C&C")
-	_, _ = store.Add("無印のメモ", "")
+	none, _ := store.Add("無印のメモ", "")
 
-	_, all := get(t, h, "/notes/timeline")
-	mustContain(t, all, "青のメモ", "CCのメモ", "無印のメモ", `href="/notes/timeline?topic=C%26C"`, `href="/notes/timeline?no_topic=1"`)
-	mustContain(t, all, `class="chip on" href="/notes/timeline" aria-current="page"`)
+	all := timeline(t, h, "")
+	if got := noteIDs(all); len(got) != 3 {
+		t.Errorf("all ids = %v", got)
+	}
+	if !hasChip(all, "/notes/timeline?topic=C%26C") || !hasChip(all, "/notes/timeline?no_topic=1") {
+		t.Errorf("chips = %+v", all.Chips)
+	}
+	if chipOn(all) != "/notes/timeline" {
+		t.Errorf("すべて should be on, chips = %+v", all.Chips)
+	}
 
-	_, blue := get(t, h, "/notes/timeline?topic=%E9%9D%92%E5%88%86%E9%9B%A2")
-	mustContain(t, blue, "青のメモ", `class="chip on" href="/notes/timeline?topic=`)
-	mustNotContain(t, blue, "CCのメモ", "無印のメモ")
+	b := timeline(t, h, "?topic="+url.QueryEscape("青分離"))
+	if want := []int{blue.ID}; !reflect.DeepEqual(noteIDs(b), want) {
+		t.Errorf("blue ids = %v, want %v", noteIDs(b), want)
+	}
+	if want := "/notes/timeline?topic=" + url.QueryEscape("青分離"); chipOn(b) != want {
+		t.Errorf("on chip = %q, want %q", chipOn(b), want)
+	}
 
-	_, none := get(t, h, "/notes/timeline?no_topic=1")
-	mustContain(t, none, "無印のメモ")
-	mustNotContain(t, none, "青のメモ", "CCのメモ")
+	n := timeline(t, h, "?no_topic=1")
+	if want := []int{none.ID}; !reflect.DeepEqual(noteIDs(n), want) {
+		t.Errorf("no_topic ids = %v, want %v", noteIDs(n), want)
+	}
+	if chipOn(n) != "/notes/timeline?no_topic=1" {
+		t.Errorf("話題なし should be on, got %q", chipOn(n))
+	}
 
-	_, nobody := get(t, h, "/notes/timeline?topic=nope")
-	mustContain(t, nobody, "この絞り込みに合うメモはありません")
+	nobody := timeline(t, h, "?topic=nope")
+	if len(noteIDs(nobody)) != 0 || !strings.Contains(nobody.Empty, "この絞り込みに合うメモはありません") {
+		t.Errorf("nobody = %+v", nobody)
+	}
 }
 
 func TestTimelineEmpty(t *testing.T) {
 	h, _ := newPages(t)
-	_, body := get(t, h, "/notes/timeline")
-	mustContain(t, body, "まだメモがありません", "補足待ち 0")
+	tl := timeline(t, h, "")
+	if !strings.Contains(tl.Empty, "まだメモがありません") || tl.Pending != 0 || len(tl.Days) != 0 {
+		t.Errorf("timeline = %+v", tl)
+	}
 }
 
 func TestStatic(t *testing.T) {
@@ -305,23 +424,36 @@ func TestTimelineShowsLinksAndReferences(t *testing.T) {
 	if err == nil {
 		t.Fatal("[2] without a second link should be rejected")
 	}
-	if _, err := store.Add("[1] で決定、詳細は [2]", "",
+	linked, err := store.Add("[1] で決定、詳細は [2]", "",
 		note.LinkInput{URL: "https://x.slack.com/a/1", Label: "決定スレッド"},
-		note.LinkInput{URL: "https://space.backlog.com/view/DSC-1"}); err != nil {
+		note.LinkInput{URL: "https://space.backlog.com/view/DSC-1"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = store.Add("脚注 [1] だけ", "")
+	foot, _ := store.Add("脚注 [1] だけ", "")
 
-	_, body := get(t, h, "/notes/timeline")
-	mustContain(t, body,
-		`<a class="ref" href="https://x.slack.com/a/1" target="_blank" rel="noopener noreferrer" title="https://x.slack.com/a/1">[1]</a>`,
-		`<a class="ref" href="https://space.backlog.com/view/DSC-1"`,
-		`<span class="ln">[1]</span> <span class="src">Slack</span> <a href="https://x.slack.com/a/1" target="_blank" rel="noopener noreferrer">決定スレッド</a>`,
-		`<span class="ln">[2]</span> <span class="src">Backlog</span> <a href="https://space.backlog.com/view/DSC-1" target="_blank" rel="noopener noreferrer">https://space.backlog.com/view/DSC-1</a>`,
-		"脚注 [1] だけ",
-	)
-	if got := strings.Count(body, `class="links"`); got != 1 {
-		t.Errorf("only the memo with links should list them, got %d lists", got)
+	tl := timeline(t, h, "")
+	got := findNote(t, tl, linked.ID)
+	wantRefs := []segmentView{{Text: "[1]", URL: "https://x.slack.com/a/1", Ref: 1}, {Text: " で決定、詳細は "}, {Text: "[2]", URL: "https://space.backlog.com/view/DSC-1", Ref: 2}}
+	if !reflect.DeepEqual(got.Segments, wantRefs) {
+		t.Errorf("segments = %+v, want %+v", got.Segments, wantRefs)
+	}
+	wantLinks := []linkView{
+		{N: 1, URL: "https://x.slack.com/a/1", Label: "決定スレッド", Source: "Slack"},
+		{N: 2, URL: "https://space.backlog.com/view/DSC-1", Source: "Backlog"},
+	}
+	if !reflect.DeepEqual(got.Links, wantLinks) {
+		t.Errorf("links = %+v, want %+v", got.Links, wantLinks)
+	}
+	// A reference with no link stays plain text, and only the memo with links lists them.
+	f := findNote(t, tl, foot.ID)
+	if len(f.Links) != 0 || len(f.Segments) == 0 {
+		t.Errorf("footnote memo = %+v", f)
+	}
+	for _, s := range f.Segments {
+		if s.URL != "" {
+			t.Errorf("unlinked reference became a link: %+v", s)
+		}
 	}
 }
 
@@ -388,68 +520,33 @@ func TestTimelineFoldsOlderTopicsIntoOther(t *testing.T) {
 	h, store := newPages(t)
 	seedTopics(t, store, "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8")
 
-	_, all := get(t, h, "/notes/timeline")
-	mustContain(t, all, `topic=t8"`, `topic=t3"`, `id="chip-more"`, "他 2 ▾", `data-others="[&#34;t2&#34;,&#34;t1&#34;]"`, `id="organize"`, "話題を整理", `id="organize-dialog"`)
-	mustNotContain(t, all, `topic=t2"`, `topic=t1"`)
-	if strings.Index(all, "topic=t8") > strings.Index(all, "topic=t3") {
-		t.Error("most recently used topic should come first")
+	all := timeline(t, h, "")
+	var labels []string
+	for _, c := range all.Chips {
+		labels = append(labels, c.Label)
 	}
-	if strings.Index(all, "no_topic=1") > strings.Index(all, `id="chip-more"`) {
-		t.Error("他 N comes after 話題なし")
+	// Most recently used first, すべて before and 話題なし after the topics.
+	if want := []string{"すべて", "t8", "t7", "t6", "t5", "t4", "t3", "話題なし"}; !reflect.DeepEqual(labels, want) {
+		t.Errorf("chips = %v, want %v", labels, want)
+	}
+	if want := []string{"t2", "t1"}; !reflect.DeepEqual(all.Other, want) {
+		t.Errorf("other = %v, want %v", all.Other, want)
 	}
 
-	_, sel := get(t, h, "/notes/timeline?topic=t1")
-	mustContain(t, sel, `class="chip on" href="/notes/timeline?topic=t1" data-topic="t1"`, "他 1 ▾")
+	sel := timeline(t, h, "?topic=t1")
+	if want := "/notes/timeline?topic=t1"; chipOn(sel) != want {
+		t.Errorf("on chip = %q, want %q", chipOn(sel), want)
+	}
+	if want := []string{"t2"}; !reflect.DeepEqual(sel.Other, want) {
+		t.Errorf("other with selection = %v, want %v", sel.Other, want)
+	}
 }
 
 func TestTimelineHasNoOtherChipWhenAllShown(t *testing.T) {
 	h, store := newPages(t)
 	seedTopics(t, store, "a", "b")
-	_, body := get(t, h, "/notes/timeline")
-	mustContain(t, body, `id="chip-more" hidden`)
-}
-
-// TestTimelineJSONMatchesPage checks that the JSON a script draws from lists
-// the same memos, in the same order, as the page for every filter.
-func TestTimelineJSONMatchesPage(t *testing.T) {
-	h, store := newPages(t)
-	n, _ := store.Add("青のメモ https://example.com/a [1]", "青分離")
-	_, _ = store.Annotate(n.ID, note.AnnotationInput{Kind: note.KindQuote, Body: "引用の本文", Source: "slack"})
-	_, _ = store.Add("CCのメモ", "C&C")
-	_, _ = store.Add("無印のメモ", "")
-
-	idRe := regexp.MustCompile(`id="note-(\d+)"`)
-	for _, q := range []string{"", "?topic=" + url.QueryEscape("青分離"), "?no_topic=1", "?topic=nope"} {
-		_, page := get(t, h, "/notes/timeline"+q)
-		var want []int
-		for _, m := range idRe.FindAllStringSubmatch(page, -1) {
-			id, _ := strconv.Atoi(m[1])
-			want = append(want, id)
-		}
-
-		code, body := get(t, h, "/api/notes/timeline"+q)
-		if code != http.StatusOK {
-			t.Fatalf("%q: status = %d", q, code)
-		}
-		var got timelineJSON
-		if err := json.Unmarshal([]byte(body), &got); err != nil {
-			t.Fatalf("%q: %v", q, err)
-		}
-		var ids []int
-		for _, d := range got.Days {
-			for _, nv := range d.Notes {
-				ids = append(ids, nv.ID)
-			}
-		}
-		if !reflect.DeepEqual(ids, want) {
-			t.Errorf("%q: JSON ids = %v, page ids = %v", q, ids, want)
-		}
-		if !strings.Contains(page, got.Empty) && len(want) == 0 {
-			t.Errorf("%q: empty message %q not on the page", q, got.Empty)
-		}
-		if len(got.Chips) == 0 {
-			t.Errorf("%q: no chips", q)
-		}
+	if other := timeline(t, h, "").Other; len(other) != 0 {
+		t.Errorf("other = %v, want none", other)
 	}
 }
 

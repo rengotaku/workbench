@@ -70,6 +70,10 @@
 
   function hideCurrent() {
     if (!current) return;
+    // A dialog belongs to the screen it was opened on; a page load used to
+    // take it away, so leaving the screen closes it (Back while 話題を整理 or
+    // the add dialog is open).
+    Array.prototype.slice.call(document.querySelectorAll('dialog[open]')).forEach(function (d) { d.close(); });
     var entry = views[current];
     entry.scrollY = window.scrollY;
     rootOf(current).hidden = true;
@@ -106,8 +110,10 @@
     var state = { view: target };
     if (opts.replace) history.replaceState(state, '', url.href);
     else history.pushState(state, '', url.href);
-    if (target !== current) hideCurrent();
-    showView(target, url, !!opts.restoreScroll);
+    var sameScreen = target === current;
+    if (!sameScreen) hideCurrent();
+    // A new query on the same screen (a filter) is new content: from the top.
+    showView(target, url, !!opts.restoreScroll && !sameScreen);
     return true;
   }
 
@@ -141,8 +147,9 @@
     // Same screen, same path and query: only the hash moved, which is the
     // screen's own business (e.g. /#T007).
     if (target === current && url.pathname + url.search === shownPath) return;
-    if (target !== current) hideCurrent();
-    showView(target, url, true);
+    var sameScreen = target === current;
+    if (!sameScreen) hideCurrent();
+    showView(target, url, !sameScreen);
   });
 
   // start shows the screen the page was loaded for, once every script has had

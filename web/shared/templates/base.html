@@ -29,6 +29,7 @@
          this page was loaded for. */}}
     {{if ne .View "todo"}}<div class="view view-todo" data-view="todo" hidden></div>{{end}}
     {{if ne .View "note-add"}}<div class="view view-note-add" data-view="note-add" hidden></div>{{end}}
+    {{if ne .View "timeline"}}<div class="view view-timeline" data-view="timeline" hidden></div>{{end}}
   </div>
   <script src="/shared/js/common.js" defer></script>
   <script src="/shared/js/router.js" defer></script>
@@ -38,6 +39,7 @@
   <script src="/notes/static/js/shared.js" defer></script>
   <script src="/notes/static/js/picker.js" defer></script>
   <script src="/notes/static/js/add.js" defer></script>
+  <script src="/notes/static/js/timeline.js" defer></script>
   {{template "toolshared" .}}
   {{block "scripts" .}}{{end}}
 </body>

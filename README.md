@@ -218,7 +218,7 @@ todo import --ledger <旧 TODO ファイル> --order <旧 順序ファイル>
 
 ### タイムラインの API
 
-`GET /api/notes/timeline` はタイムライン画面と同じ内容を JSON で返す。`?topic=<話題>` と `?no_topic=1` は画面と同じ意味。応答は `{"empty", "chips": [{"label", "href", "topic", "on"}…], "other": [「他 N」に畳む話題…], "days": [{"heading", "notes": [{"id", "time", "source", "topic", "segments", "links", "annotations", "route", "pending"}…]}…], "pending"}`。
+`GET /api/notes/timeline` はタイムライン画面の内容を JSON で返す（画面はこれを読んで描く）。`?topic=<話題>` と `?no_topic=1` は画面と同じ意味。応答は `{"empty", "chips": [{"label", "href", "topic", "on"}…], "other": [「他 N」に畳む話題…], "days": [{"heading", "notes": [{"id", "time", "source", "topic", "segments", "links", "annotations", "route", "pending"}…]}…], "pending"}`。
 
 ### 話題の API
 

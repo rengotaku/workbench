@@ -138,9 +138,15 @@
     // not keep its chip, or saving with it would bring the topic back. The
     // picked topic stays picked while it still exists.
     var watching = false;
+    // topicSeq numbers the reads: a reply that is not the newest is dropped, so
+    // an old list cannot bring back a topic renamed or removed since. Creating
+    // a topic bumps it too, so a list read before the topic existed is dropped.
+    var topicSeq = 0;
     function loadTopics() {
+      var mine = ++topicSeq;
       return shared.request('GET', '/api/topics')
         .then(function (res) {
+          if (mine !== topicSeq) return;
           allTopics = (res.topics || []).slice();
           chips().forEach(function (b) { b.remove(); });
           byRecent(res.details || []).slice(0, VISIBLE_TOPICS).forEach(function (t) { addChip(t.name); });
@@ -148,7 +154,10 @@
           select(allTopics.indexOf(selected) !== -1 ? selected : '');
           if (!watching) { watching = true; shared.watchChips(el.topics, refit); }
         })
-        .catch(function (err) { show(failure('話題を読み込めませんでした', err, 'ページを再読み込みしてください')); });
+        .catch(function (err) {
+          if (mine !== topicSeq) return;
+          show(failure('話題を読み込めませんでした', err, 'ページを再読み込みしてください'));
+        });
     }
 
     // openPicker shows the input where the button was. A pick of an existing
@@ -182,6 +191,7 @@
         var sentVersion = selectionVersion;
         shared.request('POST', '/api/topics', { name: name })
           .then(function () {
+            topicSeq++; // a list read before this topic existed must not land
             // The topic exists on the server either way; show its chip, but only
             // select it when the input is still open and nothing else was picked.
             if (allTopics.indexOf(name) === -1) allTopics.push(name);
@@ -379,8 +389,13 @@
       return li;
     }
 
+    // saved counts the memos saved from this screen. A row remembers the
+    // count it was saved at, so a list read before that save cannot drop it.
+    var saved = 0;
     function remember(n) {
-      el.recent.prepend(row(n, true));
+      var li = row(n, true);
+      li.dataset.saved = String(++saved);
+      el.recent.prepend(li);
       updateTitle();
     }
 
@@ -388,6 +403,7 @@
     // AI picked up meanwhile leaves it, so its 削除 cannot remove a handled
     // memo. Rows for memos still waiting stay as they are.
     function loadPending(fresh) {
+      var savedAtRead = saved;
       shared.request('GET', '/api/notes?pending=1')
         .then(function (res) {
           var notes = res.notes || [];
@@ -395,6 +411,8 @@
             var waiting = {};
             notes.forEach(function (n) { waiting[String(n.id)] = true; });
             Array.prototype.slice.call(el.recent.querySelectorAll('li')).forEach(function (li) {
+              // A memo saved after the read started is not in it, yet waiting.
+              if (Number(li.dataset.saved || 0) > savedAtRead) return;
               if (!waiting[li.dataset.id]) li.remove();
             });
           }

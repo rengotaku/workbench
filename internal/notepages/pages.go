@@ -3,7 +3,6 @@
 package notepages
 
 import (
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -99,20 +98,10 @@ func splitTopics(stats []note.TopicStat, selected string) (shown, rest []string)
 	return shown, rest
 }
 
-// namesJSON is names as a JSON array, for a data attribute the script reads
-// (the template escapes it for the attribute).
-func namesJSON(names []string) string {
-	b, err := json.Marshal(append([]string{}, names...))
-	if err != nil { // a string slice always marshals
-		return "[]"
-	}
-	return string(b)
-}
-
 // ---- add screen ----
 
-// The add screen draws itself from the API (web/note/static/js/add.js), so
-// the page is the layout with the screen's root and nothing else.
+// Both screens draw themselves from the API (add.js, timeline.js), so a page
+// is the layout with the screen's root and nothing else.
 type addView struct {
 	Title   string
 	Current string // which header link is the current screen
@@ -180,21 +169,15 @@ type dayView struct {
 }
 
 type timelineView struct {
-	Title     string
-	Current   string
-	View      string
-	Empty     string
-	Chips     []chipView // すべて, the shown topics, 話題なし
-	OtherJSON string     // the topics behind "他 N", as a JSON array
-	Days      []dayView
-	other     []string // the topics behind "他 N", for the JSON response
-	Others    int
-	Pending   int
+	Empty   string
+	Chips   []chipView // すべて, the shown topics, 話題なし
+	Days    []dayView
+	other   []string // the topics behind "他 N"
+	Pending int
 }
 
-// timelineJSON is the timeline screen's content for a script to draw: the
-// same grouping, chips and counts the page renders, built by buildTimeline so
-// the two cannot disagree.
+// timelineJSON is the timeline screen's content for a script to draw:
+// the grouping, chips and counts, built by buildTimeline.
 type timelineJSON struct {
 	Empty   string     `json:"empty"`
 	Chips   []chipView `json:"chips"`
@@ -222,13 +205,10 @@ var kindLabels = map[string]string{
 var weekdays = [...]string{"日", "月", "火", "水", "木", "金", "土"}
 
 func (p *Pages) handleTimeline(c *gin.Context) {
-	topic := c.Query("topic")
-	noTopic := c.Query("no_topic") == "1"
-	notes := p.store.List(note.Filter{Topic: topic, NoTopic: noTopic})
-	p.render(c, "timeline.html", buildTimeline(notes, p.store.TopicStats(), topic, noTopic))
+	p.render(c, "timeline.html", addView{Title: "note タイムライン", Current: "timeline", View: "timeline"})
 }
 
-// handleTimelineJSON takes the same ?topic= / ?no_topic=1 as the page.
+// handleTimelineJSON takes ?topic= / ?no_topic=1 to filter.
 func (p *Pages) handleTimelineJSON(c *gin.Context) {
 	topic := c.Query("topic")
 	noTopic := c.Query("no_topic") == "1"
@@ -244,7 +224,7 @@ func buildTimeline(notes []note.Note, stats []note.TopicStat, topic string, noTo
 	}
 	chips = append(chips, chipView{Label: "話題なし", Href: TimelinePath + "?no_topic=1", On: noTopic})
 
-	v := timelineView{Title: "note タイムライン", Current: "timeline", View: "timeline", Chips: chips, Others: len(rest), OtherJSON: namesJSON(rest), other: rest, Empty: "まだメモがありません。note と打って 1 行入れてください"}
+	v := timelineView{Chips: chips, other: rest, Empty: "まだメモがありません。note と打って 1 行入れてください"}
 	if topic != "" || noTopic {
 		v.Empty = "この絞り込みに合うメモはありません。「すべて」に戻してください"
 	}
