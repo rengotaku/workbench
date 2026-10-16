@@ -9,41 +9,10 @@
   var composing = window.workbench.composing;
   var request = window.workbench.request;
 
-  // A link pasted into a name keeps two things: the text it showed, and the URL
-  // it pointed at. The URL is stored with the task exactly as pasted — the app
-  // never inspects it, so a link to a tracker, a wiki or a document are all the
-  // same thing to it.
-  function pastedLink(cb) {
-    var html = cb.getData('text/html');
-    if (!html) return null;
-    var doc;
-    try { doc = new DOMParser().parseFromString(html, 'text/html'); } catch (e) { return null; }
-    var a = doc.querySelector('a[href]');
-    if (!a) return null;
-    var href = a.getAttribute('href') || '';
-    if (!/^https?:\/\//i.test(href)) return null; // only links a browser can open
-    // The label can sit outside the anchor — a tracker that links the key alone
-    // leaves the title beside it — so the text comes from the whole fragment.
-    // \u00a0 is the non-breaking space such a paste separates them with.
-    var norm = function (v) { return (v || '').replace(/[\s\u00a0]+/g, ' ').trim(); };
-    var text = norm(doc.body ? doc.body.textContent : '');
-    var label = norm(a.textContent);
-    if (!text) { text = label || href; }
-    return { url: href, text: text, linkText: label || text };
-  }
-
-  function insertText(node, text) {
-    if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA') {
-      var start = node.selectionStart === null ? node.value.length : node.selectionStart;
-      var end = node.selectionEnd === null ? node.value.length : node.selectionEnd;
-      node.setRangeText(text, start, end, 'end');
-      node.dispatchEvent(new Event('input', { bubbles: true }));
-      return;
-    }
-    if (document.execCommand && document.execCommand('insertText', false, text)) return;
-    node.textContent = node.textContent + text; // last resort: keep the paste
-    node.dispatchEvent(new Event('input', { bubbles: true }));
-  }
+  // Reading a pasted link and inserting plain text are shared with the note
+  // screens (/shared/js/paste.js, loaded first).
+  var pastedLink = window.workbench.paste.pastedLink;
+  var insertText = window.workbench.paste.insertText;
 
   // wirePaste makes a paste land as plain text — a link pasted into an editable
   // name would otherwise bring its markup with it — and remembers the URL on the

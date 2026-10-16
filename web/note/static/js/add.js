@@ -233,7 +233,10 @@
       });
     }
 
-    function addLinkRow() {
+    // addLinkRow adds a related URL row, prefilled with value ("URL 一言") when
+    // given. It focuses the new row unless the caller keeps the caret where it
+    // is (a paste into the memo). It returns the row's number.
+    function addLinkRow(value, keepFocus) {
       var row = document.createElement('div');
       row.className = 'link-row';
       var n = document.createElement('span');
@@ -243,6 +246,7 @@
       input.className = 'link-input';
       input.autocomplete = 'off';
       input.placeholder = 'URL と一言（一言は省略可）';
+      if (value) input.value = value;
       input.addEventListener('keydown', function (e) {
         if (shared.composing(e)) return;
         if (e.key === 'Enter') { e.preventDefault(); save(); }
@@ -271,10 +275,18 @@
       row.appendChild(remove);
       el.links.appendChild(row);
       renumber();
-      input.focus();
+      if (!keepFocus) input.focus();
+      return linkRows().length;
     }
 
     el.addLink.addEventListener('click', function () { if (!busy) addLinkRow(); });
+
+    // A link pasted into the memo becomes "text [N]" with the URL as related
+    // URL N (/shared/js/paste.js). Not while a save holds the rows.
+    window.workbench.paste.wireLinkPaste(el.memo, function (link) {
+      if (busy) return 0;
+      return addLinkRow(link.url + (link.label ? ' ' + link.label : ''), true);
+    }, true);
 
     // The first [N] (N >= k) in text, or "". A [N] inside a URL counts too: that
     // only refuses a removal, it never saves a wrong reference.
