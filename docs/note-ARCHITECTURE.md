@@ -50,6 +50,7 @@ CLI (note) ──────┘                                                
 - タイムラインは行き先を「→ todo T001」（todo の一覧 `/` へのリンク）か「記録」で出す。各メモは `id="note-<id>"` のアンカーを持ち、todo の詳細の「元のメモ」がここへ飛ぶ
 - ソース表示（Slack / Notion / Backlog / リンク）は表示のたびに URL のホストから求め、保存しない
 - 関連 URL（`Note.Links`）は登録時にだけ付く。送られた順に 1 から番号を振り、以後は変えない。関連 URL が 1 件以上あるメモでは、本文の `[N]` が件数を超えると 400 にする。関連 URL が無いメモの `[N]` はただの文字として扱う
+- 登録画面のメモ欄にリンク付きのテキスト（トラッカーやチャットからコピーしたもの）を貼ると、カーソル位置に「テキスト [N]」が入り、関連 URL の [N] にその URL（一言はリンクの文字）が足される。リンクの無いテキストは文字だけが入る（`web/shared/static/js/paste.js` の `wireLinkPaste`。todo と共通）
 - タイムラインでは本文の `[N]` を対応する関連 URL へのリンクにする。URL の中の `[N]` は URL の一部として扱う
 
 ## どこを触れば何が変わるか
@@ -63,6 +64,7 @@ CLI (note) ──────┘                                                
 | URL の取り出し方 | `internal/note/note.go` の `urlPattern` / `urlTrailing` |
 | `[N]` 参照の書き方・関連 URL の検証 | `internal/note/link.go` の `refPattern` / `buildLinks` / `checkRefs` |
 | 登録画面の関連 URL 行 | `web/note/static/js/add.js` の `addLinkRow` / `readLinks` |
+| リンク付きテキストの貼り付け（todo と共通） | `web/shared/static/js/paste.js` |
 | API の項目・ステータス | `internal/noteapi/api.go` |
 | 画面の見た目 | `web/shared/static/css/tokens.css`（色・文字・角丸・余白）、`web/note/static/css/style.css` |
 | 登録画面の操作（Enter・チップ・補足待ち一覧・削除） | `web/note/static/js/add.js` |

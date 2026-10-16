@@ -167,7 +167,7 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 
 func TestSharedStaticServedBehindGuard(t *testing.T) {
 	h := newServer(t)
-	for _, p := range []string{"/shared/css/tokens.css", "/shared/css/base.css", "/shared/js/common.js", "/shared/js/router.js", "/shared/js/modal.js", "/shared/icon.svg"} {
+	for _, p := range []string{"/shared/css/tokens.css", "/shared/css/base.css", "/shared/js/common.js", "/shared/js/paste.js", "/shared/js/router.js", "/shared/js/modal.js", "/shared/icon.svg"} {
 		assert.Equal(t, http.StatusOK, do(h, http.MethodGet, p, "").Code, p)
 
 		req := httptest.NewRequest(http.MethodGet, p, nil)
