@@ -592,7 +592,9 @@
         var tag = document.createElement('span');
         tag.className = 'out-tag';
         tag.textContent = 'スコープ外';
-        li.querySelector('.name').appendChild(tag);
+        // First, so a long name clipped with … cannot push it out of sight.
+        var nameEl = li.querySelector('.name');
+        nameEl.insertBefore(tag, nameEl.firstChild);
       }
       li.draggable = true;
       return li;
