@@ -315,7 +315,7 @@
       el.more.hidden = out === 0;
       // The toggle sits above the list so opening it adds rows only below: it
       // stays under the pointer and can be clicked again to close.
-      var from = outFrom(b.today);
+      var from = outFrom(b.today, b.scope_days);
       el.more.textContent = (state.showOut ? '− ' : '＋ ') + 'スコープ外 ' + out + '件'
         + (from ? '（期限 ' + from + ' 以降）' : '');
       el.more.setAttribute('aria-expanded', String(state.showOut));
@@ -392,11 +392,12 @@
       return '';
     }
     // outFrom is the first due date (M/D) past the scope, the boundary the
-    // server judges in_scope by: due > today + scope days.
-    function outFrom(today) {
-      var days = Number(state.scope);
+    // server judges in_scope by: due > today + scope days. It takes the scope
+    // from the same response as in_scope, not from the buttons, so the label
+    // cannot describe a window the rows were not cut by.
+    function outFrom(today, days) {
       var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today || '');
-      if (state.scope === 'all' || !isFinite(days) || !m) return '';
+      if (typeof days !== 'number' || !m) return '';
       var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + days + 1));
       return (d.getUTCMonth() + 1) + '/' + d.getUTCDate();
     }
