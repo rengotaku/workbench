@@ -40,8 +40,8 @@
     '    </section>',
     '',
     '    <section class="sec">',
+    '      <button type="button" class="more" id="more" aria-controls="queue" hidden></button>',
     '      <ul class="list" id="queue"></ul>',
-    '      <button type="button" class="more" id="more" hidden></button>',
     '      <div class="add" id="add-slot">',
     '        <span></span><span></span>',
     '        <span class="plus" aria-hidden="true">＋</span>',
@@ -313,7 +313,11 @@
       });
       var out = queue.filter(function (t) { return !t.in_scope; }).length;
       el.more.hidden = out === 0;
-      el.more.textContent = (state.showOut ? '− ' : '＋ ') + 'スコープ外 ' + out + '件';
+      // The toggle sits above the list so opening it adds rows only below: it
+      // stays under the pointer and can be clicked again to close.
+      var from = outFrom(b.today, b.scope_days);
+      el.more.textContent = (state.showOut ? '− ' : '＋ ') + 'スコープ外 ' + out + '件'
+        + (from ? '（期限 ' + from + ' 以降）' : '');
       el.more.setAttribute('aria-expanded', String(state.showOut));
 
       var waiting = (b.waiting || []).slice().sort(function (a, c) {
@@ -387,6 +391,17 @@
       if (t.due_class === 'today') return 'near';
       return '';
     }
+    // outFrom is the first due date (M/D) past the scope, the boundary the
+    // server judges in_scope by: due > today + scope days. It takes the scope
+    // from the same response as in_scope, not from the buttons, so the label
+    // cannot describe a window the rows were not cut by.
+    function outFrom(today, days) {
+      var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today || '');
+      if (typeof days !== 'number' || !m) return '';
+      var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + days + 1));
+      return (d.getUTCMonth() + 1) + '/' + d.getUTCDate();
+    }
+
     function dueStripe(t) {
       if (t.due_class === 'over') return 'overdue';
       if (t.due_class === 'today') return 'in-window';
@@ -407,7 +422,7 @@
         case 'near':
           return '灰: 期限 ' + t.due + ' が ' + within + '（' + t.due_label + '）\nクリックで変更';
         case 'plain':
-          return '灰: 期限 ' + t.due + ' は ' + within + 'より先。行は末尾に畳まれる\nクリックで変更';
+          return '灰: 期限 ' + t.due + ' は ' + within + 'より先。スコープ外として畳まれる\nクリックで変更';
         default:
           return '灰: 期限なし。スコープでは畳まれず常に出る\nクリックで設定';
       }
@@ -571,6 +586,14 @@
         dueTitle: dueTitle(t),
         extraClass: cls,
       });
+      // Opened, these rows sit among the in-scope ones in queue order, so each
+      // says so in words; the fade alone is easy to miss.
+      if (!inScope) {
+        var tag = document.createElement('span');
+        tag.className = 'out-tag';
+        tag.textContent = 'スコープ外';
+        li.querySelector('.name').appendChild(tag);
+      }
       li.draggable = true;
       return li;
     }
