@@ -1847,12 +1847,19 @@
       // queue without the moved task. Rows hidden under スコープ外 are not on
       // screen, so counting rows on screen would land somewhere else.
       var rest = (state.board.queue || []).filter(function (t) { return t.id !== id; });
+      var ids = rest.map(function (t) { return t.id; });
       var prev = li.previousElementSibling;
-      // The top of スコープ外 follows the last in-scope row.
-      if (!prev && list === el.outList) prev = el.queue.lastElementChild;
+      var next = li.nextElementSibling;
       var to;
       if (prev && prev.dataset.id) {
-        to = rest.map(function (t) { return t.id; }).indexOf(prev.dataset.id) + 1;
+        to = ids.indexOf(prev.dataset.id) + 1;
+      } else if (list === el.outList && next && next.dataset.id) {
+        // The top of スコープ外 goes just before its first row. In-scope rows
+        // can sit between out-of-scope ones in the queue, so "after the last
+        // in-scope row" could be behind it.
+        to = ids.indexOf(next.dataset.id);
+      } else if (list === el.outList && el.queue.lastElementChild) {
+        to = ids.indexOf(el.queue.lastElementChild.dataset.id) + 1;
       } else {
         to = inBand ? 0 : rest.filter(function (t) { return t.focused; }).length;
       }
