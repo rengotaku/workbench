@@ -331,12 +331,15 @@ func removeCmd() *cobra.Command {
 }
 
 // splitIDs turns arguments into IDs, splitting each on commas as well, so a
-// list copied as "T001,T002" works like "T001 T002". Empty parts are dropped.
+// list copied as "T001,T002" works like "T001 T002". Empty parts and repeats
+// are dropped: a repeated ID would fail as already gone and stop the rest.
 func splitIDs(args []string) []string {
 	var ids []string
+	seen := map[string]bool{}
 	for _, a := range args {
 		for _, id := range strings.Split(a, ",") {
-			if id = strings.TrimSpace(id); id != "" {
+			if id = strings.TrimSpace(id); id != "" && !seen[id] {
+				seen[id] = true
 				ids = append(ids, id)
 			}
 		}

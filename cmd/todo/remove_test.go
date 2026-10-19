@@ -25,6 +25,7 @@ func TestSplitIDs(t *testing.T) {
 		{"empty parts", []string{"T1,,T2,", ",T3"}, []string{"T1", "T2", "T3"}},
 		{"spaces around commas", []string{"T1, T2"}, []string{"T1", "T2"}},
 		{"nothing but commas", []string{",,"}, nil},
+		{"repeats keep the first", []string{"T1,T1,T2", "T1"}, []string{"T1", "T2"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
