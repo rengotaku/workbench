@@ -298,16 +298,21 @@ func removeCmd() *cobra.Command {
 		Short:   "タスクを取り除く（戻せない）",
 		Long: "タスクを取り除く。**戻せない**。誤って追加したものを消すためのもので、\n" +
 			"やめた作業は `done` か、詳細に理由を書いて残す方が経緯が読める。\n\n" +
+			"ID はスペースでもカンマでも区切れる（`todo rm T001,T002 T003`）。\n" +
 			"取り除いた名前と期限はイベントログに残るので、何を消したかは追える。",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
+			ids := splitIDs(args)
+			if len(ids) == 0 {
+				return fmt.Errorf("ID がありません")
+			}
 			cl, err := newClient()
 			if err != nil {
 				return err
 			}
 			// One at a time, stopping at the first failure: a typo must not
 			// take out the rest of the list behind it.
-			for _, id := range args {
+			for _, id := range ids {
 				t, raw, err := cl.Remove(id)
 				if err != nil {
 					return err
@@ -323,6 +328,23 @@ func removeCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// splitIDs turns arguments into IDs, splitting each on commas as well, so a
+// list copied as "T001,T002" works like "T001 T002". Empty parts and repeats
+// are dropped: a repeated ID would fail as already gone and stop the rest.
+func splitIDs(args []string) []string {
+	var ids []string
+	seen := map[string]bool{}
+	for _, a := range args {
+		for _, id := range strings.Split(a, ",") {
+			if id = strings.TrimSpace(id); id != "" && !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids
 }
 
 func reopenCmd() *cobra.Command {
