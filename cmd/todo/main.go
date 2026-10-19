@@ -141,7 +141,7 @@ func listCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&scope, "scope", "", `スコープ: 日数、または "all"（既定は 7）`)
+	c.Flags().StringVar(&scope, "scope", "", `スコープ: "week"（今週の日曜まで。既定）、"2weeks"、日数、または "all"`)
 	return c
 }
 
