@@ -154,7 +154,7 @@
     appearance: none;
     background: none;
     border: 0;
-    padding: 10px 0 0;
+    padding: 0 0 10px;
     margin: 0;
     font-family: var(--mono);
     font-size: var(--fs-sm2);
@@ -367,6 +367,16 @@
   .task.openable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .panel { cursor: auto; }
   .task.out { opacity: .62; }
+  .out-tag {
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--fs-2xs);
+    letter-spacing: .04em;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xs);
+    padding: 0 4px;
+  }
   .task.done { opacity: .78; }
 
   .grip {
