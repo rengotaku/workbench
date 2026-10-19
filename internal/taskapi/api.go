@@ -14,8 +14,10 @@ import (
 	"github.com/rengotaku/workbench/internal/task"
 )
 
-// DefaultScopeDays is the window the page opens with: one week.
-const DefaultScopeDays = 7
+// DefaultScope is the window the page opens with: this calendar week, to
+// Sunday. A week counted from today would let next week's tasks in one day at
+// a time; a calendar week matches "this week".
+const DefaultScope = "week"
 
 // API serves the task endpoints.
 type API struct {
@@ -91,7 +93,7 @@ type listResponse struct {
 }
 
 func (a *API) listTasks(c *gin.Context) {
-	scope, err := scopeDays(c.Query("scope"))
+	scope, err := scopeDays(c.Query("scope"), a.today())
 	if err != nil {
 		badRequest(c, err)
 		return
@@ -458,7 +460,7 @@ func (a *API) orderTask(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	scope := DefaultScopeDays
+	scope, _ := scopeDays(DefaultScope, a.today())
 	if req.ScopeDays != nil {
 		scope = *req.ScopeDays
 	}
@@ -611,19 +613,32 @@ func actorOf(s string) task.Actor {
 	return task.ActorHuman
 }
 
-// scopeDays parses the scope query. "all" keeps everything in view.
-func scopeDays(raw string) (int, error) {
+// scopeDays parses the scope query into days from today. "week" and "2weeks"
+// end on Sunday of this week and of next week; "all" keeps everything in view.
+func scopeDays(raw string, today time.Time) (int, error) {
 	if raw == "" {
-		return DefaultScopeDays, nil
+		raw = DefaultScope
 	}
-	if raw == "all" {
+	switch raw {
+	case "week":
+		return daysToSunday(today, 1), nil
+	case "2weeks":
+		return daysToSunday(today, 2), nil
+	case "all":
 		return 36500, nil
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < 0 {
-		return 0, errors.New(`scope must be a number of days or "all"`)
+		return 0, errors.New(`scope must be a number of days, "week", "2weeks" or "all"`)
 	}
 	return n, nil
+}
+
+// daysToSunday counts the days from today to Sunday of the weeks-th week,
+// this week being the first: on a Monday, 6 for one week and 13 for two.
+func daysToSunday(today time.Time, weeks int) int {
+	sunday := mondayOf(today).AddDate(0, 0, 7*weeks-1)
+	return int(sunday.Sub(today).Hours() / 24)
 }
 
 // untilReached reports whether a someday task's until date has come: today or

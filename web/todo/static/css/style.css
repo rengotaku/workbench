@@ -150,22 +150,6 @@
 
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-  .more {
-    appearance: none;
-    background: none;
-    border: 0;
-    padding: 0 0 10px;
-    margin: 0;
-    font-family: var(--mono);
-    font-size: var(--fs-sm2);
-    letter-spacing: .04em;
-    color: var(--muted);
-    cursor: pointer;
-    text-align: left;
-  }
-  .more:hover { color: var(--accent); }
-  .more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
   /* ---- focus band: the working set, above the queue ---- */
   /* Focused tasks are the top of the queue and are shown here only, as the same
      rows as the list below (ADR todo-0012). The band stays when empty: it is
@@ -270,6 +254,9 @@
   .fold-head:hover { color: var(--ink-soft); }
   .fold-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   .fold-head .caret { font-size: var(--fs-2xs); }
+  /* What a folded section would show if opened: where スコープ外 starts, how
+     long the longest wait has been. */
+  .fold-head .fold-note { margin-left: 8px; }
   .fold-head .n {
     font-family: var(--mono);
     font-size: var(--fs-sm);
@@ -366,23 +353,6 @@
   .task.openable { cursor: pointer; }
   .task.openable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
   .panel { cursor: auto; }
-  /* Out-of-scope rows are faded part by part, not as a whole: opacity on the
-     row would also fade the スコープ外 tag, and the tag is what tells these
-     rows apart, so it keeps full contrast (--ink-soft: 7:1 or more). The
-     delete button is left out: it has its own hover-only opacity. */
-  .task.out > :not(.body):not(.del),
-  .task.out .body > :not(.name),
-  .task.out .name > :not(.out-tag) { opacity: .62; }
-  .out-tag {
-    flex: none;
-    font-family: var(--mono);
-    font-size: var(--fs-2xs);
-    letter-spacing: .04em;
-    color: var(--ink-soft);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-xs);
-    padding: 0 4px;
-  }
   .task.done { opacity: .78; }
 
   .grip {

@@ -79,7 +79,7 @@ type Board struct {
 	Undoable  int `json:"undoable"`
 }
 
-// List fetches the board for a scope ("7", "14", "all", or "").
+// List fetches the board for a scope ("week", "2weeks", a number of days, "all", or "").
 func (c *Client) List(scope string) (Board, []byte, error) {
 	path := "/api/tasks"
 	if scope != "" {

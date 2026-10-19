@@ -19,8 +19,8 @@
     '      </div>',
     '      <div class="head-right">',
     '        <div class="scope-set" role="group" aria-label="スコープ">',
-    '          <button type="button" data-scope="7" aria-pressed="true">1週間</button>',
-    '          <button type="button" data-scope="14" aria-pressed="false">2週間</button>',
+    '          <button type="button" data-scope="week" aria-pressed="true" title="今週の日曜まで">1週間</button>',
+    '          <button type="button" data-scope="2weeks" aria-pressed="false" title="来週の日曜まで">2週間</button>',
     '          <button type="button" data-scope="all" aria-pressed="false">すべて</button>',
     '          <button type="button" data-scope="custom" aria-pressed="false">指定</button>',
     '        </div>',
@@ -40,7 +40,6 @@
     '    </section>',
     '',
     '    <section class="sec">',
-    '      <button type="button" class="more" id="more" aria-controls="queue" hidden></button>',
     '      <ul class="list" id="queue"></ul>',
     '      <div class="add" id="add-slot">',
     '        <span></span><span></span>',
@@ -50,12 +49,18 @@
     '      </div>',
     '    </section>',
     '',
+    '    <section class="sec" id="out-sec" hidden>',
+    '      <button type="button" class="fold-head" id="out-fold" aria-expanded="false" aria-controls="outlist">',
+    '        <span class="caret" aria-hidden="true">▶</span>スコープ外<span class="n" id="out-count">0</span><span class="fold-note" id="out-from"></span>',
+    '      </button>',
+    '      <ul class="list" id="outlist" hidden></ul>',
+    '    </section>',
+    '',
     '    <section class="sec" id="waiting-sec" hidden>',
-    '      <div class="sec-head">',
-    '        <h2 class="sec-title">待ち</h2>',
-    '        <span class="sec-hint">ボールを渡してからの経過日数で並ぶ</span>',
-    '      </div>',
-    '      <ul class="list" id="waitlist"></ul>',
+    '      <button type="button" class="fold-head" id="wait-fold" aria-expanded="false" aria-controls="waitlist" title="ボールを渡してからの経過日数で並ぶ">',
+    '        <span class="caret" aria-hidden="true">▶</span>待ち<span class="n" id="wait-count">0</span><span class="fold-note" id="wait-max"></span>',
+    '      </button>',
+    '      <ul class="list" id="waitlist" hidden></ul>',
     '    </section>',
     '',
     '    <section class="sec" id="someday-sec" hidden>',
@@ -126,10 +131,15 @@
     var DONE_KEY = 'todo-order.done-open';
     var DROP_KEY = 'todo-order.drop-open';
     var SOMEDAY_KEY = 'todo-order.someday-open';
+    var OUT_KEY = 'todo-order.out-open';
+    var WAIT_KEY = 'todo-order.wait-open';
     var POLL_MS = 4000;
     var state = {
-      scope: '7',
-      showOut: false,
+      scope: 'week',
+      // Only the band and the in-scope queue are always open. What lies past
+      // the scope and what waits on someone else are opened when wanted.
+      outOpen: false,
+      waitOpen: false,
       board: null,
       openId: null, // only one row is open at a time; another row closes it
       doneOpen: false, // the completed list is a record, not a queue
@@ -153,6 +163,14 @@
       queue: document.getElementById('queue'),
       waitSec: document.getElementById('waiting-sec'),
       waitList: document.getElementById('waitlist'),
+      waitFold: document.getElementById('wait-fold'),
+      waitCount: document.getElementById('wait-count'),
+      waitMax: document.getElementById('wait-max'),
+      outSec: document.getElementById('out-sec'),
+      outList: document.getElementById('outlist'),
+      outFold: document.getElementById('out-fold'),
+      outCount: document.getElementById('out-count'),
+      outFrom: document.getElementById('out-from'),
       somedaySec: document.getElementById('someday-sec'),
       somedayList: document.getElementById('somedaylist'),
       somedayFold: document.getElementById('someday-fold'),
@@ -161,7 +179,6 @@
       doneList: document.getElementById('donelist'),
       dropSec: document.getElementById('drop-sec'),
       dropList: document.getElementById('droplist'),
-      more: document.getElementById('more'),
       over: document.getElementById('c-over'),
       near: document.getElementById('c-near'),
       rest: document.getElementById('c-rest'),
@@ -222,7 +239,8 @@
       }
       if (has(board.someday)) state.somedayOpen = true;
       if (has(board.done)) state.doneOpen = true;
-      if (has(board.queue, function (t) { return !t.in_scope; })) state.showOut = true;
+      if (has(board.queue, function (t) { return !t.in_scope && !t.focused; })) state.outOpen = true;
+      if (has(board.waiting)) state.waitOpen = true;
     }
 
     function load() {
@@ -302,28 +320,30 @@
       el.focusCount.textContent = focus.length;
       el.focusEmpty.hidden = focus.length > 0;
       el.focusList.textContent = '';
-      focus.forEach(function (t) { el.focusList.appendChild(queueRow(t, true)); });
+      focus.forEach(function (t) { el.focusList.appendChild(queueRow(t)); });
 
+      // The queue splits in two by scope. Each part keeps queue order, and a
+      // drop is still placed against the whole queue (onDragEnd), so the split
+      // is only how the rows are shown.
       var queue = unfocusedQueue();
+      var outRows = queue.filter(function (t) { return !t.in_scope; });
       el.queue.textContent = '';
-      queue.forEach(function (t) {
-        var inScope = t.in_scope;
-        if (!inScope && !state.showOut) return;
-        el.queue.appendChild(queueRow(t, inScope));
-      });
-      var out = queue.filter(function (t) { return !t.in_scope; }).length;
-      el.more.hidden = out === 0;
-      // The toggle sits above the list so opening it adds rows only below: it
-      // stays under the pointer and can be clicked again to close.
-      var from = outFrom(b.today, b.scope_days);
-      el.more.textContent = (state.showOut ? '− ' : '＋ ') + 'スコープ外 ' + out + '件'
-        + (from ? '（期限 ' + from + ' 以降）' : '');
-      el.more.setAttribute('aria-expanded', String(state.showOut));
+      queue.forEach(function (t) { if (t.in_scope) el.queue.appendChild(queueRow(t)); });
+      el.outSec.hidden = outRows.length === 0;
+      el.outCount.textContent = outRows.length;
+      el.outFrom.textContent = '期限 ' + monthDay(shiftDay(b.today, b.scope_days + 1)) + ' 以降';
+      setFold(el.outFold, el.outList, state.outOpen);
+      el.outList.textContent = '';
+      outRows.forEach(function (t) { el.outList.appendChild(queueRow(t)); });
 
       var waiting = (b.waiting || []).slice().sort(function (a, c) {
         return (c.stalled_for || 0) - (a.stalled_for || 0);
       });
       el.waitSec.hidden = waiting.length === 0;
+      el.waitCount.textContent = waiting.length;
+      // Folded, the longest wait is what would otherwise go unseen.
+      el.waitMax.textContent = waiting.length ? '最長 ' + (waiting[0].stalled_for || 0) + '日' : '';
+      setFold(el.waitFold, el.waitList, state.waitOpen);
       el.waitList.textContent = '';
       waiting.forEach(function (t) { el.waitList.appendChild(waitRow(t)); });
 
@@ -334,9 +354,7 @@
       el.somedaySec.hidden = someday.length === 0;
       var reached = someday.filter(function (t) { return t.until_reached; }).length;
       el.somedayCount.textContent = someday.length + (reached > 0 ? '（到来 ' + reached + '）' : '');
-      el.somedayFold.setAttribute('aria-expanded', String(state.somedayOpen));
-      el.somedayFold.querySelector('.caret').textContent = state.somedayOpen ? '▼' : '▶';
-      el.somedayList.hidden = !state.somedayOpen;
+      setFold(el.somedayFold, el.somedayList, state.somedayOpen);
       el.somedayList.textContent = '';
       someday.forEach(function (t) { el.somedayList.appendChild(somedayRow(t)); });
 
@@ -391,15 +409,26 @@
       if (t.due_class === 'today') return 'near';
       return '';
     }
-    // outFrom is the first due date (M/D) past the scope, the boundary the
-    // server judges in_scope by: due > today + scope days. It takes the scope
-    // from the same response as in_scope, not from the buttons, so the label
-    // cannot describe a window the rows were not cut by.
-    function outFrom(today, days) {
-      var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today || '');
-      if (typeof days !== 'number' || !m) return '';
-      var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + days + 1));
-      return (d.getUTCMonth() + 1) + '/' + d.getUTCDate();
+    // setFold shows a section's fold heading and list as open or closed.
+    function setFold(head, list, open) {
+      head.setAttribute('aria-expanded', String(open));
+      head.querySelector('.caret').textContent = open ? '▼' : '▶';
+      list.hidden = !open;
+    }
+
+    // shiftDay moves a YYYY-MM-DD date (the board's today) by n days. The
+    // scope's edges are counted from the server's today, the same date
+    // in_scope was judged against: due > today + scope_days is out.
+    function shiftDay(ymd, n) {
+      var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || '');
+      if (!m) return '';
+      var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + n));
+      return d.toISOString().slice(0, 10);
+    }
+
+    function monthDay(ymd) {
+      var m = /^\d{4}-(\d{2})-(\d{2})$/.exec(ymd || '');
+      return m ? (+m[1]) + '/' + (+m[2]) : '';
     }
 
     function dueStripe(t) {
@@ -412,8 +441,8 @@
     // is a border and cannot be hovered on its own, so the chip — which carries
     // the same colour — is where the explanation lives.
     function dueTitle(t) {
-      var scope = Number(state.scope) || 7;
-      var within = state.scope === 'all' ? 'いつでも' : scope + '日以内';
+      var b = state.board || {};
+      var within = state.scope === 'all' ? 'いつでも' : monthDay(shiftDay(b.today, b.scope_days)) + ' まで';
       switch (t.due_class) {
         case 'over':
           return '赤: 期限 ' + t.due + ' を過ぎている（' + t.due_label + '）\nクリックで変更';
@@ -422,7 +451,7 @@
         case 'near':
           return '灰: 期限 ' + t.due + ' が ' + within + '（' + t.due_label + '）\nクリックで変更';
         case 'plain':
-          return '灰: 期限 ' + t.due + ' は ' + within + 'より先。スコープ外として畳まれる\nクリックで変更';
+          return '灰: 期限 ' + t.due + ' は ' + within + 'より先。スコープ外の区画に入る\nクリックで変更';
         default:
           return '灰: 期限なし。スコープでは畳まれず常に出る\nクリックで設定';
       }
@@ -568,8 +597,8 @@
 
     // queueRow draws a queue task, in the band or in the list below it: the same
     // row either way, so a focused task opens where it is.
-    function queueRow(t, inScope) {
-      var cls = inScope ? dueStripe(t) : 'out';
+    function queueRow(t) {
+      var cls = dueStripe(t);
       var li = row({
         task: t,
         draggable: true,
@@ -586,16 +615,6 @@
         dueTitle: dueTitle(t),
         extraClass: cls,
       });
-      // Opened, these rows sit among the in-scope ones in queue order, so each
-      // says so in words; the fade alone is easy to miss.
-      if (!inScope) {
-        var tag = document.createElement('span');
-        tag.className = 'out-tag';
-        tag.textContent = 'スコープ外';
-        // First, so a long name clipped with … cannot push it out of sight.
-        var nameEl = li.querySelector('.name');
-        nameEl.insertBefore(tag, nameEl.firstChild);
-      }
       li.draggable = true;
       return li;
     }
@@ -1415,11 +1434,6 @@
         closeDueMenu();
         return;
       }
-      if (ev.target === el.more) {
-        state.showOut = !state.showOut;
-        render();
-        return;
-      }
 
       // How opening and editing live together:
       //   closed row, anywhere        → open it (the name is not editable yet)
@@ -1693,6 +1707,18 @@
       render();
     });
 
+    el.outFold.addEventListener('click', function () {
+      state.outOpen = !state.outOpen;
+      try { localStorage.setItem(OUT_KEY, state.outOpen ? '1' : '0'); } catch (e) { /* private window */ }
+      render();
+    });
+
+    el.waitFold.addEventListener('click', function () {
+      state.waitOpen = !state.waitOpen;
+      try { localStorage.setItem(WAIT_KEY, state.waitOpen ? '1' : '0'); } catch (e) { /* private window */ }
+      render();
+    });
+
     el.somedayFold.addEventListener('click', function () {
       state.somedayOpen = !state.somedayOpen;
       try { localStorage.setItem(SOMEDAY_KEY, state.somedayOpen ? '1' : '0'); } catch (e) { /* private window */ }
@@ -1773,17 +1799,27 @@
       dropped = true;
     }
 
-    // The list's drop area is its whole section, so an empty list (every task
-    // focused, or every one folded under スコープ外) still takes a row.
-    var queueArea = el.queue.closest('.sec') || el.queue;
-    el.focusBand.addEventListener('dragstart', onDragStart);
-    el.queue.addEventListener('dragstart', onDragStart);
-    el.focusBand.addEventListener('dragover', onDragOver(el.focusList));
-    queueArea.addEventListener('dragover', onDragOver(el.queue));
-    el.focusBand.addEventListener('drop', onDrop);
-    queueArea.addEventListener('drop', onDrop);
-    el.focusBand.addEventListener('dragend', onDragEnd);
-    el.queue.addEventListener('dragend', onDragEnd);
+    // A list's drop area is its whole section, so an empty list (every task
+    // focused, or every one past the scope) still takes a row, and a closed
+    // スコープ外 takes one on its heading.
+    [[el.focusBand, el.focusList], [el.queue.closest('.sec') || el.queue, el.queue], [el.outSec, el.outList]]
+      .forEach(function (pair) {
+        pair[0].addEventListener('dragstart', onDragStart);
+        pair[0].addEventListener('dragover', onDragOver(pair[1]));
+        pair[0].addEventListener('drop', onDrop);
+        pair[0].addEventListener('dragend', onDragEnd);
+      });
+
+    // scopeDue is the due date a row takes when it is dragged across the
+    // scope's edge, so that it stays where it was put: the last day in scope
+    // when it comes into the queue, the first day past it when it goes out.
+    // Null when the drop does not cross the edge.
+    function scopeDue(task, list) {
+      var b = state.board;
+      if (list === el.outList && task.in_scope) return shiftDay(b.today, b.scope_days + 1);
+      if (list === el.queue && !task.in_scope) return shiftDay(b.today, b.scope_days);
+      return null;
+    }
 
     function onDragEnd() {
       if (!dragged) return;
@@ -1799,7 +1835,8 @@
       }
 
       var id = li.dataset.id;
-      var inBand = li.parentNode === el.focusList;
+      var list = li.parentNode;
+      var inBand = list === el.focusList;
       var task = (state.board.queue || []).filter(function (t) { return t.id === id; })[0];
       if (!task) { state.busy = false; load(); return; }
       // focused is omitted from the JSON when false, so compare a boolean:
@@ -1810,13 +1847,23 @@
       // queue without the moved task. Rows hidden under スコープ外 are not on
       // screen, so counting rows on screen would land somewhere else.
       var rest = (state.board.queue || []).filter(function (t) { return t.id !== id; });
+      var ids = rest.map(function (t) { return t.id; });
       var prev = li.previousElementSibling;
+      var next = li.nextElementSibling;
       var to;
       if (prev && prev.dataset.id) {
-        to = rest.map(function (t) { return t.id; }).indexOf(prev.dataset.id) + 1;
+        to = ids.indexOf(prev.dataset.id) + 1;
+      } else if (list === el.outList && next && next.dataset.id) {
+        // The top of スコープ外 goes just before its first row. In-scope rows
+        // can sit between out-of-scope ones in the queue, so "after the last
+        // in-scope row" could be behind it.
+        to = ids.indexOf(next.dataset.id);
+      } else if (list === el.outList && el.queue.lastElementChild) {
+        to = ids.indexOf(el.queue.lastElementChild.dataset.id) + 1;
       } else {
         to = inBand ? 0 : rest.filter(function (t) { return t.focused; }).length;
       }
+      var due = scopeDue(task, list);
 
       // Crossing between the band and the list is a change of focus; the
       // server clamps the place to the block the task now belongs to. Within
@@ -1831,14 +1878,22 @@
         })
         : request('POST', '/api/tasks/' + encodeURIComponent(id) + '/order', {
           to: to,
-          scope_days: Number(state.scope) || 7,
+          scope_days: state.board.scope_days,
           revision: state.board.revision,
         });
+      // The due date follows the move, after it: the move carries the revision
+      // the place was read at, and changing the due first would spend it.
+      if (due) {
+        req = req.then(function () {
+          return request('PATCH', '/api/tasks/' + encodeURIComponent(id), { due: due });
+        });
+      }
       req
         .then(function () {
           state.busy = false;
           return load().then(function () {
-            if (crossed) flash(inBand ? 'フォーカスに入れた' : 'フォーカスから外した');
+            if (due) flash('期限を ' + monthDay(due) + ' にした');
+            else if (crossed) flash(inBand ? 'フォーカスに入れた' : 'フォーカスから外した');
           });
         })
         .catch(function (err) {
@@ -1857,10 +1912,14 @@
       state.doneOpen = localStorage.getItem(DONE_KEY) === '1';
       state.dropOpen = localStorage.getItem(DROP_KEY) === '1';
       state.somedayOpen = localStorage.getItem(SOMEDAY_KEY) === '1';
+      state.outOpen = localStorage.getItem(OUT_KEY) === '1';
+      state.waitOpen = localStorage.getItem(WAIT_KEY) === '1';
     } catch (e) { /* storage unavailable; closed is the default */ }
 
     try {
       var saved = localStorage.getItem(SCOPE_KEY);
+      // 7 and 14 were days from today; the same buttons are now calendar weeks.
+      saved = { '7': 'week', '14': '2weeks' }[saved] || saved;
       if (saved) {
         state.scope = saved;
         scopeButtons.forEach(function (b) {
