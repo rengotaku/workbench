@@ -129,3 +129,16 @@ func TestAnnotate_RejectsOversizeAndLeavesTheLogReadable(t *testing.T) {
 	_, err = s.Undo(task.ActorHuman)
 	require.NoError(t, err)
 }
+
+func TestAnnotate_AcceptsProgressAndBlocked(t *testing.T) {
+	s := newStore(t)
+	added, err := s.Add("x", "", "", task.ActorHuman)
+	require.NoError(t, err)
+
+	for _, kind := range []string{task.AnnotationProgress, task.AnnotationBlocked} {
+		a, err := s.Annotate(added.ID, task.AnnotationInput{Kind: kind, Body: "状況"}, task.ActorHuman)
+		require.NoError(t, err)
+		assert.Equal(t, kind, a.Kind)
+		assert.Equal(t, task.ActorHuman, a.Author)
+	}
+}

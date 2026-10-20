@@ -627,9 +627,9 @@ type AnnotationInput struct {
 // never undoable, and existing annotations are never touched.
 func (s *Store) Annotate(id string, in AnnotationInput, actor Actor) (Annotation, error) {
 	switch in.Kind {
-	case AnnotationQuote, AnnotationAnalysis, AnnotationMemo:
+	case AnnotationQuote, AnnotationAnalysis, AnnotationMemo, AnnotationProgress, AnnotationBlocked:
 	default:
-		return Annotation{}, fmt.Errorf("kind must be quote, analysis or memo: %q", in.Kind)
+		return Annotation{}, fmt.Errorf("kind must be quote, analysis, memo, progress or blocked: %q", in.Kind)
 	}
 	if strings.TrimSpace(in.Body) == "" {
 		return Annotation{}, errors.New("body is required")
