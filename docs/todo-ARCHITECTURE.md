@@ -167,7 +167,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 ## 補足とメモからのタスク
 
-`Task.Annotations` はタスクに足す補足で、種別は `quote`（引用）・`analysis`（考察）・`memo`（メモ）・`progress`（進んだ）・`blocked`（詰まり）の 5 つ。追記専用（`POST /api/tasks/:id/annotations`、`todo annotate`）。書き手はリクエストの `actor` で決まる。`Task.SourceNoteID` は note のメモから作ったタスクの元のメモの id で、`note route <id> --todo` が付ける。同じ `source_note_id` のタスクがすでにあれば `AddFromNote` は新しく作らず、それを返す（ADR note-0004）。人が状況を書くときは、開いた行の詳細欄の下にある 1 行の入力欄から `progress` / `blocked` / `memo` を `actor=human` で追記する（選んだ種別は画面の state に持つ。ADR todo-0017）。「待ち」の種別は無く、待ちは「待ちにする」で状態を変える。画面の詳細（ホバーの詳細ボックスと開いた行）は「状況（新しい順）」として、日時・種別・本文を 1 行ずつ出し、一覧の行（着手順・フォーカス・スコープ外・待ち・いつか）は名前の下に最新の 1 件を種別・本文・経過日数（暦日。3 日以上は強調）で出す。`source_note_id` があれば `/notes/timeline#note-<id>` への「元のメモ」リンクを出す。本文は `textContent` で入れ、HTML としては解釈しない。
+`Task.Annotations` はタスクに足す補足で、種別は `quote`（引用）・`analysis`（考察）・`memo`（メモ）・`progress`（進んだ）・`blocked`（詰まり）の 5 つ。追記専用（`POST /api/tasks/:id/annotations`、`todo annotate`）。書き手はリクエストの `actor` で決まる。`Task.SourceNoteID` は note のメモから作ったタスクの元のメモの id で、`note route <id> --todo` が付ける。同じ `source_note_id` のタスクがすでにあれば `AddFromNote` は新しく作らず、それを返す（ADR note-0004）。人が状況を書くときは、開いた行の詳細欄の下にある 1 行の入力欄から `memo` を `actor=human` で追記する（種別は選ばせない。ADR todo-0017、todo-0018）。書きかけの本文はタスクごとに画面の state に持ち、再描画で消えない。「待ち」の種別は無く、待ちは「待ちにする」で状態を変える。画面の詳細（ホバーの詳細ボックスと開いた行）は「状況（新しい順）」として、日時・札・本文を 1 行ずつ出し、一覧の行（着手順・フォーカス・スコープ外・待ち・いつか）は名前の下に最新の 1 件を札・本文・経過日数（暦日。3 日以上は強調）で出す。札は AI が書いたもの（「AI 引用」など）と、人が書いた `quote` / `analysis` にだけ付け、人が書いた `memo` / `progress` / `blocked` には付けない。`source_note_id` があれば `/notes/timeline#note-<id>` への「元のメモ」リンクを出す。本文は `textContent` で入れ、HTML としては解釈しない。
 
 ## 理由を聞く条件
 
@@ -193,7 +193,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | 画面の切り替え・追加ダイアログ | `web/shared/static/js/router.js`、`web/shared/static/js/modal.js` |
 | 補足の追加・検証 | `internal/task/store.go` の `Annotate`、`internal/taskapi/api.go` の `annotateTask`、`cmd/todo/main.go` の `annotateCmd` |
 | 詳細での補足と「元のメモ」の表示 | `web/todo/static/js/app.js` の `supplementsBlock` |
-| 画面からの状況の追記（入力欄と種別の札） | `web/todo/static/js/app.js` の `statusBlock`、見た目は `style.css` の `.status-*` |
+| 画面からの状況の追記（入力欄） | `web/todo/static/js/app.js` の `statusBlock`、見た目は `style.css` の `.status-*` |
 | 一覧の行に出す最新の状況 | `web/todo/static/js/app.js` の `latestStatus`、見た目は `style.css` の `.row-status` |
 | CLI の出力 | `cmd/todo/main.go`（サーバへの呼び出しは `internal/taskclient`） |
 | 保存の形 | `internal/task/store.go`。`persist` が状態、`appendEvent` がログ |
