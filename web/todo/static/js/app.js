@@ -637,28 +637,44 @@
       go.textContent = '削除する';
       box.appendChild(go);
 
-      function update() { go.disabled = !input.value.trim(); }
+      // While the DELETE is out the field stays: closing it would let the
+      // trash be pressed again and send a second DELETE behind an undo.
+      var sending = false;
+      function mine() { return dropAsk && dropAsk.node === box; }
+      function update() { go.disabled = sending || !input.value.trim(); }
       function submit() {
         var reason = input.value.trim();
-        if (!reason || go.disabled) { input.focus(); return; }
-        go.disabled = true;
+        if (!reason || sending) { input.focus(); return; }
+        sending = true;
         input.disabled = true;
+        update();
         removeTask(t, reason)
-          .then(closeDropAsk)
-          .catch(function (err) { input.disabled = false; update(); input.focus(); showError(err); });
+          .then(function () { if (mine()) closeDropAsk(); })
+          .catch(function (err) {
+            sending = false;
+            if (mine()) { input.disabled = false; update(); input.focus(); }
+            showError(err);
+          });
       }
 
       input.addEventListener('input', update);
       input.addEventListener('keydown', function (ev) {
         if (composing(ev)) return;
         if (ev.key === 'Enter') { ev.preventDefault(); submit(); }
-        if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); closeDropAsk(); btn.focus(); }
+      });
+      // On the box, not the input, so Escape also works from the button.
+      box.addEventListener('keydown', function (ev) {
+        if (composing(ev) || ev.key !== 'Escape' || sending) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeDropAsk();
+        btn.focus();
       });
       go.addEventListener('click', submit);
       update();
 
       function outside(ev) {
-        if (!box.contains(ev.target)) closeDropAsk();
+        if (!sending && !box.contains(ev.target)) closeDropAsk();
       }
 
       root.appendChild(box);

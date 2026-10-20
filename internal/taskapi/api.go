@@ -4,6 +4,7 @@ package taskapi
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -348,7 +349,8 @@ type removeRequest struct {
 func (a *API) removeTask(c *gin.Context) {
 	var req removeRequest
 	if c.Request.ContentLength != 0 {
-		if err := c.ShouldBindJSON(&req); err != nil {
+		// A chunked body of unknown length may still turn out empty.
+		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
 			badRequest(c, err)
 			return
 		}
