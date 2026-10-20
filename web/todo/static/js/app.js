@@ -148,6 +148,7 @@
       dropOpen: false, // so is the list of what was given up on
       somedayOpen: false, // and so is the shelf: closed by default, like done
       statusKind: 'progress', // the label the status field writes with; kept across reloads
+      statusDrafts: {}, // unsent status text per task id; survives redraws
       busy: false, // a drag or a date field is in progress; do not redraw under it
       shownId: null, // the task the detail box is showing; the pointer moves it
       revealId: null, // the task a link named; its section is unfolded on first load
@@ -901,14 +902,14 @@
         });
     }
 
-    // A status line is what a person writes (progress / blocked / memo); a quote
-    // or an analysis is shown as AI's unless a person wrote it.
+    // A status line is what a person writes (progress / blocked / memo); any
+    // supplement AI wrote, whatever its kind, is labelled as AI's.
     var ANNOTATION_LABEL = { progress: '進んだ', blocked: '詰まり', memo: 'メモ', quote: '引用', analysis: '考察' };
     var STATUS_KINDS = [['progress', '進んだ'], ['blocked', '詰まり'], ['memo', 'メモ']];
 
     function annotationLabel(a) {
       var label = ANNOTATION_LABEL[a.kind] || a.kind;
-      return (a.kind === 'quote' || a.kind === 'analysis') && a.author !== 'human' ? 'AI ' + label : label;
+      return a.author === 'ai' ? 'AI ' + label : label;
     }
 
     function annotationTag(a) {
@@ -972,6 +973,10 @@
       input.className = 'status-input';
       input.autocomplete = 'off';
       input.placeholder = 'いまの状況を 1 行で（Enter で追記）';
+      // The draft lives in state, not in the field: a redraw (the poll, a
+      // reload after sending) builds a new field and must not lose what was typed.
+      input.value = state.statusDrafts[t.id] || '';
+      input.addEventListener('input', function () { state.statusDrafts[t.id] = input.value; });
       var send = document.createElement('button');
       send.type = 'button';
       send.className = 'status-send';
@@ -1010,18 +1015,27 @@
         request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/annotations',
           { kind: state.statusKind, body: body, actor: 'human' })
           .then(function () {
+            // Clear only what was sent: anything typed while waiting stays.
+            var draft = state.statusDrafts[t.id] || '';
+            if (draft.trim() === body) delete state.statusDrafts[t.id];
+            if (input.value.trim() === body) input.value = '';
+            var refocus = document.activeElement === input || document.activeElement === send
+              || document.activeElement === document.body;
             // The redraw rebuilds the row, so the field is a new one: focus it
-            // again once the list is back.
+            // again once the list is back, unless the user has moved on.
             state.busy = false;
             return load().then(function () {
               var again = document.getElementById('status-' + t.id);
-              if (again) again.focus();
+              if (again && refocus) again.focus();
             });
+          }, function (err) {
+            showError(err);
           })
-          .catch(function (err) {
+          .then(function () {
+            // load() reports its own failure and does not redraw then, so the
+            // guard is released here whether or not the list came back.
             sending = false;
             send.disabled = false;
-            showError(err);
           });
       }
       send.addEventListener('click', submit);
