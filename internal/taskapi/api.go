@@ -4,6 +4,7 @@ package taskapi
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -338,10 +339,23 @@ func (a *API) patchTask(c *gin.Context) {
 	a.respond(c, t, nil)
 }
 
+type removeRequest struct {
+	Reason string `json:"reason"`
+}
+
 // removeTask deletes a task. It is the only call that loses data, so it is a
-// DELETE and nothing else routes to it by accident.
+// DELETE and nothing else routes to it by accident. The body is optional: the
+// CLI sends none, the screen sends the reason it asked for.
 func (a *API) removeTask(c *gin.Context) {
-	t, err := a.store.Remove(c.Param("id"), actorOf(c.Query("actor")))
+	var req removeRequest
+	if c.Request.ContentLength != 0 {
+		// A chunked body of unknown length may still turn out empty.
+		if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+			badRequest(c, err)
+			return
+		}
+	}
+	t, err := a.store.Remove(c.Param("id"), actorOf(c.Query("actor")), req.Reason)
 	if err != nil {
 		a.fail(c, err)
 		return

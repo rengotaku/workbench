@@ -274,6 +274,32 @@ func TestRemove_TakesATaskOutThroughTheAPI(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, code, "removing it twice is not found")
 }
 
+func TestRemove_RecordsTheReasonInTheBody(t *testing.T) {
+	store, h := setup(t)
+	junk, _ := store.Add("やめる", "", "", task.ActorHuman)
+
+	code, _ := call(t, h, http.MethodDelete, "/api/tasks/"+junk.ID, map[string]string{"reason": "不要になった"})
+	require.Equal(t, http.StatusOK, code)
+
+	drops, err := store.Dropped(time.Time{})
+	require.NoError(t, err)
+	require.Len(t, drops, 1)
+	assert.Equal(t, "不要になった", drops[0].Reason)
+}
+
+// A body of unknown length that turns out empty is the same as no body.
+func TestRemove_AcceptsAnEmptyChunkedBody(t *testing.T) {
+	store, h := setup(t)
+	junk, _ := store.Add("やめる", "", "", task.ActorHuman)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/tasks/"+junk.ID, bytes.NewReader(nil))
+	req.ContentLength = -1
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+}
+
 func TestUnknownID_Is404(t *testing.T) {
 	_, h := setup(t)
 	code, _ := call(t, h, http.MethodPost, "/api/tasks/T999/done", nil)

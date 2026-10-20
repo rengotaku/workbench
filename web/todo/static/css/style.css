@@ -552,8 +552,9 @@
     margin-top: 3px;
   }
 
-  /* The due chip's menu: a date, a week or a month on, no date, someday. */
-  .due-menu {
+  /* The due chip's menu: a date, a week or a month on, no date, someday. The
+     trash icon's reason field hangs the same way. */
+  .due-menu, .drop-ask {
     position: absolute;
     z-index: 20;
     width: 232px;
@@ -564,6 +565,20 @@
     box-shadow: var(--shadow);
     font-size: var(--fs-lg);
   }
+  .drop-ask { width: 260px; display: flex; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-2); }
+  .drop-ask .dm-label { width: 100%; padding: 0 0 2px; }
+  .drop-ask-input { flex: 1; min-width: 0; padding: 3px 6px; border-color: var(--line); }
+  .drop-ask-input:focus-visible { outline: none; border-color: var(--accent); }
+  .drop-ask-go {
+    padding: 3px 8px;
+    border: 1px solid var(--over);
+    border-radius: var(--radius-sm);
+    background: var(--over-soft);
+    color: var(--over);
+    font-size: var(--fs-md);
+    cursor: pointer;
+  }
+  .drop-ask-go:disabled { opacity: .45; cursor: default; }
   .dm-sec { padding: var(--space-1) 0; }
   .dm-sec + .dm-sec { border-top: 1px solid var(--line-soft); }
   .dm-label { font-size: var(--fs-xs); color: var(--muted); padding: 2px var(--space-2) var(--space-1); }

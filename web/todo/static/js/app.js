@@ -134,6 +134,8 @@
     var OUT_KEY = 'todo-order.out-open';
     var WAIT_KEY = 'todo-order.wait-open';
     var POLL_MS = 4000;
+    // A task this old asks for a reason before the trash icon takes it out.
+    var ASK_DROP_AFTER_MS = 60 * 60 * 1000;
     var state = {
       scope: 'week',
       // Only the band and the in-scope queue are always open. What lies past
@@ -567,26 +569,134 @@
     // recorded as an event with the whole task in it, so the notice that follows
     // offers 元に戻す and `Cmd/Ctrl+Z` works too. Asking first would cost a click
     // on every real deletion to guard against a rare stray one.
+    //
+    // A task that has been in the list for an hour or more asks why instead
+    // (ADR todo-0016): by then it was kept on purpose, and once it is gone there
+    // is no row left on the screen to write the reason on.
     function removeIcon(t) {
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'del del-slot';
-      btn.title = '削除する';
+      btn.title = needsDropReason(t) ? '理由を書いて削除する' : '削除する';
       btn.setAttribute('aria-label', t.name + ' を削除する');
       btn.innerHTML = TRASH_SVG;
 
       btn.addEventListener('click', function (ev) {
         // The row opens on click; deleting must not also open or close it.
         ev.stopPropagation();
+        if (needsDropReason(t)) {
+          openDropAsk(btn, t);
+          return;
+        }
         btn.disabled = true;
-        request('DELETE', '/api/tasks/' + encodeURIComponent(t.id))
-          .then(function () {
-            if (state.openId === t.id) state.openId = null;
-            return load().then(function () { flash('削除した: ' + t.name); });
-          })
-          .catch(function (err) { btn.disabled = false; showError(err); });
+        removeTask(t, '').catch(function (err) { btn.disabled = false; showError(err); });
       });
       return btn;
+    }
+
+    function needsDropReason(t) {
+      var made = Date.parse(t.created_at);
+      return !isNaN(made) && Date.now() - made >= ASK_DROP_AFTER_MS;
+    }
+
+    function removeTask(t, reason) {
+      return request('DELETE', '/api/tasks/' + encodeURIComponent(t.id), reason ? { reason: reason } : null)
+        .then(function () {
+          if (state.openId === t.id) state.openId = null;
+          return load().then(function () { flash('削除した: ' + t.name); });
+        });
+    }
+
+    // openDropAsk hangs a reason field off the trash icon, the way the due menu
+    // hangs off its chip. Enter deletes once something is written; Escape or a
+    // click elsewhere leaves the task where it is.
+    function openDropAsk(btn, t) {
+      closeDueMenu();
+      closeDropAsk();
+
+      var box = document.createElement('div');
+      box.className = 'drop-ask';
+      box.setAttribute('role', 'dialog');
+      box.setAttribute('aria-label', t.name + ' をやめる理由');
+
+      var label = document.createElement('div');
+      label.className = 'dm-label';
+      label.textContent = 'やめる理由（作ってから1時間以上たっている）';
+      box.appendChild(label);
+
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'drop-ask-input';
+      input.placeholder = 'なぜやめるか';
+      input.setAttribute('aria-label', 'やめる理由');
+      box.appendChild(input);
+
+      var go = document.createElement('button');
+      go.type = 'button';
+      go.className = 'drop-ask-go';
+      go.textContent = '削除する';
+      box.appendChild(go);
+
+      // While the DELETE is out the field stays: closing it would let the
+      // trash be pressed again and send a second DELETE behind an undo.
+      var sending = false;
+      function mine() { return dropAsk && dropAsk.node === box; }
+      function update() { go.disabled = sending || !input.value.trim(); }
+      function submit() {
+        var reason = input.value.trim();
+        if (!reason || sending) { input.focus(); return; }
+        sending = true;
+        input.disabled = true;
+        update();
+        removeTask(t, reason)
+          .then(function () { if (mine()) closeDropAsk(); })
+          .catch(function (err) {
+            sending = false;
+            if (mine()) { input.disabled = false; update(); input.focus(); }
+            showError(err);
+          });
+      }
+
+      input.addEventListener('input', update);
+      input.addEventListener('keydown', function (ev) {
+        if (composing(ev)) return;
+        if (ev.key === 'Enter') { ev.preventDefault(); submit(); }
+      });
+      // On the box, not the input, so Escape also works from the button.
+      box.addEventListener('keydown', function (ev) {
+        if (composing(ev) || ev.key !== 'Escape' || sending) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        closeDropAsk();
+        btn.focus();
+      });
+      go.addEventListener('click', submit);
+      update();
+
+      function outside(ev) {
+        if (!sending && !box.contains(ev.target)) closeDropAsk();
+      }
+
+      root.appendChild(box);
+      var r = btn.getBoundingClientRect();
+      var left = Math.max(8, Math.min(r.right - box.offsetWidth, window.innerWidth - box.offsetWidth - 8));
+      box.style.left = (left + window.scrollX) + 'px';
+      box.style.top = (r.bottom + 4 + window.scrollY) + 'px';
+
+      // Hold the poll for the same reason as the due menu: a redraw would
+      // replace the row, and the icon, under the field.
+      state.busy = true;
+      document.addEventListener('mousedown', outside, true);
+      dropAsk = { node: box, outside: outside };
+      input.focus();
+    }
+
+    function closeDropAsk() {
+      if (!dropAsk) return;
+      document.removeEventListener('mousedown', dropAsk.outside, true);
+      dropAsk.node.remove();
+      dropAsk = null;
+      state.busy = false;
     }
 
     // unfocusedQueue is the queue below the band. Focused tasks lead the queue
@@ -1420,6 +1530,7 @@
       if (!active) return;
       if (ev.target.closest('a.ticket')) return; // let the link do its job
       if (ev.target.closest('.due-menu')) return; // the menu handles its own clicks
+      if (ev.target.closest('.drop-ask')) return; // so does the reason field
 
       var chip = ev.target.closest('.due-edit');
       if (chip) {
@@ -1514,6 +1625,7 @@
     // used to live in three places (the chip, an emptied date field, the panel).
 
     var dueMenu = null; // { chip, node }
+    var dropAsk = null; // { node, outside }
 
     function ymd(d) {
       return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
@@ -1671,6 +1783,7 @@
     }
 
     window.addEventListener('resize', closeDueMenu);
+    window.addEventListener('resize', closeDropAsk);
 
     // "タスクを追加" and N open the add page (/add) in a dialog over the list:
     // the same form, due chips and detail as a bare `todo` opens. The list is
@@ -1950,6 +2063,7 @@
     };
     hooks.hide = function () {
       closeDueMenu();
+      closeDropAsk();
     };
 
   }

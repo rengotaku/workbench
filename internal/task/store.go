@@ -407,7 +407,11 @@ func (s *Store) Shelve(id, until string, actor Actor) (Task, error) {
 //
 // Its other events stay in the log as orphans. Readers skip events whose task
 // no longer exists, so nothing downstream breaks.
-func (s *Store) Remove(id string, actor Actor) (Task, error) {
+//
+// reason may be empty: then the removal goes to the question queue like
+// before. The screen asks for one up front when the task has been in the list
+// for a while (ADR todo-0016); the CLI and the API leave it optional.
+func (s *Store) Remove(id string, actor Actor, reason string) (Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -421,7 +425,8 @@ func (s *Store) Remove(id string, actor Actor) (Task, error) {
 	s.renumber()
 
 	snapshot := removed
-	ev := Event{TaskID: id, Kind: KindRemoved, Actor: actor, ToValue: removed.Name, Snapshot: &snapshot}
+	ev := Event{TaskID: id, Kind: KindRemoved, Actor: actor, ToValue: removed.Name, Snapshot: &snapshot,
+		Reason: strings.TrimSpace(reason)}
 	if err := s.record(ev); err != nil {
 		return Task{}, err
 	}
