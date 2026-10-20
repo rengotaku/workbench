@@ -147,6 +147,7 @@
       doneOpen: false, // the completed list is a record, not a queue
       dropOpen: false, // so is the list of what was given up on
       somedayOpen: false, // and so is the shelf: closed by default, like done
+      statusKind: 'progress', // the label the status field writes with; kept across reloads
       busy: false, // a drag or a date field is in progress; do not redraw under it
       shownId: null, // the task the detail box is showing; the pointer moves it
       revealId: null, // the task a link named; its section is unfolded on first load
@@ -519,6 +520,13 @@
       name.appendChild(txt);
 
       body.appendChild(name);
+
+      // The newest status sits under the name, so a row says where it stands
+      // without opening. Open rows list all of them in the panel instead.
+      if (opts.hasPanel && !isOpen(opts.task.id)) {
+        var status = latestStatus(opts.task);
+        if (status) body.appendChild(status);
+      }
 
       if (opts.hasPanel && isOpen(opts.task.id)) {
         body.appendChild(panelFor(opts.task));
@@ -893,7 +901,141 @@
         });
     }
 
-    var ANNOTATION_LABEL = { quote: '引用', analysis: '考察', memo: 'メモ' };
+    // A status line is what a person writes (progress / blocked / memo); a quote
+    // or an analysis is shown as AI's unless a person wrote it.
+    var ANNOTATION_LABEL = { progress: '進んだ', blocked: '詰まり', memo: 'メモ', quote: '引用', analysis: '考察' };
+    var STATUS_KINDS = [['progress', '進んだ'], ['blocked', '詰まり'], ['memo', 'メモ']];
+
+    function annotationLabel(a) {
+      var label = ANNOTATION_LABEL[a.kind] || a.kind;
+      return (a.kind === 'quote' || a.kind === 'analysis') && a.author !== 'human' ? 'AI ' + label : label;
+    }
+
+    function annotationTag(a) {
+      var tag = document.createElement('span');
+      tag.className = 'ann-tag k-' + String(a.kind).replace(/[^a-z]/g, '');
+      tag.textContent = annotationLabel(a);
+      return tag;
+    }
+
+    // calendarDaysSince counts midnights between a time and now, so a note from
+    // 23:50 yesterday is 1 day old at 00:10.
+    function calendarDaysSince(iso) {
+      var then = new Date(iso);
+      var now = new Date();
+      var a = Date.UTC(then.getFullYear(), then.getMonth(), then.getDate());
+      var b = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+      return Math.max(0, Math.round((b - a) / 86400000));
+    }
+
+    // latestStatus is the one line under a row's name: the newest supplement.
+    // It returns null when the task has none.
+    function latestStatus(t) {
+      var anns = t.annotations || [];
+      if (anns.length === 0) return null;
+      var last = anns.reduce(function (m, a) {
+        return Date.parse(a.created_at) >= Date.parse(m.created_at) ? a : m;
+      });
+      var line = document.createElement('div');
+      line.className = 'row-status';
+      var body = document.createElement('span');
+      body.className = 'rs-body';
+      body.textContent = last.body;
+      var age = document.createElement('span');
+      age.className = 'rs-age';
+      var days = calendarDaysSince(last.created_at);
+      age.textContent = days === 0 ? '今日' : days + '日前';
+      if (days >= 3) age.classList.add('stale');
+      line.appendChild(annotationTag(last));
+      line.appendChild(body);
+      line.appendChild(age);
+      return line;
+    }
+
+    // statusBlock is the field that appends one line of status to the open row.
+    // A supplement is append-only, so this only ever adds; a failed send keeps
+    // what was typed.
+    function statusBlock(t) {
+      var wrap = document.createElement('div');
+      wrap.className = 'status-add';
+
+      var line = document.createElement('div');
+      line.className = 'status-line';
+      var label = document.createElement('label');
+      label.className = 'sr-only';
+      var inputId = 'status-' + t.id;
+      label.htmlFor = inputId;
+      label.textContent = 'いまの状況';
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.id = inputId;
+      input.className = 'status-input';
+      input.autocomplete = 'off';
+      input.placeholder = 'いまの状況を 1 行で（Enter で追記）';
+      var send = document.createElement('button');
+      send.type = 'button';
+      send.className = 'status-send';
+      send.textContent = '追記';
+      line.appendChild(label);
+      line.appendChild(input);
+      line.appendChild(send);
+      wrap.appendChild(line);
+
+      var kinds = document.createElement('div');
+      kinds.className = 'status-kinds';
+      kinds.setAttribute('role', 'group');
+      kinds.setAttribute('aria-label', '状況の種類');
+      STATUS_KINDS.forEach(function (k) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'status-kind k-' + k[0];
+        b.textContent = k[1];
+        b.setAttribute('aria-pressed', String(state.statusKind === k[0]));
+        b.addEventListener('click', function () {
+          state.statusKind = k[0];
+          Array.prototype.forEach.call(kinds.children, function (c, i) {
+            c.setAttribute('aria-pressed', String(STATUS_KINDS[i][0] === k[0]));
+          });
+        });
+        kinds.appendChild(b);
+      });
+      wrap.appendChild(kinds);
+
+      var sending = false;
+      function submit() {
+        var body = input.value.trim();
+        if (!body || sending) return;
+        sending = true;
+        send.disabled = true;
+        request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/annotations',
+          { kind: state.statusKind, body: body, actor: 'human' })
+          .then(function () {
+            // The redraw rebuilds the row, so the field is a new one: focus it
+            // again once the list is back.
+            state.busy = false;
+            return load().then(function () {
+              var again = document.getElementById('status-' + t.id);
+              if (again) again.focus();
+            });
+          })
+          .catch(function (err) {
+            sending = false;
+            send.disabled = false;
+            showError(err);
+          });
+      }
+      send.addEventListener('click', submit);
+      input.addEventListener('keydown', function (e) {
+        if (composing(e)) return;
+        if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        // Like the live fields: the first Escape leaves the field.
+        if (e.key === 'Escape') { e.stopPropagation(); input.blur(); }
+      });
+      // Typing here holds the poll, as the name and detail do.
+      input.addEventListener('focus', function () { state.busy = true; });
+      input.addEventListener('blur', function () { state.busy = false; });
+      return wrap;
+    }
 
     // supplementsBlock shows what was appended to a task (newest first, like the
     // trail) and the link back to the memo it was made from. Every value goes in
@@ -1014,24 +1156,22 @@
       }
       if (anns.length > 0) {
         var h = document.createElement('h2');
-        h.textContent = '補足';
+        h.textContent = '状況（新しい順）';
         sec.appendChild(h);
       }
       anns.slice().reverse().forEach(function (a) {
         var item = document.createElement('div');
         item.className = 'd-ann-item k-' + String(a.kind).replace(/[^a-z]/g, '');
-        var who = document.createElement('div');
-        who.className = 'd-ann-who';
+        var when = document.createElement('time');
+        when.className = 'd-ann-when';
         var d = new Date(a.created_at);
-        who.textContent = (ANNOTATION_LABEL[a.kind] || a.kind)
-          + ' · ' + (a.author === 'ai' ? 'AI' : '人')
-          + ' · ' + (d.getMonth() + 1) + '/' + d.getDate() + ' '
-          + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2)
-          + (a.source ? ' · ' + a.source : '');
+        when.textContent = (d.getMonth() + 1) + '/' + d.getDate() + ' '
+          + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
         var body = document.createElement('div');
-        body.className = 'd-ann-body';
-        body.textContent = a.body;
-        item.appendChild(who);
+        body.className = 'd-ann-body' + (a.author === 'ai' ? ' ai' : '');
+        body.textContent = a.body + (a.source ? ' · ' + a.source : '');
+        item.appendChild(when);
+        item.appendChild(annotationTag(a));
         item.appendChild(body);
         sec.appendChild(item);
       });
@@ -1085,6 +1225,8 @@
       detail.textContent = t.detail || '';
       wireLiveField(detail, t, 'detail', { single: false });
       panel.appendChild(detail);
+
+      panel.appendChild(statusBlock(t));
 
       panel.appendChild(linksBlock(t));
 

@@ -56,11 +56,14 @@ const (
 	KindAnnotated Kind = "annotated"
 )
 
-// Annotation kinds, the same three a note has.
+// Annotation kinds: the three a note has, plus progress and blocked, the two
+// a person writes as a status line (ADR todo-0017).
 const (
 	AnnotationQuote    = "quote"
 	AnnotationAnalysis = "analysis"
 	AnnotationMemo     = "memo"
+	AnnotationProgress = "progress"
+	AnnotationBlocked  = "blocked"
 )
 
 // Annotation is one appended supplement to a task. None is ever edited or

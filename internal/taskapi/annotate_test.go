@@ -47,3 +47,19 @@ func TestAnnotateTask_Errors(t *testing.T) {
 	code, _ = call(t, h, http.MethodPost, "/api/tasks/T999/annotations", map[string]any{"kind": "memo", "body": "b"})
 	assert.Equal(t, http.StatusNotFound, code)
 }
+
+func TestAnnotateTask_AcceptsProgressAndBlocked(t *testing.T) {
+	store, h := setup(t)
+	added, err := store.Add("x", "", "", task.ActorHuman)
+	require.NoError(t, err)
+
+	for _, kind := range []string{"progress", "blocked"} {
+		code, out := call(t, h, http.MethodPost, "/api/tasks/"+added.ID+"/annotations",
+			map[string]any{"kind": kind, "body": "状況", "actor": "human"})
+		require.Equal(t, http.StatusCreated, code, out)
+		an, ok := out["annotation"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, kind, an["kind"])
+		assert.Equal(t, "human", an["author"])
+	}
+}

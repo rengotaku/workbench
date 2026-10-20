@@ -71,9 +71,64 @@
   .d-trail li { font-size: var(--fs-sm2); color: var(--ink-soft); line-height: 1.6; }
   .d-trail time { font-family: var(--mono); color: var(--muted); margin-right: 6px; }
   .d-from { display: inline-block; margin-bottom: 6px; font-size: var(--fs-sm2); color: var(--muted); text-decoration: underline; }
-  .d-ann-item { margin: 0 0 8px; }
-  .d-ann-who { font-size: var(--fs-sm); color: var(--muted); }
-  .d-ann-body { font-size: var(--fs-md); line-height: 1.75; color: var(--ink-soft); white-space: pre-wrap; }
+  /* One status per line: when, which label, what. */
+  .d-ann-item { display: grid; grid-template-columns: auto auto 1fr; align-items: baseline; column-gap: 8px; margin: 0 0 6px; }
+  .d-ann-when { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
+  .d-ann-body { font-size: var(--fs-md); line-height: 1.75; color: var(--ink); white-space: pre-wrap; min-width: 0; overflow-wrap: anywhere; }
+  .d-ann-body.ai { color: var(--ink-soft); }
+
+  /* The label on a status, in the detail and under a row's name. */
+  .ann-tag {
+    display: inline-block;
+    padding: 0 6px;
+    border-radius: 3px;
+    font-size: var(--fs-xs);
+    line-height: 1.7;
+    white-space: nowrap;
+    color: var(--ink-soft);
+    background: var(--line-soft);
+  }
+  .ann-tag.k-progress { color: var(--accent); background: var(--accent-soft); }
+  .ann-tag.k-blocked { color: var(--over); background: var(--over-soft); }
+  .ann-tag.k-memo { color: var(--ink); background: var(--surface-sunk); }
+
+  /* The newest status under a row's name. */
+  .row-status { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--fs-sm2); color: var(--ink-soft); }
+  .rs-body { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rs-age { flex: none; font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
+  .rs-age.stale { color: var(--near); font-weight: 600; }
+
+  /* The field that appends a status in the open row. */
+  .status-add { display: flex; flex-direction: column; gap: 6px; }
+  .status-line { display: flex; gap: 6px; }
+  .status-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 5px 8px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--fs-md2);
+  }
+  .status-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .status-send, .status-kind {
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: var(--fs-sm2);
+    cursor: pointer;
+  }
+  .status-send:disabled { opacity: .5; cursor: default; }
+  .status-send:focus-visible, .status-kind:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .status-kinds { display: flex; gap: 6px; }
+  .status-kind[aria-pressed="true"].k-progress { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+  .status-kind[aria-pressed="true"].k-blocked { color: var(--over); background: var(--over-soft); border-color: var(--over); }
+  .status-kind[aria-pressed="true"].k-memo { color: var(--ink); background: var(--surface-sunk); border-color: var(--ink); }
   .d-empty { margin: 0; color: var(--muted); font-size: var(--fs-md); line-height: 1.9; }
 
   .app {

@@ -556,14 +556,14 @@ func detailCmd() *cobra.Command {
 func annotateCmd() *cobra.Command {
 	var kind, body, bodyFile, source string
 	c := &cobra.Command{
-		Use:   "annotate <ID> --kind quote|analysis|memo (--body TEXT | --body-file PATH) [--source NAME]",
+		Use:   "annotate <ID> --kind quote|analysis|memo|progress|blocked (--body TEXT | --body-file PATH) [--source NAME]",
 		Short: "補足を追記する（追記のみ。undo の対象にならない）",
-		Long: "タスクに補足（引用・考察・メモ）を追記する。既存の補足は変えず、todo undo でも取り消されない。\n" +
+		Long: "タスクに補足（引用・考察・メモ・進んだ・詰まり）を追記する。既存の補足は変えず、todo undo でも取り消されない。\n" +
 			"書いた人は TODO_ORDER_ACTOR（human / ai）で決まる。",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if kind == "" {
-				return errors.New("--kind が要ります。quote / analysis / memo のどれかを指定してください")
+				return errors.New("--kind が要ります。quote / analysis / memo / progress / blocked のどれかを指定してください")
 			}
 			hasBody, hasFile := cmd.Flags().Changed("body"), cmd.Flags().Changed("body-file")
 			switch {
@@ -591,7 +591,7 @@ func annotateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&kind, "kind", "", "種別: quote（引用）/ analysis（考察）/ memo（メモ）")
+	c.Flags().StringVar(&kind, "kind", "", "種別: quote（引用）/ analysis（考察）/ memo（メモ）/ progress（進んだ）/ blocked（詰まり）")
 	c.Flags().StringVar(&body, "body", "", "補足の本文")
 	c.Flags().StringVar(&bodyFile, "body-file", "", "補足の本文を読むファイル")
 	c.Flags().StringVar(&source, "source", "", "出どころ（任意。例: slack）")
