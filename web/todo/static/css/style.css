@@ -88,9 +88,6 @@
     color: var(--ink-soft);
     background: var(--line-soft);
   }
-  .ann-tag.k-progress { color: var(--accent); background: var(--accent-soft); }
-  .ann-tag.k-blocked { color: var(--over); background: var(--over-soft); }
-  .ann-tag.k-memo { color: var(--ink); background: var(--surface-sunk); }
 
   /* The newest status under a row's name. */
   .row-status { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--fs-sm2); color: var(--ink-soft); }
@@ -113,7 +110,7 @@
     font-size: var(--fs-md2);
   }
   .status-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .status-send, .status-kind {
+  .status-send {
     padding: 4px 10px;
     border: 1px solid var(--line);
     border-radius: 4px;
@@ -124,11 +121,7 @@
     cursor: pointer;
   }
   .status-send:disabled { opacity: .5; cursor: default; }
-  .status-send:focus-visible, .status-kind:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .status-kinds { display: flex; gap: 6px; }
-  .status-kind[aria-pressed="true"].k-progress { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
-  .status-kind[aria-pressed="true"].k-blocked { color: var(--over); background: var(--over-soft); border-color: var(--over); }
-  .status-kind[aria-pressed="true"].k-memo { color: var(--ink); background: var(--surface-sunk); border-color: var(--ink); }
+  .status-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .d-empty { margin: 0; color: var(--muted); font-size: var(--fs-md); line-height: 1.9; }
 
   .app {

@@ -147,7 +147,6 @@
       doneOpen: false, // the completed list is a record, not a queue
       dropOpen: false, // so is the list of what was given up on
       somedayOpen: false, // and so is the shelf: closed by default, like done
-      statusKind: 'progress', // the label the status field writes with; kept across reloads
       statusDrafts: {}, // unsent status text per task id; survives redraws
       busy: false, // a drag or a date field is in progress; do not redraw under it
       shownId: null, // the task the detail box is showing; the pointer moves it
@@ -902,20 +901,25 @@
         });
     }
 
-    // A status line is what a person writes (progress / blocked / memo); any
-    // supplement AI wrote, whatever its kind, is labelled as AI's.
+    // What a person writes as status (memo, or progress / blocked from the CLI)
+    // carries no tag: telling those apart was more work than it was worth. A
+    // quote or an analysis keeps its tag, and anything AI wrote is labelled AI's.
     var ANNOTATION_LABEL = { progress: '進んだ', blocked: '詰まり', memo: 'メモ', quote: '引用', analysis: '考察' };
-    var STATUS_KINDS = [['progress', '進んだ'], ['blocked', '詰まり'], ['memo', 'メモ']];
+    var UNTAGGED_KINDS = { memo: true, progress: true, blocked: true };
 
     function annotationLabel(a) {
+      if (a.author !== 'ai' && UNTAGGED_KINDS[a.kind]) return '';
       var label = ANNOTATION_LABEL[a.kind] || a.kind;
       return a.author === 'ai' ? 'AI ' + label : label;
     }
 
+    // annotationTag returns an empty span for an untagged supplement, so the
+    // columns of the status list stay in place.
     function annotationTag(a) {
       var tag = document.createElement('span');
-      tag.className = 'ann-tag k-' + String(a.kind).replace(/[^a-z]/g, '');
-      tag.textContent = annotationLabel(a);
+      var label = annotationLabel(a);
+      tag.className = label ? 'ann-tag k-' + String(a.kind).replace(/[^a-z]/g, '') : 'ann-tag-none';
+      tag.textContent = label;
       return tag;
     }
 
@@ -947,7 +951,7 @@
       var days = calendarDaysSince(last.created_at);
       age.textContent = days === 0 ? '今日' : days + '日前';
       if (days >= 3) age.classList.add('stale');
-      line.appendChild(annotationTag(last));
+      if (annotationLabel(last)) line.appendChild(annotationTag(last));
       line.appendChild(body);
       line.appendChild(age);
       return line;
@@ -986,26 +990,6 @@
       line.appendChild(send);
       wrap.appendChild(line);
 
-      var kinds = document.createElement('div');
-      kinds.className = 'status-kinds';
-      kinds.setAttribute('role', 'group');
-      kinds.setAttribute('aria-label', '状況の種類');
-      STATUS_KINDS.forEach(function (k) {
-        var b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'status-kind k-' + k[0];
-        b.textContent = k[1];
-        b.setAttribute('aria-pressed', String(state.statusKind === k[0]));
-        b.addEventListener('click', function () {
-          state.statusKind = k[0];
-          Array.prototype.forEach.call(kinds.children, function (c, i) {
-            c.setAttribute('aria-pressed', String(STATUS_KINDS[i][0] === k[0]));
-          });
-        });
-        kinds.appendChild(b);
-      });
-      wrap.appendChild(kinds);
-
       var sending = false;
       function submit() {
         var body = input.value.trim();
@@ -1013,7 +997,7 @@
         sending = true;
         send.disabled = true;
         request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/annotations',
-          { kind: state.statusKind, body: body, actor: 'human' })
+          { kind: 'memo', body: body, actor: 'human' })
           .then(function () {
             // Clear only what was sent: anything typed while waiting stays.
             var draft = state.statusDrafts[t.id] || '';
