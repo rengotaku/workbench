@@ -415,7 +415,7 @@ func TestRemove_TakesTheTaskOutAndRecordsWhatItWas(t *testing.T) {
 	junk, _ := s.Add("誤って追加した", "", dateIn(3), task.ActorHuman)
 	last, _ := s.Add("これも残る", "", "", task.ActorHuman)
 
-	removed, err := s.Remove(junk.ID, task.ActorHuman)
+	removed, err := s.Remove(junk.ID, task.ActorHuman, "")
 	require.NoError(t, err)
 	assert.Equal(t, "誤って追加した", removed.Name)
 
@@ -444,7 +444,7 @@ func TestRemove_TakesTheTaskOutAndRecordsWhatItWas(t *testing.T) {
 
 func TestRemove_UnknownIDIsNotFound(t *testing.T) {
 	s := newStore(t)
-	_, err := s.Remove("T999", task.ActorHuman)
+	_, err := s.Remove("T999", task.ActorHuman, "")
 	assert.ErrorIs(t, err, task.ErrNotFound)
 }
 
@@ -463,7 +463,7 @@ func TestRemove_LeavesOrphanEventsThatAskIgnores(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, pending, 1)
 
-	_, err = s.Remove(b.ID, task.ActorHuman)
+	_, err = s.Remove(b.ID, task.ActorHuman, "")
 	require.NoError(t, err)
 
 	pending, err = s.Ask()
@@ -611,7 +611,7 @@ func TestDropped_ReadsRemovedTasksFromTheLog(t *testing.T) {
 	keep, _ := s.Add("残す", "", "", task.ActorHuman)
 	gone, _ := s.Add("やめる", "", "2026-09-30", task.ActorHuman)
 
-	_, err := s.Remove(gone.ID, task.ActorHuman)
+	_, err := s.Remove(gone.ID, task.ActorHuman, "")
 	require.NoError(t, err)
 
 	drops, err := s.Dropped(time.Time{})
@@ -640,14 +640,33 @@ func TestDropped_ReadsRemovedTasksFromTheLog(t *testing.T) {
 
 // Undoing a removal puts the task back, so it was never given up on: it has to
 // leave the dropped list, or the page would show it in two places at once.
+// A reason given at the removal is already the answer, so the removal does
+// not also wait in the question queue.
+func TestRemove_WithAReasonIsNotAskedAgain(t *testing.T) {
+	s := newStore(t)
+	gone, _ := s.Add("やめる", "", "", task.ActorHuman)
+
+	_, err := s.Remove(gone.ID, task.ActorHuman, "  別チケットに吸収された  ")
+	require.NoError(t, err)
+
+	drops, err := s.Dropped(time.Time{})
+	require.NoError(t, err)
+	require.Len(t, drops, 1)
+	assert.Equal(t, "別チケットに吸収された", drops[0].Reason)
+
+	pending, err := s.Ask()
+	require.NoError(t, err)
+	assert.Empty(t, pending)
+}
+
 func TestDropped_LeavesOutRemovalsThatWereUndone(t *testing.T) {
 	s := newStore(t)
 	a, _ := s.Add("戻す", "", "", task.ActorHuman)
 	b, _ := s.Add("やめたまま", "", "", task.ActorHuman)
 
-	_, err := s.Remove(b.ID, task.ActorHuman)
+	_, err := s.Remove(b.ID, task.ActorHuman, "")
 	require.NoError(t, err)
-	_, err = s.Remove(a.ID, task.ActorHuman)
+	_, err = s.Remove(a.ID, task.ActorHuman, "")
 	require.NoError(t, err)
 
 	drops, err := s.Dropped(time.Time{})
@@ -687,7 +706,7 @@ func TestDropped_LeavesOutTheRemovalThatUndoingAnAddWrites(t *testing.T) {
 func TestDropped_HonoursTheSinceCutoff(t *testing.T) {
 	s := newStore(t)
 	gone, _ := s.Add("やめる", "", "", task.ActorHuman)
-	_, err := s.Remove(gone.ID, task.ActorHuman)
+	_, err := s.Remove(gone.ID, task.ActorHuman, "")
 	require.NoError(t, err)
 
 	drops, err := s.Dropped(time.Now().Add(time.Hour))

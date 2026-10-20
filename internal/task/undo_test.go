@@ -73,7 +73,7 @@ func TestUndo_PutsARemovedTaskBack(t *testing.T) {
 	_, _ = s.Add("残る", "", "", task.ActorHuman)
 	junk, _ := s.Add("誤って消した", "詳しい話", dateIn(2), task.ActorHuman)
 
-	_, err := s.Remove(junk.ID, task.ActorHuman)
+	_, err := s.Remove(junk.ID, task.ActorHuman, "")
 	require.NoError(t, err)
 
 	done, err := s.Undo(task.ActorHuman)
@@ -182,7 +182,7 @@ func TestUndo_SkipsAChangeWhoseTaskIsGone(t *testing.T) {
 	require.NoError(t, err)
 
 	// Remove the task whose rename sits in the middle of the stack.
-	_, err = s.Remove(gone.ID, task.ActorHuman)
+	_, err = s.Remove(gone.ID, task.ActorHuman, "")
 	require.NoError(t, err)
 
 	// First undo puts the removed task back.
