@@ -152,14 +152,14 @@ func (s *Store) Add(name, detail, due string, actor Actor) (Task, error) {
 // Adding and linking are one change, so a single undo takes the task back out
 // instead of leaving it behind without its link.
 func (s *Store) AddLinked(name, detail, due, url, linkText string, actor Actor) (Task, error) {
-	return s.add(name, detail, due, url, linkText, nil, 0, actor)
+	return s.add(name, detail, due, url, linkText, nil, 0, "", actor)
 }
 
 // AddWithLinks appends a task together with its related URLs, numbered from 1
 // in the order given. Adding and linking are one event, so one undo removes
 // the task.
 func (s *Store) AddWithLinks(name, detail, due string, links []LinkInput, actor Actor) (Task, error) {
-	return s.add(name, detail, due, "", "", links, 0, actor)
+	return s.add(name, detail, due, "", "", links, 0, "", actor)
 }
 
 // AddFromNote appends a task made from a memo. When a task for that memo
@@ -169,7 +169,19 @@ func (s *Store) AddFromNote(name, detail, due string, noteID int, actor Actor) (
 	if noteID < 1 {
 		return Task{}, errors.New("source note id is required")
 	}
-	return s.add(name, detail, due, "", "", nil, noteID, actor)
+	return s.add(name, detail, due, "", "", nil, noteID, "", actor)
+}
+
+// AddChild appends a task cut out of a long-run task (ADR todo-0019). Checking
+// the parent, adding and tying are one change under one lock: a parent that
+// stops being long-run meanwhile refuses the add rather than leaving the task
+// behind untied, and one undo takes the task back out.
+func (s *Store) AddChild(name, detail, due, parent string, links []LinkInput, url, linkText string, actor Actor) (Task, error) {
+	parent = strings.TrimSpace(parent)
+	if parent == "" {
+		return Task{}, errors.New("parent is required")
+	}
+	return s.add(name, detail, due, url, linkText, links, 0, parent, actor)
 }
 
 // FindBySourceNote returns the task made from a memo.
@@ -191,7 +203,7 @@ func (s *Store) findBySourceNote(noteID int) (Task, bool) {
 	return Task{}, false
 }
 
-func (s *Store) add(name, detail, due, url, linkText string, linkInputs []LinkInput, noteID int, actor Actor) (Task, error) {
+func (s *Store) add(name, detail, due, url, linkText string, linkInputs []LinkInput, noteID int, parent string, actor Actor) (Task, error) {
 	if name == "" {
 		return Task{}, errors.New("name is required")
 	}
@@ -209,6 +221,9 @@ func (s *Store) add(name, detail, due, url, linkText string, linkInputs []LinkIn
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := s.checkParent(Task{}, parent); err != nil {
+		return Task{}, err
+	}
 	if existing, ok := s.findBySourceNote(noteID); ok {
 		// It may be in memory only, if saving it failed the first time. Save
 		// again before saying it exists, so the caller never records a task
@@ -229,6 +244,7 @@ func (s *Store) add(name, detail, due, url, linkText string, linkInputs []LinkIn
 		Order:        len(s.openIndexes()),
 		CreatedAt:    s.now(),
 		SourceNoteID: noteID,
+		Parent:       parent,
 	}
 	if url != "" {
 		t.LinkText = linkText
@@ -262,13 +278,17 @@ func (s *Store) Done(id string, actor Actor) (Task, error) {
 
 	now := s.now()
 	t := s.st.Tasks[i]
+	ev := Event{TaskID: id, Kind: KindDone, Actor: actor}
+	if t.State == StateLong {
+		ev.FromValue = string(StateLong) // undo puts it back in the long-run band
+	}
 	t.State = StateDone
 	t.CompletedAt = &now
 	t.Focused = false // finishing it takes it out of the focus band
 	s.st.Tasks[i] = t
 	s.renumber()
 
-	if err := s.record(Event{TaskID: id, Kind: KindDone, Actor: actor}); err != nil {
+	if err := s.record(ev); err != nil {
 		return Task{}, err
 	}
 	if err := s.persist(); err != nil {
@@ -295,6 +315,9 @@ func (s *Store) Wait(id, to, note string, actor Actor) (Task, error) {
 	t := s.st.Tasks[i]
 	if t.State == StateDone {
 		return Task{}, fmt.Errorf("%s is done: %w", id, ErrAlreadyDone)
+	}
+	if t.State == StateLong {
+		return Task{}, fmt.Errorf("%s is long-run: bring it back to the queue before handing it on", id)
 	}
 
 	t.State = StateWaiting
@@ -498,6 +521,9 @@ func (s *Store) FocusAt(id string, on bool, to, expectRevision int, actor Actor)
 	}
 	if on && t.State == StateDone {
 		return Task{}, fmt.Errorf("%s is done", id)
+	}
+	if on && t.State == StateLong {
+		return Task{}, fmt.Errorf("%s is long-run: it has its own band", id)
 	}
 	from := t.Order
 	t.Focused = on
@@ -1075,8 +1101,8 @@ func (s *Store) clampToBlock(open []int, storeIdx, to int) int {
 	return to
 }
 
-// renumber gives the queue positions 0..n-1 and pushes waiting, someday and
-// done tasks past it in that order, so Order alone sorts the whole list the
+// renumber gives the queue positions 0..n-1 and pushes long-run, waiting,
+// someday and done tasks past it in that order, so Order alone sorts the whole list the
 // way the page shows it. Focused tasks come first in the queue, keeping their
 // order among themselves (ADR todo-0012), so a resume or an undo cannot leave
 // one below an unfocused task.
@@ -1090,6 +1116,10 @@ func (s *Store) renumber() {
 				pos++
 			}
 		}
+	}
+	for _, i := range s.indexesWithState(StateLong) {
+		s.st.Tasks[i].Order = pos
+		pos++
 	}
 	for _, i := range s.waitingIndexes() {
 		s.st.Tasks[i].Order = pos

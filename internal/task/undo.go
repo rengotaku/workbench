@@ -79,7 +79,8 @@ func undoable(k Kind) bool {
 	switch k {
 	case KindCreated, KindRemoved, KindRenamed, KindDetail, KindDueSet,
 		KindLinked, KindLinks, KindDone, KindReopened, KindWaiting, KindResumed,
-		KindShelved, KindReordered, KindFocused, KindUnfocused:
+		KindShelved, KindReordered, KindFocused, KindUnfocused,
+		KindLonged, KindUnlonged, KindParentSet:
 		return true
 	default:
 		return false
@@ -190,6 +191,9 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 			return "", errSkipUndo
 		}
 		t.State = StateOpen
+		if e.FromValue == string(StateLong) {
+			t.State = StateLong // it was finished from the long-run band
+		}
 		t.CompletedAt = nil
 		t.Order = math.MaxInt32
 		s.st.Tasks[i] = t
@@ -272,6 +276,54 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 			return fmt.Sprintf("フォーカスに戻した: %s %s", t.ID, t.Name), nil
 		}
 		return fmt.Sprintf("フォーカスを外した: %s %s", t.ID, t.Name), nil
+
+	case KindLonged:
+		if t.State != StateLong || e.Snapshot == nil {
+			return "", errSkipUndo
+		}
+		from := t.Order
+		t.State = StateOpen
+		t.Focused = e.Snapshot.Focused
+		s.st.Tasks[i] = t
+		open := s.openIndexes()
+		s.move(open, i, s.clampToBlock(open, i, e.FromOrder))
+		s.renumber()
+		if err := s.recordSpent(Event{TaskID: t.ID, Kind: KindUnlonged, Actor: actor,
+			FromOrder: from, ToOrder: s.st.Tasks[i].Order}); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("長期を取り消した: %s %s", t.ID, t.Name), nil
+
+	case KindUnlonged:
+		if t.State != StateOpen || t.Parent != "" {
+			return "", errSkipUndo
+		}
+		snapshot := t
+		from := t.Order
+		t.State = StateLong
+		t.Focused = false
+		s.st.Tasks[i] = t
+		s.renumber()
+		if err := s.recordSpent(Event{TaskID: t.ID, Kind: KindLonged, Actor: actor,
+			FromOrder: from, Snapshot: &snapshot}); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("長期に戻した: %s %s", t.ID, t.Name), nil
+
+	case KindParentSet:
+		if t.Parent != e.ToValue {
+			return "", errSkipUndo // changed again since
+		}
+		t.Parent = e.FromValue
+		s.st.Tasks[i] = t
+		if err := s.recordSpent(Event{TaskID: t.ID, Kind: KindParentSet, Actor: actor,
+			FromValue: e.ToValue, ToValue: e.FromValue}); err != nil {
+			return "", err
+		}
+		if t.Parent == "" {
+			return fmt.Sprintf("親を外した: %s %s", t.ID, t.Name), nil
+		}
+		return fmt.Sprintf("親を戻した: %s %s → %s", t.ID, t.Name, t.Parent), nil
 
 	case KindShelved:
 		if t.State != StateSomeday || e.Snapshot == nil {

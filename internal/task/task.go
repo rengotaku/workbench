@@ -17,7 +17,10 @@ const (
 	StateOpen    State = "open"
 	StateWaiting State = "waiting"
 	StateSomeday State = "someday"
-	StateDone    State = "done"
+	// StateLong is a job that runs for months. It sits in its own band above
+	// the focus band, out of the queue (ADR todo-0019).
+	StateLong State = "long"
+	StateDone State = "done"
 )
 
 // Actor says who made a change, so the event log can tell a person's
@@ -51,6 +54,12 @@ const (
 	KindLinks     Kind = "links_set"
 	KindFocused   Kind = "focused"
 	KindUnfocused Kind = "unfocused"
+	// KindLonged / KindUnlonged move a task into and out of the long-run band.
+	KindLonged   Kind = "longed"
+	KindUnlonged Kind = "unlonged"
+	// KindParentSet ties a task to a long-run task; from/to hold the old and
+	// new parent IDs.
+	KindParentSet Kind = "parent_set"
 	// KindAnnotated is a supplement appended to a task. It is not undoable:
 	// see ADR todo-0010.
 	KindAnnotated Kind = "annotated"
@@ -103,6 +112,9 @@ type Task struct {
 	HandedTo string `json:"handed_to,omitempty"`
 	HandedOn string `json:"handed_on,omitempty"`
 	WaitNote string `json:"wait_note,omitempty"`
+	// Parent is the long-run task this one was cut out of; empty when none.
+	// One level only: a long-run task is never a child (ADR todo-0019).
+	Parent string `json:"parent,omitempty"`
 	// Annotations are appended supplements, oldest first. Undo leaves them.
 	Annotations []Annotation `json:"annotations,omitempty"`
 	// Links are the related URLs the name refers to as [1], [2] …. The old

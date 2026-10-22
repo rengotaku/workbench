@@ -46,6 +46,7 @@ func (a *API) Mount(r gin.IRouter) {
 	g.DELETE("/tasks/:id", a.removeTask)
 	g.POST("/tasks/:id/done", a.doneTask)
 	g.POST("/tasks/:id/focus", a.focusTask)
+	g.POST("/tasks/:id/long", a.longTask)
 	g.POST("/tasks/:id/reopen", a.reopenTask)
 	g.POST("/tasks/:id/wait", a.waitTask)
 	g.POST("/tasks/:id/resume", a.resumeTask)
@@ -72,10 +73,27 @@ type View struct {
 	UntilReached bool `json:"until_reached,omitempty"`
 }
 
+// LongView is a long-run task with what the band shows under it: the next
+// step (the open child highest in the queue) and how many children are done
+// and not done. Children are counted across every week, not only this one.
+type LongView struct {
+	Next *ChildRef `json:"next,omitempty"`
+	View
+	KidsDone int `json:"kids_done"`
+	KidsOpen int `json:"kids_open"`
+}
+
+// ChildRef names a child task without carrying all of it.
+type ChildRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type listResponse struct {
 	Today   string      `json:"today"`
 	Queue   []View      `json:"queue"`
 	Focus   []View      `json:"focus"`
+	Long    []LongView  `json:"long"`
 	Waiting []View      `json:"waiting"`
 	Someday []View      `json:"someday"`
 	Done    []View      `json:"done"`
@@ -132,6 +150,8 @@ func (a *API) build(scope int) listResponse {
 			res.Waiting = append(res.Waiting, v)
 		case task.StateSomeday:
 			res.Someday = append(res.Someday, v)
+		case task.StateLong:
+			res.Long = append(res.Long, longView(v, tasks))
 		case task.StateDone:
 			if t.CompletedAt != nil && t.CompletedAt.In(a.loc).Before(weekStart) {
 				continue
@@ -166,6 +186,26 @@ func (a *API) build(scope int) listResponse {
 		return u < v
 	})
 	return res
+}
+
+// longView adds the children's facts to a long-run task. tasks is the whole
+// list in Order, so the first open child met is the one highest in the queue.
+func longView(v View, tasks []task.Task) LongView {
+	lv := LongView{View: v}
+	for _, t := range tasks {
+		if t.Parent != v.ID {
+			continue
+		}
+		if t.State == task.StateDone {
+			lv.KidsDone++
+			continue
+		}
+		lv.KidsOpen++
+		if lv.Next == nil && t.State == task.StateOpen {
+			lv.Next = &ChildRef{ID: t.ID, Name: t.Name}
+		}
+	}
+	return lv
 }
 
 // undo reverses the last change, whoever made it: one entry point for the page
@@ -246,7 +286,9 @@ type addRequest struct {
 	URL      string `json:"url"`
 	LinkText string `json:"link_text"`
 	Due      string `json:"due"`
-	Actor    string `json:"actor"`
+	// Parent is the long-run task the new one is cut out of.
+	Parent string `json:"parent"`
+	Actor  string `json:"actor"`
 	// Links are the related URLs, numbered 1..k in the order given.
 	Links []task.LinkInput `json:"links"`
 }
@@ -262,9 +304,13 @@ func (a *API) addTask(c *gin.Context) {
 		t   task.Task
 		err error
 	)
-	if len(req.Links) > 0 {
+	switch {
+	case req.Parent != "":
+		// One change: a bad parent refuses the add, and one undo removes it.
+		t, err = a.store.AddChild(req.Name, req.Detail, req.Due, req.Parent, req.Links, req.URL, req.LinkText, actor)
+	case len(req.Links) > 0:
 		t, err = a.store.AddWithLinks(req.Name, req.Detail, req.Due, req.Links, actor)
-	} else {
+	default:
 		t, err = a.store.AddLinked(req.Name, req.Detail, req.Due, req.URL, req.LinkText, actor)
 	}
 	a.respond(c, t, err)
@@ -276,9 +322,11 @@ type patchRequest struct {
 	Detail *string `json:"detail"`
 	URL    *string `json:"url"`
 	// Links is the task's full new list; absent leaves it alone, [] clears it.
-	Links    *[]task.LinkInput `json:"links"`
-	LinkText string            `json:"link_text"`
-	Actor    string            `json:"actor"`
+	Links *[]task.LinkInput `json:"links"`
+	// Parent ties the task to a long-run task; "" unties it.
+	Parent   *string `json:"parent"`
+	LinkText string  `json:"link_text"`
+	Actor    string  `json:"actor"`
 }
 
 func (a *API) patchTask(c *gin.Context) {
@@ -332,8 +380,14 @@ func (a *API) patchTask(c *gin.Context) {
 			return
 		}
 	}
-	if req.Name == nil && req.Due == nil && req.Detail == nil && req.URL == nil && req.Links == nil {
-		badRequest(c, errors.New("nothing to change: pass name, due, detail, url or links"))
+	if req.Parent != nil {
+		if t, err = a.store.SetParent(id, *req.Parent, actor); err != nil {
+			a.respond(c, t, err)
+			return
+		}
+	}
+	if req.Name == nil && req.Due == nil && req.Detail == nil && req.URL == nil && req.Links == nil && req.Parent == nil {
+		badRequest(c, errors.New("nothing to change: pass name, due, detail, url, links or parent"))
 		return
 	}
 	a.respond(c, t, nil)
@@ -409,6 +463,27 @@ func (a *API) focusTask(c *gin.Context) {
 		expect = *req.Revision
 	}
 	t, err := a.store.FocusAt(c.Param("id"), *req.On, to, expect, actorOf(c.Query("actor")))
+	a.respond(c, t, err)
+}
+
+type longRequest struct {
+	On    *bool  `json:"on"`
+	Actor string `json:"actor"`
+}
+
+// longTask moves a queue task to the long-run band, or brings it back to the
+// top of the queue (ADR todo-0019).
+func (a *API) longTask(c *gin.Context) {
+	var req longRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	if req.On == nil {
+		badRequest(c, errors.New("pass on: true or false"))
+		return
+	}
+	t, err := a.store.SetLong(c.Param("id"), *req.On, actorOf(req.Actor))
 	a.respond(c, t, err)
 }
 

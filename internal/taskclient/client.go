@@ -61,14 +61,26 @@ type Task struct {
 	UntilReached bool `json:"until_reached"`
 }
 
+// LongTask is a long-run task with its next step and child counts.
+type LongTask struct {
+	Next *struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	} `json:"next"`
+	Task
+	KidsDone int `json:"kids_done"`
+	KidsOpen int `json:"kids_open"`
+}
+
 // Board is the whole list, split the way the page shows it.
 type Board struct {
-	Today   string `json:"today"`
-	Queue   []Task `json:"queue"`
-	Focus   []Task `json:"focus"`
-	Waiting []Task `json:"waiting"`
-	Someday []Task `json:"someday"`
-	Done    []Task `json:"done"`
+	Today   string     `json:"today"`
+	Queue   []Task     `json:"queue"`
+	Focus   []Task     `json:"focus"`
+	Long    []LongTask `json:"long"`
+	Waiting []Task     `json:"waiting"`
+	Someday []Task     `json:"someday"`
+	Done    []Task     `json:"done"`
 	Counts  struct {
 		Over int `json:"over"`
 		Near int `json:"near"`
@@ -99,6 +111,15 @@ func (c *Client) Add(name, detail, due string, links ...task.LinkInput) (Task, [
 	return c.taskCall(http.MethodPost, "/api/tasks", body)
 }
 
+// AddChild creates a task tied to a long-run task.
+func (c *Client) AddChild(parent, name, detail, due string, links ...task.LinkInput) (Task, []byte, error) {
+	body := map[string]any{"name": name, "detail": detail, "due": due, "parent": parent, "actor": actor()}
+	if len(links) > 0 {
+		body["links"] = links
+	}
+	return c.taskCall(http.MethodPost, "/api/tasks", body)
+}
+
 // Done completes a task.
 func (c *Client) Done(id string) (Task, []byte, error) {
 	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/done?actor="+actor(), nil)
@@ -123,6 +144,20 @@ func (c *Client) Reopen(id string) (Task, []byte, error) {
 func (c *Client) Focus(id string, on bool) (Task, []byte, error) {
 	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/focus?actor="+actor(),
 		map[string]any{"on": on})
+}
+
+// Long moves a queue task to the long-run band, or brings it back.
+func (c *Client) Long(id string, on bool) (Task, []byte, error) {
+	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/long", map[string]any{
+		"on": on, "actor": actor(),
+	})
+}
+
+// SetParent ties a task to a long-run task; an empty parent unties it.
+func (c *Client) SetParent(id, parent string) (Task, []byte, error) {
+	return c.taskCall(http.MethodPatch, "/api/tasks/"+url.PathEscape(id), map[string]any{
+		"parent": parent, "actor": actor(),
+	})
 }
 
 // Wait hands a task to someone else.
