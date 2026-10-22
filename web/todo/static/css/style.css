@@ -202,15 +202,26 @@
   /* Focused tasks are the top of the queue and are shown here only, as the same
      rows as the list below (ADR todo-0012). The band stays when empty: it is
      where a row is dropped to focus it. */
+  /* The band is set apart by a rule above and below and by its rows' size,
+     not by the tint alone: the tint sits 1.2:1 from the surface and cannot get
+     far past 1.5:1 while staying a background. The rules run top and bottom
+     because each row's left edge already carries the due colour. */
   .focus-band {
-    background: var(--accent-soft);
-    border-bottom: 1px solid var(--line);
-    padding: 10px 22px 6px;
+    background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+    border-top: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+    padding: 12px 22px 8px;
     outline: 2px dashed transparent;
     outline-offset: -5px;
   }
   .focus-band.drop-ready { outline-color: color-mix(in srgb, var(--accent) 55%, transparent); }
-  .focus-band .task { border-bottom-color: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .focus-band .task {
+    padding-block: 12px;
+    border-bottom-color: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+  .focus-band .name { font-size: var(--fs-focus); font-weight: 700; }
+  /* --muted falls to 2.8:1 on the darker band; the circle is the done control. */
+  .focus-band .check { border-color: var(--ink-soft); }
   .focus-empty {
     margin: 0;
     padding: 6px 0 8px;
@@ -222,21 +233,24 @@
     align-items: center;
     gap: 8px;
     margin-bottom: 6px;
-    font-family: var(--mono);
-    font-size: var(--fs-xs);
-    letter-spacing: .14em;
-    text-transform: uppercase;
-    color: var(--accent);
+    /* Written in the body face, not the mono of the fold headings, so it does
+       not read as one more section to unfold. */
+    font-family: var(--sans);
+    font-size: var(--fs-lg3);
+    font-weight: 700;
+    letter-spacing: .04em;
+    color: var(--ink);
   }
-  /* The other headings start with a ▶ caret; an invisible one keeps the
-     focus heading's title in line with them. */
-  .focus-head::before { content: "▶"; visibility: hidden; font-size: var(--fs-2xs); }
+  /* ◎ is the focus mark the detail pane uses; it takes the place of the caret
+     the other headings start with, so the titles stay in line. */
+  .focus-head::before { content: "◎"; color: var(--accent); font-size: var(--fs-lg); }
   .focus-head .n {
     font-family: var(--mono);
     font-size: var(--fs-sm);
+    font-weight: 500;
     letter-spacing: 0;
-    color: var(--accent);
-    background: var(--surface);
+    color: var(--on-accent);
+    background: var(--accent);
     padding: 1px 6px;
     border-radius: var(--radius-sm);
   }
