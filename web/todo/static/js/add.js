@@ -15,6 +15,7 @@
     '',
     '  <main class="ap-main">',
     '    <label class="ap-label" for="ap-name">なにをやる？</label>',
+    '    <p class="ap-parent" id="ap-parent" hidden></p>',
     '    <input class="ap-name" id="ap-name" autofocus autocomplete="off" placeholder="タスク名を入力して Enter">',
     '    <div class="ap-links" id="ap-links"></div>',
     '',
@@ -74,8 +75,12 @@
       toast: document.getElementById('ap-toast'),
       recentWrap: document.getElementById('ap-recent-wrap'),
       recent: document.getElementById('ap-recent'),
+      parent: document.getElementById('ap-parent'),
     };
     var due = '';
+    // parent is the long-run task the new tasks are cut out of, when the add
+    // screen was opened from its 子を追加 button (?parent=T051).
+    var parent = '';
     var busy = false;
 
     // ---- dates ----
@@ -234,6 +239,7 @@
       var related = links.read(false);
       if (!related) return;
       if (related.length) body.links = related;
+      if (parent) body.parent = parent;
 
       busy = true;
       el.name.disabled = true;
@@ -281,7 +287,10 @@
     renderChips();
     var shownOn = ymd(new Date()); // the day the chips were drawn for
 
-    hooks.show = function () {
+    hooks.show = function (url) {
+      parent = (url && url.searchParams.get('parent')) || '';
+      el.parent.hidden = !parent;
+      el.parent.textContent = parent ? '長期 ' + parent + ' の子として追加する' : '';
       // The chips hold dates (今日, 明日 …): drawn on another day, they would
       // save that day's dates. Draw them again once the day has moved.
       if (shownOn !== ymd(new Date())) {
@@ -302,9 +311,9 @@
       active = true;
       mount(root);
     },
-    show: function () {
+    show: function (url) {
       active = true;
-      if (hooks.show) hooks.show();
+      if (hooks.show) hooks.show(url);
     },
     hide: function () {
       active = false;

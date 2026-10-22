@@ -262,13 +262,17 @@ func (s *Store) Done(id string, actor Actor) (Task, error) {
 
 	now := s.now()
 	t := s.st.Tasks[i]
+	ev := Event{TaskID: id, Kind: KindDone, Actor: actor}
+	if t.State == StateLong {
+		ev.FromValue = string(StateLong) // undo puts it back in the long-run band
+	}
 	t.State = StateDone
 	t.CompletedAt = &now
 	t.Focused = false // finishing it takes it out of the focus band
 	s.st.Tasks[i] = t
 	s.renumber()
 
-	if err := s.record(Event{TaskID: id, Kind: KindDone, Actor: actor}); err != nil {
+	if err := s.record(ev); err != nil {
 		return Task{}, err
 	}
 	if err := s.persist(); err != nil {
@@ -295,6 +299,9 @@ func (s *Store) Wait(id, to, note string, actor Actor) (Task, error) {
 	t := s.st.Tasks[i]
 	if t.State == StateDone {
 		return Task{}, fmt.Errorf("%s is done: %w", id, ErrAlreadyDone)
+	}
+	if t.State == StateLong {
+		return Task{}, fmt.Errorf("%s is long-run: bring it back to the queue before handing it on", id)
 	}
 
 	t.State = StateWaiting
@@ -498,6 +505,9 @@ func (s *Store) FocusAt(id string, on bool, to, expectRevision int, actor Actor)
 	}
 	if on && t.State == StateDone {
 		return Task{}, fmt.Errorf("%s is done", id)
+	}
+	if on && t.State == StateLong {
+		return Task{}, fmt.Errorf("%s is long-run: it has its own band", id)
 	}
 	from := t.Order
 	t.Focused = on
@@ -1075,8 +1085,8 @@ func (s *Store) clampToBlock(open []int, storeIdx, to int) int {
 	return to
 }
 
-// renumber gives the queue positions 0..n-1 and pushes waiting, someday and
-// done tasks past it in that order, so Order alone sorts the whole list the
+// renumber gives the queue positions 0..n-1 and pushes long-run, waiting,
+// someday and done tasks past it in that order, so Order alone sorts the whole list the
 // way the page shows it. Focused tasks come first in the queue, keeping their
 // order among themselves (ADR todo-0012), so a resume or an undo cannot leave
 // one below an unfocused task.
@@ -1090,6 +1100,10 @@ func (s *Store) renumber() {
 				pos++
 			}
 		}
+	}
+	for _, i := range s.indexesWithState(StateLong) {
+		s.st.Tasks[i].Order = pos
+		pos++
 	}
 	for _, i := range s.waitingIndexes() {
 		s.st.Tasks[i].Order = pos

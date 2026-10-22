@@ -47,10 +47,12 @@ func rootCmd() *cobra.Command {
 	root.PersistentFlags().BoolVar(&asJSON, "json", false, "print the raw JSON response")
 	root.Flags().String("due", "", "due date (YYYY-MM-DD)")
 	root.Flags().String("detail", "", "detail text")
+	root.Flags().String("parent", "", "長期のタスクの ID。そのタスクの子として追加する")
 	root.Flags().StringArray("link", nil, "関連 URL（\"<URL> 一言\" の形。一言は省略可）。書いた順に [1] [2] … と番号が付く")
 
 	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), removeCmd(), waitCmd(), resumeCmd(),
 		somedayCmd(), orderCmd(), dueCmd(), detailCmd(), annotateCmd(), renameCmd(), focusCmd(true), focusCmd(false),
+		longCmd(true), longCmd(false), parentCmd(),
 		undoCmd(), askCmd(), whyCmd(), contextCmd(), importCmd())
 	return root
 }
@@ -68,6 +70,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	due, _ := cmd.Flags().GetString("due")
 	detail, _ := cmd.Flags().GetString("detail")
+	parent, _ := cmd.Flags().GetString("parent")
 	name := strings.Join(args, " ")
 	rawLinks, _ := cmd.Flags().GetStringArray("link")
 	links := make([]task.LinkInput, 0, len(rawLinks))
@@ -79,7 +82,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	t, raw, err := c.Add(name, detail, due, links...)
+	var (
+		t   taskclient.Task
+		raw []byte
+	)
+	if parent != "" {
+		t, raw, err = c.AddChild(parent, name, detail, due, links...)
+	} else {
+		t, raw, err = c.Add(name, detail, due, links...)
+	}
 	if err != nil {
 		return err
 	}
@@ -149,6 +160,17 @@ func printBoard(b taskclient.Board) {
 	fmt.Printf("着手順  %s  スコープ %d日  超過 %d / 今日 %d / その他 %d\n",
 		b.Today, b.ScopeDays, b.Counts.Over, b.Counts.Near, b.Counts.Rest)
 
+	if len(b.Long) > 0 {
+		fmt.Println("\n[長期]")
+		for _, t := range b.Long {
+			fmt.Printf("  ▶ %-6s %s  子 完了 %d / 未完 %d\n", t.ID, t.Name, t.KidsDone, t.KidsOpen)
+			if t.Next != nil {
+				fmt.Printf("           次の一手 %s %s\n", t.Next.ID, t.Next.Name)
+			} else {
+				fmt.Println("           次の一手なし")
+			}
+		}
+	}
 	if len(b.Focus) > 0 {
 		fmt.Println("\n[フォーカス]")
 		for _, t := range b.Focus {
@@ -158,7 +180,7 @@ func printBoard(b taskclient.Board) {
 	if len(b.Queue) > 0 {
 		fmt.Println("\n[着手順]")
 		for i, t := range b.Queue {
-			fmt.Printf("%3d %-6s %s%s%s\n", i+1, t.ID, t.Name, detailMark(t), dueSuffix(t))
+			fmt.Printf("%3d %-6s %s%s%s%s\n", i+1, t.ID, t.Name, detailMark(t), parentMark(t), dueSuffix(t))
 		}
 	}
 	if len(b.Waiting) > 0 {
@@ -863,4 +885,12 @@ func parsePosition(s string) (int, error) {
 func printRaw(raw []byte) error {
 	_, err := os.Stdout.Write(append(raw, '\n'))
 	return err
+}
+
+// parentMark names the long-run task a queue row was cut out of.
+func parentMark(t taskclient.Task) string {
+	if t.Parent == "" {
+		return ""
+	}
+	return "  (親 " + t.Parent + ")"
 }

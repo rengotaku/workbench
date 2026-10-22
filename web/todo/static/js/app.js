@@ -33,6 +33,13 @@
     '      </div>',
     '    </div>',
     '',
+    '    <section class="long-band" id="long-band" hidden>',
+    '      <button type="button" class="fold-head" id="long-fold" aria-expanded="false" aria-controls="long-list">',
+    '        <span class="caret" aria-hidden="true">▶</span>長期<span class="n" id="long-count">0</span><span class="fold-note" id="long-note"></span>',
+    '      </button>',
+    '      <ul class="list long-list" id="long-list" hidden></ul>',
+    '    </section>',
+    '',
     '    <section class="focus-band" id="focus-band">',
     '      <div class="focus-head">フォーカス<span class="n" id="focus-count">0</span></div>',
     '      <ul class="list focus-list" id="focus-list"></ul>',
@@ -133,6 +140,7 @@
     var SOMEDAY_KEY = 'todo-order.someday-open';
     var OUT_KEY = 'todo-order.out-open';
     var WAIT_KEY = 'todo-order.wait-open';
+    var LONG_KEY = 'todo-order.long-open';
     var POLL_MS = 4000;
     // A task this old asks for a reason before the trash icon takes it out.
     var ASK_DROP_AFTER_MS = 60 * 60 * 1000;
@@ -142,6 +150,9 @@
       // the scope and what waits on someone else are opened when wanted.
       outOpen: false,
       waitOpen: false,
+      // The long-run band is a reminder, not today's work: closed by default
+      // (ADR todo-0019).
+      longOpen: false,
       board: null,
       openId: null, // only one row is open at a time; another row closes it
       doneOpen: false, // the completed list is a record, not a queue
@@ -185,6 +196,11 @@
       over: document.getElementById('c-over'),
       near: document.getElementById('c-near'),
       rest: document.getElementById('c-rest'),
+      longBand: document.getElementById('long-band'),
+      longFold: document.getElementById('long-fold'),
+      longList: document.getElementById('long-list'),
+      longCount: document.getElementById('long-count'),
+      longNote: document.getElementById('long-note'),
       focusBand: document.getElementById('focus-band'),
       focusList: document.getElementById('focus-list'),
       focusCount: document.getElementById('focus-count'),
@@ -244,6 +260,7 @@
       if (has(board.done)) state.doneOpen = true;
       if (has(board.queue, function (t) { return !t.in_scope && !t.focused; })) state.outOpen = true;
       if (has(board.waiting)) state.waitOpen = true;
+      if (has(board.long)) state.longOpen = true;
     }
 
     function load() {
@@ -315,6 +332,8 @@
       setTitle('.count.over', '赤: 期限を過ぎている — ' + b.counts.over + '件');
       setTitle('.count.near', '黄: 期限が今日 — ' + b.counts.near + '件');
       setTitle('.count.rest', '灰: 期限がまだ先、または期限なし — ' + b.counts.rest + '件');
+
+      renderLong(b.long || []);
 
       // Focused tasks are the top of the queue (ADR todo-0012) and are shown in
       // the band only, so each task appears once. The band stays when empty: it
@@ -389,7 +408,7 @@
       if (!el.detail) return;
       var b = state.board;
       if (!b) return;
-      var all = (b.queue || []).concat(b.waiting || [], b.someday || [], b.done || []);
+      var all = (b.queue || []).concat(b.long || [], b.waiting || [], b.someday || [], b.done || []);
       if (all.length === 0) return;
       var still = null;
       all.forEach(function (t) { if (t.id === state.shownId) still = t; });
@@ -412,6 +431,35 @@
       if (t.due_class === 'today') return 'near';
       return '';
     }
+    // renderLong draws the long-run band (ADR todo-0019). With no long-run task
+    // the band is not shown at all. Folded, the heading still names what it
+    // holds, and turns amber when one of them has no next step.
+    function renderLong(long) {
+      el.longBand.hidden = long.length === 0;
+      el.longCount.textContent = long.length;
+      var stuck = long.filter(function (t) { return !t.next; }).length;
+      el.longBand.classList.toggle('warn', stuck > 0);
+      el.longNote.classList.toggle('long-warn', stuck > 0);
+      if (stuck > 0) {
+        el.longNote.textContent = '次の一手なし ' + stuck;
+      } else if (long.length) {
+        el.longNote.textContent = long[0].name + (long.length > 1 ? ' ほか ' + (long.length - 1) + ' 件' : '');
+      } else {
+        el.longNote.textContent = '';
+      }
+      setFold(el.longFold, el.longList, state.longOpen);
+      el.longList.textContent = '';
+      long.forEach(function (t) { el.longList.appendChild(longRow(t)); });
+    }
+
+    // longOf finds a long-run task on the board, to know which parents are
+    // worth a tag on their children.
+    function longOf(id) {
+      var long = (state.board && state.board.long) || [];
+      for (var i = 0; i < long.length; i++) if (long[i].id === id) return long[i];
+      return null;
+    }
+
     // setFold shows a section's fold heading and list as open or closed.
     function setFold(head, list, open) {
       head.setAttribute('aria-expanded', String(open));
@@ -734,7 +782,121 @@
         extraClass: cls,
       });
       li.draggable = true;
+      addParentTag(li, t);
       return li;
+    }
+
+    // addParentTag names the long-run task a row was cut out of. A parent that
+    // is no longer long-run is not shown: the band it pointed at is gone.
+    function addParentTag(li, t) {
+      if (!t.parent || !longOf(t.parent)) return;
+      var tag = document.createElement('span');
+      tag.className = 'parent-tag';
+      tag.textContent = t.parent;
+      tag.title = '長期 ' + t.parent + ' ' + longOf(t.parent).name + ' の子';
+      var name = li.querySelector('.name');
+      name.insertBefore(tag, name.firstChild);
+    }
+
+    // longRow is a long-run task: not draggable (it is out of the queue), with
+    // the next step and the child counts under the name.
+    function longRow(t) {
+      var li = row({
+        task: t,
+        mark: '▶',
+        markClass: 'mark-long',
+        dueLabel: t.due_label,
+        dueClass: dueChip(t),
+        hasPanel: true,
+        editableDue: true,
+        dueTitle: dueTitle(t),
+        extraClass: 'long',
+      });
+      var next = document.createElement('div');
+      next.className = 'long-next' + (t.next ? '' : ' warn');
+      var label = document.createElement('span');
+      label.className = 'ln-label';
+      label.textContent = '次の一手';
+      next.appendChild(label);
+      var what = document.createElement('span');
+      what.className = 'ln-task';
+      what.textContent = t.next ? t.next.id + ' ' + t.next.name : '未完の子が無い。次にやることを切り出す';
+      next.appendChild(what);
+      if (!t.next) next.appendChild(addChildButton(t, 'ln-add'));
+      var kids = document.createElement('span');
+      kids.className = 'ln-kids';
+      kids.textContent = '子 完了 ' + (t.kids_done || 0) + ' · 未完 ' + (t.kids_open || 0);
+      next.appendChild(kids);
+      var name = li.querySelector('.name');
+      name.parentNode.insertBefore(next, name.nextSibling);
+      return li;
+    }
+
+    // addChildButton opens the add dialog with the parent filled in.
+    function addChildButton(t, cls) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      if (cls) b.className = cls;
+      b.textContent = '子を追加';
+      b.title = t.id + ' の子としてタスクを追加する';
+      b.addEventListener('click', function (ev) {
+        ev.stopPropagation(); // the row underneath must not open or close
+        window.workbench.openAddDialog('/add?parent=' + encodeURIComponent(t.id), 'タスクを追加', function (changed) {
+          if (changed) load();
+        });
+      });
+      return b;
+    }
+
+    // parentPicker ties a task to a long-run task, or unties it. It is offered
+    // only while there is a long-run task to choose.
+    function parentPicker(t) {
+      var label = document.createElement('label');
+      label.className = 'parent-pick';
+      label.appendChild(document.createTextNode('長期'));
+      var sel = document.createElement('select');
+      var none = document.createElement('option');
+      none.value = '';
+      none.textContent = 'なし';
+      sel.appendChild(none);
+      ((state.board && state.board.long) || []).forEach(function (p) {
+        var o = document.createElement('option');
+        o.value = p.id;
+        o.textContent = p.id + ' ' + p.name;
+        if (p.id === t.parent) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', function () {
+        sel.disabled = true;
+        request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), { parent: sel.value })
+          .then(function () {
+            return load().then(function () { flash(sel.value ? sel.value + ' の子にした' : '親を外した'); });
+          })
+          .catch(function (err) { sel.disabled = false; showError(err); });
+      });
+      label.appendChild(sel);
+      return label;
+    }
+
+    // longButton moves a task into the long-run band or back to the queue.
+    function longButton(t) {
+      var on = t.state !== 'long';
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = on ? '' : 'long-on';
+      b.textContent = on ? '長期にする' : '長期を外す';
+      b.title = on
+        ? '着手順から外し、長期の枠に置く（フォーカスも外れる）'
+        : '着手順の先頭（フォーカスのすぐ下）へ戻す';
+      b.addEventListener('click', function () {
+        b.disabled = true;
+        request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/long', { on: on })
+          .then(function () {
+            return load().then(function () { flash(on ? '長期にした' : '長期から外した'); });
+          })
+          .catch(function (err) { b.disabled = false; showError(err); });
+      });
+      return b;
     }
 
     function waitRow(t) {
@@ -1258,7 +1420,15 @@
             .catch(function (err) { focusBtn.disabled = false; showError(err); });
         });
         actions.appendChild(focusBtn);
+        // A child is not a long-run task itself (one level only).
+        if (!t.parent) actions.appendChild(longButton(t));
       }
+      if (t.state === 'long') {
+        actions.appendChild(longButton(t));
+        actions.appendChild(addChildButton(t));
+      }
+      var anyLong = ((state.board && state.board.long) || []).length > 0;
+      if (anyLong && t.state !== 'long' && t.state !== 'done') actions.appendChild(parentPicker(t));
 
       actions.appendChild(copyUrlButton(t));
 
@@ -1572,6 +1742,9 @@
       links_set: '関連 URL を変更',
       focused: 'フォーカスに入れた',
       unfocused: 'フォーカスから外した',
+      longed: '長期にした',
+      unlonged: '長期から外した',
+      parent_set: '親を変更',
       reordered: '順序変更',
       due_set: '期限',
       waiting: '待ちへ',
@@ -1651,6 +1824,8 @@
           return ' ' + (e.from_value || 'なし') + ' → ' + (e.to_value || 'なし');
         case 'waiting':
           return ' ' + (e.to_value || '');
+        case 'parent_set':
+          return ' ' + (e.from_value || 'なし') + ' → ' + (e.to_value || 'なし');
         default:
           return '';
       }
@@ -1868,14 +2043,17 @@
           setDue('', '期限を外した');
         }));
       }
-      sec.appendChild(dueMenuItem('いつかにする', shortDate(addMonths(shiftBase(''), 1)) + ' に見直す', 'dm-someday',
-        function () {
-          closeDueMenu();
-          request('POST', path + '/someday', {})
-            .then(function () { return load().then(function () { flash('いつかへ棚上げした'); }); })
-            .catch(function (err) { showError(err); load(); });
-        }));
-      menu.appendChild(sec);
+      // A long-run task is not shelved: it is already out of the queue.
+      if (!chip.closest('.long-list')) {
+        sec.appendChild(dueMenuItem('いつかにする', shortDate(addMonths(shiftBase(''), 1)) + ' に見直す', 'dm-someday',
+          function () {
+            closeDueMenu();
+            request('POST', path + '/someday', {})
+              .then(function () { return load().then(function () { flash('いつかへ棚上げした'); }); })
+              .catch(function (err) { showError(err); load(); });
+          }));
+      }
+      if (sec.childNodes.length) menu.appendChild(sec);
 
       menu.addEventListener('keydown', function (e) {
         if (composing(e)) return;
@@ -1963,6 +2141,12 @@
     el.outFold.addEventListener('click', function () {
       state.outOpen = !state.outOpen;
       try { localStorage.setItem(OUT_KEY, state.outOpen ? '1' : '0'); } catch (e) { /* private window */ }
+      render();
+    });
+
+    el.longFold.addEventListener('click', function () {
+      state.longOpen = !state.longOpen;
+      try { localStorage.setItem(LONG_KEY, state.longOpen ? '1' : '0'); } catch (e) { /* private window */ }
       render();
     });
 
@@ -2167,6 +2351,7 @@
       state.somedayOpen = localStorage.getItem(SOMEDAY_KEY) === '1';
       state.outOpen = localStorage.getItem(OUT_KEY) === '1';
       state.waitOpen = localStorage.getItem(WAIT_KEY) === '1';
+      state.longOpen = localStorage.getItem(LONG_KEY) === '1';
     } catch (e) { /* storage unavailable; closed is the default */ }
 
     try {

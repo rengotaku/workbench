@@ -228,6 +228,9 @@
     text-transform: uppercase;
     color: var(--accent);
   }
+  /* The other headings start with a ▶ caret; an invisible one keeps the
+     focus heading's title in line with them. */
+  .focus-head::before { content: "▶"; visibility: hidden; font-size: var(--fs-2xs); }
   .focus-head .n {
     font-family: var(--mono);
     font-size: var(--fs-sm);
@@ -238,6 +241,85 @@
     border-radius: var(--radius-sm);
   }
   .panel-actions button.focus-on { color: var(--accent); border-color: var(--accent); }
+
+  /* ---- long-run band: months-long jobs, above the focus band (ADR todo-0019) ---- */
+  /* Closed by default and absent when there is none. Amber when a job has no
+     next step, so a stalled one shows even folded. */
+  .long-band {
+    background: var(--surface-sunk);
+    border-bottom: 1px solid var(--line);
+    padding: 8px 22px;
+  }
+  .long-band.warn { background: var(--near-soft); }
+  /* nowrap keeps 長期 on one line: as a bare text node in the flex heading it
+     would otherwise shrink to one character wide beside a long note. */
+  .long-band .fold-head { color: var(--ink-soft); max-width: 100%; white-space: nowrap; }
+  .long-band .n {
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    letter-spacing: 0;
+    background: var(--surface);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+  }
+  .long-band .fold-note {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--muted);
+  }
+  .long-band .fold-note.long-warn { color: var(--near); font-weight: 600; }
+  .long-list { margin-top: 6px; }
+  .mark-long { color: var(--ink-soft); }
+  .long-next {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 3px;
+    font-size: var(--fs-sm2);
+  }
+  .ln-label { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
+  .ln-task { color: var(--accent); min-width: 0; }
+  .long-next.warn .ln-task { color: var(--near); font-weight: 600; }
+  .ln-kids { margin-left: auto; font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
+  .ln-add {
+    appearance: none;
+    background: none;
+    border: 1px solid var(--near);
+    border-radius: var(--radius-chip);
+    padding: 0 8px;
+    font: inherit;
+    color: var(--near);
+    cursor: pointer;
+  }
+  .ln-add:focus-visible { outline: 2px solid var(--near); outline-offset: 2px; }
+  .panel-actions button.long-on { color: var(--ink-soft); border-color: var(--ink-soft); }
+  .parent-tag {
+    display: inline-block;
+    flex: none;
+    padding: 0 5px;
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    vertical-align: 1px;
+  }
+  .parent-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-md); color: var(--muted); }
+  .parent-pick select {
+    font: inherit;
+    color: var(--ink-soft);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-chip);
+    padding: 2px 6px;
+    max-width: 18em;
+  }
+  .parent-pick select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
   /* ---- sections: same left baseline in all three ---- */
   .sec { padding: 18px 22px 20px; }
@@ -434,7 +516,8 @@
     width: 17px;
     height: 17px;
     margin: 3px 0 0;
-    border: 1.5px solid var(--line);
+    /* --line sat too close to the background to see the circle. */
+    border: 1.5px solid var(--muted);
     border-radius: 50%;
     cursor: pointer;
     background: transparent;
