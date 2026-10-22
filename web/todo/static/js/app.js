@@ -2346,6 +2346,9 @@
       req
         .then(function () {
           state.busy = false;
+          // Reordering within a section keeps the row open; moving it across one
+          // changes its state, as the buttons do.
+          if (crossed || due) closeRow(id);
           return load().then(function () {
             if (due) flash('期限を ' + monthDay(due) + ' にした');
             else if (crossed) flash(inBand ? 'フォーカスに入れた' : 'フォーカスから外した');
