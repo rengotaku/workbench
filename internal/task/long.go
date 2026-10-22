@@ -92,14 +92,6 @@ func (s *Store) SetParent(id, parent string, actor Actor) (Task, error) {
 	return s.mustGet(id), nil
 }
 
-// CheckParent reports whether parent can be given to a new task. Adding with
-// a parent checks first, so a bad parent never leaves a task added without it.
-func (s *Store) CheckParent(parent string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.checkParent(Task{}, strings.TrimSpace(parent))
-}
-
 func (s *Store) checkParent(t Task, parent string) error {
 	if parent == "" {
 		return nil

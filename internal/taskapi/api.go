@@ -300,22 +300,18 @@ func (a *API) addTask(c *gin.Context) {
 		return
 	}
 	actor := actorOf(req.Actor)
-	// A bad parent refuses the add, so the task is never added without it.
-	if err := a.store.CheckParent(req.Parent); err != nil {
-		a.fail(c, err)
-		return
-	}
 	var (
 		t   task.Task
 		err error
 	)
-	if len(req.Links) > 0 {
+	switch {
+	case req.Parent != "":
+		// One change: a bad parent refuses the add, and one undo removes it.
+		t, err = a.store.AddChild(req.Name, req.Detail, req.Due, req.Parent, req.Links, req.URL, req.LinkText, actor)
+	case len(req.Links) > 0:
 		t, err = a.store.AddWithLinks(req.Name, req.Detail, req.Due, req.Links, actor)
-	} else {
+	default:
 		t, err = a.store.AddLinked(req.Name, req.Detail, req.Due, req.URL, req.LinkText, actor)
-	}
-	if err == nil && req.Parent != "" {
-		t, err = a.store.SetParent(t.ID, req.Parent, actor)
 	}
 	a.respond(c, t, err)
 }

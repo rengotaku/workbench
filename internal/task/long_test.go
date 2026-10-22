@@ -98,9 +98,6 @@ func TestSetParent_OneLevelOnly(t *testing.T) {
 
 	_, err = s.SetLong(id["子"], true, task.ActorHuman)
 	require.Error(t, err, "a child cannot become long-run")
-	require.NoError(t, s.CheckParent(id["親"]))
-	require.Error(t, s.CheckParent(id["子"]))
-	require.NoError(t, s.CheckParent(""))
 }
 
 func TestUndo_LongRunPutsTheTaskBackWhereItWas(t *testing.T) {
@@ -140,6 +137,28 @@ func TestUndo_UnlongAndDoneReturnToTheLongRunBand(t *testing.T) {
 	a, _ = s.Get(id["A"])
 	assert.Equal(t, task.StateLong, a.State, "finished from the band, undone back to it")
 	assert.Equal(t, []string{"B"}, queueNames(t, s))
+}
+
+// Adding a child is one change: a parent that is not long-run refuses it, and
+// one undo takes the child back out.
+func TestAddChild_IsOneChange(t *testing.T) {
+	s := newStore(t)
+	id := addAll(t, s, "親", "ふつう")
+	_, err := s.AddChild("子", "", "", id["ふつう"], nil, "", "", task.ActorHuman)
+	require.Error(t, err)
+	tasks, _ := s.List()
+	assert.Len(t, tasks, 2, "nothing is added without its parent")
+
+	_, err = s.SetLong(id["親"], true, task.ActorHuman)
+	require.NoError(t, err)
+	kid, err := s.AddChild("子", "", "", id["親"], nil, "", "", task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, id["親"], kid.Parent)
+
+	_, err = s.Undo(task.ActorHuman)
+	require.NoError(t, err)
+	_, err = s.Get(kid.ID)
+	require.ErrorIs(t, err, task.ErrNotFound, "one undo removes the child")
 }
 
 func TestUndo_ParentSet(t *testing.T) {

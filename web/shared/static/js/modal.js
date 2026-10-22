@@ -29,7 +29,9 @@
     document.body.appendChild(dialog);
     dialog.showModal();
 
-    var release = router.lend(router.viewFor(path), dialog, path);
+    // The screen is found by the path alone; the query (?parent=…) still
+    // reaches it through href.
+    var release = router.lend(router.viewFor(new URL(path, location.href).pathname), dialog, path);
     if (!release) {
       // The screen cannot be shown here: open it as a page instead.
       dialog.close();

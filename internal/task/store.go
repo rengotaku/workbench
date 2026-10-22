@@ -152,14 +152,14 @@ func (s *Store) Add(name, detail, due string, actor Actor) (Task, error) {
 // Adding and linking are one change, so a single undo takes the task back out
 // instead of leaving it behind without its link.
 func (s *Store) AddLinked(name, detail, due, url, linkText string, actor Actor) (Task, error) {
-	return s.add(name, detail, due, url, linkText, nil, 0, actor)
+	return s.add(name, detail, due, url, linkText, nil, 0, "", actor)
 }
 
 // AddWithLinks appends a task together with its related URLs, numbered from 1
 // in the order given. Adding and linking are one event, so one undo removes
 // the task.
 func (s *Store) AddWithLinks(name, detail, due string, links []LinkInput, actor Actor) (Task, error) {
-	return s.add(name, detail, due, "", "", links, 0, actor)
+	return s.add(name, detail, due, "", "", links, 0, "", actor)
 }
 
 // AddFromNote appends a task made from a memo. When a task for that memo
@@ -169,7 +169,19 @@ func (s *Store) AddFromNote(name, detail, due string, noteID int, actor Actor) (
 	if noteID < 1 {
 		return Task{}, errors.New("source note id is required")
 	}
-	return s.add(name, detail, due, "", "", nil, noteID, actor)
+	return s.add(name, detail, due, "", "", nil, noteID, "", actor)
+}
+
+// AddChild appends a task cut out of a long-run task (ADR todo-0019). Checking
+// the parent, adding and tying are one change under one lock: a parent that
+// stops being long-run meanwhile refuses the add rather than leaving the task
+// behind untied, and one undo takes the task back out.
+func (s *Store) AddChild(name, detail, due, parent string, links []LinkInput, url, linkText string, actor Actor) (Task, error) {
+	parent = strings.TrimSpace(parent)
+	if parent == "" {
+		return Task{}, errors.New("parent is required")
+	}
+	return s.add(name, detail, due, url, linkText, links, 0, parent, actor)
 }
 
 // FindBySourceNote returns the task made from a memo.
@@ -191,7 +203,7 @@ func (s *Store) findBySourceNote(noteID int) (Task, bool) {
 	return Task{}, false
 }
 
-func (s *Store) add(name, detail, due, url, linkText string, linkInputs []LinkInput, noteID int, actor Actor) (Task, error) {
+func (s *Store) add(name, detail, due, url, linkText string, linkInputs []LinkInput, noteID int, parent string, actor Actor) (Task, error) {
 	if name == "" {
 		return Task{}, errors.New("name is required")
 	}
@@ -209,6 +221,9 @@ func (s *Store) add(name, detail, due, url, linkText string, linkInputs []LinkIn
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if err := s.checkParent(Task{}, parent); err != nil {
+		return Task{}, err
+	}
 	if existing, ok := s.findBySourceNote(noteID); ok {
 		// It may be in memory only, if saving it failed the first time. Save
 		// again before saying it exists, so the caller never records a task
@@ -229,6 +244,7 @@ func (s *Store) add(name, detail, due, url, linkText string, linkInputs []LinkIn
 		Order:        len(s.openIndexes()),
 		CreatedAt:    s.now(),
 		SourceNoteID: noteID,
+		Parent:       parent,
 	}
 	if url != "" {
 		t.LinkText = linkText

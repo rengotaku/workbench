@@ -866,6 +866,15 @@
         if (p.id === t.parent) o.selected = true;
         sel.appendChild(o);
       });
+      if (t.parent && !longOf(t.parent)) {
+        // The parent is no longer long-run: show the link as it is, so the
+        // picker tells the truth and なし takes it off.
+        var gone = document.createElement('option');
+        gone.value = t.parent;
+        gone.textContent = t.parent + '（長期ではない）';
+        gone.selected = true;
+        sel.appendChild(gone);
+      }
       sel.addEventListener('change', function () {
         sel.disabled = true;
         request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), { parent: sel.value })
@@ -1427,8 +1436,11 @@
         actions.appendChild(longButton(t));
         actions.appendChild(addChildButton(t));
       }
+      // Offered while there is a long-run task to choose, and also while the
+      // task still points at a parent that is no longer long-run, so the link
+      // can be taken off.
       var anyLong = ((state.board && state.board.long) || []).length > 0;
-      if (anyLong && t.state !== 'long' && t.state !== 'done') actions.appendChild(parentPicker(t));
+      if ((anyLong || t.parent) && t.state !== 'long' && t.state !== 'done') actions.appendChild(parentPicker(t));
 
       actions.appendChild(copyUrlButton(t));
 
