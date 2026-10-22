@@ -39,6 +39,7 @@
   --fs-lg3: 14px;
   --fs-xl: 14.5px;
   --fs-body: 15px;
+  --fs-focus: 16.5px; /* focused rows: one step above the body */
   --fs-title: 21px;
   --lh-body: 1.6;
 
