@@ -220,6 +220,8 @@
     border-bottom-color: color-mix(in srgb, var(--accent) 14%, transparent);
   }
   .focus-band .name { font-size: var(--fs-focus); font-weight: 700; }
+  /* --muted falls to 2.8:1 on the darker band; the circle is the done control. */
+  .focus-band .check { border-color: var(--ink-soft); }
   .focus-empty {
     margin: 0;
     padding: 6px 0 8px;
