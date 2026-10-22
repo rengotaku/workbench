@@ -222,6 +222,8 @@
   .focus-band .name { font-size: var(--fs-focus); font-weight: 700; }
   /* --muted falls to 2.8:1 on the darker band; the circle is the done control. */
   .focus-band .check { border-color: var(--ink-soft); }
+  /* --line sits 1.03:1 from the band, so the parent tag's box vanished there. */
+  .focus-band .parent-tag { border-color: var(--muted); }
   .focus-empty {
     margin: 0;
     padding: 6px 0 8px;
