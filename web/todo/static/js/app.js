@@ -901,6 +901,7 @@
         b.disabled = true;
         request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/long', { on: on })
           .then(function () {
+            closeRow(t.id);
             return load().then(function () { flash(on ? '長期にした' : '長期から外した'); });
           })
           .catch(function (err) { b.disabled = false; showError(err); });
@@ -1422,6 +1423,7 @@
           var was = t.focused;
           request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/focus', { on: !was })
             .then(function () {
+              closeRow(t.id);
               return load().then(function () {
                 flash(was ? 'フォーカスから外した' : 'フォーカスに入れた');
               });
@@ -1463,7 +1465,7 @@
         resume.addEventListener('click', function () {
           resume.disabled = true;
           request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/resume', { note: '' })
-            .then(function () { return load().then(function () { flash('着手順へ戻した'); }); })
+            .then(function () { closeRow(t.id); return load().then(function () { flash('着手順へ戻した'); }); })
             .catch(function (err) { resume.disabled = false; showError(err); });
         });
         actions.appendChild(resume);
@@ -1507,6 +1509,10 @@
     }
 
     function isOpen(id) { return state.openId === id; }
+
+    // closeRow folds a row whose task changed state. The task moves to another
+    // section, often a folded one, where an open panel would wait unseen.
+    function closeRow(id) { if (state.openId === id) state.openId = null; }
 
     // wireLiveField makes a piece of text save itself: a pause in typing writes
     // it, and so does leaving the field. There is no save button to forget.
@@ -1697,7 +1703,7 @@
       btn.addEventListener('click', function () {
         btn.disabled = true;
         request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/someday', {})
-          .then(function () { return load().then(function () { flash('いつかへ棚上げした'); }); })
+          .then(function () { closeRow(t.id); return load().then(function () { flash('いつかへ棚上げした'); }); })
           .catch(function (err) { btn.disabled = false; showError(err); });
       });
       return btn;
@@ -1728,7 +1734,7 @@
           go.disabled = true;
           request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/wait',
             { to: who.value.trim(), note: '' })
-            .then(function () { return load().then(function () { flash('待ちへ移した'); }); })
+            .then(function () { closeRow(t.id); return load().then(function () { flash('待ちへ移した'); }); })
             .catch(function (err) { go.disabled = false; showError(err); });
         }
         go.addEventListener('click', submit);
@@ -1937,7 +1943,7 @@
       var path = was ? '/done' : '/reopen';
       box.disabled = true;
       request('POST', '/api/tasks/' + encodeURIComponent(li.dataset.id) + path)
-        .then(load)
+        .then(function () { closeRow(li.dataset.id); return load(); })
         .catch(function (err) {
           box.checked = !was;
           box.disabled = false;
@@ -2061,7 +2067,7 @@
           function () {
             closeDueMenu();
             request('POST', path + '/someday', {})
-              .then(function () { return load().then(function () { flash('いつかへ棚上げした'); }); })
+              .then(function () { closeRow(id); return load().then(function () { flash('いつかへ棚上げした'); }); })
               .catch(function (err) { showError(err); load(); });
           }));
       }
@@ -2340,6 +2346,9 @@
       req
         .then(function () {
           state.busy = false;
+          // Reordering within a section keeps the row open; moving it across one
+          // changes its state, as the buttons do.
+          if (crossed || due) closeRow(id);
           return load().then(function () {
             if (due) flash('期限を ' + monthDay(due) + ' にした');
             else if (crossed) flash(inBand ? 'フォーカスに入れた' : 'フォーカスから外した');
