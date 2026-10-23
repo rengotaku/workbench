@@ -496,15 +496,6 @@
       return days + '日';
     }
 
-    // exactDue is the first line of the chip's hover: the date and the days to
-    // it, in full, since the label coarsens past a week.
-    function exactDue(t) {
-      var b = state.board || {};
-      var n = daysBetween(b.today, t.due);
-      var left = n > 0 ? 'あと' + n + '日' : n < 0 ? -n + '日超過' : '今日';
-      return '期限 ' + dateLabel(t.due) + '・' + left;
-    }
-
     function monthDay(ymd) {
       var m = /^\d{4}-(\d{2})-(\d{2})$/.exec(ymd || '');
       return m ? (+m[1]) + '/' + (+m[2]) : '';
@@ -516,29 +507,16 @@
       return '';
     }
 
-    // dueTitle explains the row's colour in words. The stripe on the left edge
-    // is a border and cannot be hovered on its own, so the chip — which carries
-    // the same colour — is where the explanation lives.
+    // dueTitle is the chip's hover: only what the label does not already say.
+    // That is the date, plus the exact days where the label has rounded them
+    // to weeks or more. The colours are named in the legend under the list.
     function dueTitle(t) {
-      var head = t.due ? exactDue(t) + '\n' : '';
-      return head + dueReason(t);
-    }
-
-    function dueReason(t) {
-      var b = state.board || {};
-      var within = state.scope === 'all' ? 'いつでも' : monthDay(shiftDay(b.today, b.scope_days)) + ' まで';
-      switch (t.due_class) {
-        case 'over':
-          return '赤: 期限 ' + t.due + ' を過ぎている（' + t.due_label + '）\nクリックで変更';
-        case 'today':
-          return '黄: 期限 ' + t.due + ' が今日\nクリックで変更';
-        case 'near':
-          return '灰: 期限 ' + t.due + ' が ' + within + '（' + t.due_label + '）\nクリックで変更';
-        case 'plain':
-          return '灰: 期限 ' + t.due + ' は ' + within + 'より先。スコープ外の区画に入る\nクリックで変更';
-        default:
-          return '灰: 期限なし。スコープでは畳まれず常に出る\nクリックで設定';
-      }
+      if (!t.due) return '';
+      var n = daysBetween((state.board || {}).today, t.due);
+      var date = dateLabel(t.due);
+      if (n >= 7) return date + '・あと' + n + '日';
+      if (n <= -7) return date + '・' + -n + '日超過';
+      return date;
     }
 
     // row builds the shared 5-column shape: every section lines up on the same
@@ -622,7 +600,7 @@
         due = document.createElement('button');
         due.type = 'button';
         due.className = 'due due-edit';
-        due.title = opts.dueTitle || '期限を設定する';
+        if (opts.dueTitle) due.title = opts.dueTitle;
         due.setAttribute('aria-haspopup', 'menu');
         due.setAttribute('aria-expanded', 'false');
         due.dataset.due = opts.task.due || '';
@@ -1142,7 +1120,7 @@
     function writtenAt(iso) {
       var d = new Date(iso);
       var ymd = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
-      return dateLabel(ymd) + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ' に書いた';
+      return dateLabel(ymd) + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
     }
 
     // latestStatus is the one line under a row's name: the newest supplement.
