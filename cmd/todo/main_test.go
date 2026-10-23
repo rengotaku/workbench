@@ -72,3 +72,9 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+func TestDueSuffix_KeepsTheDateBesideTheCoarseLabel(t *testing.T) {
+	assert.Equal(t, "  [2026-12-07 あと1か月]", dueSuffix(taskclient.Task{Task: task.Task{Due: "2026-12-07"}, DueLabel: "あと1か月"}))
+	assert.Equal(t, "  [2026-10-30]", dueSuffix(taskclient.Task{Task: task.Task{Due: "2026-10-30"}}))
+	assert.Equal(t, "", dueSuffix(taskclient.Task{}))
+}

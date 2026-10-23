@@ -207,7 +207,19 @@ func TestList_PastTheScopeStillCountsTheDaysLeft(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, false, row["in_scope"])
 	assert.Equal(t, "plain", row["due_class"])
-	assert.Equal(t, "あと20日", row["due_label"], "the screen sorts these by due, so it reads as days like the rows in scope")
+	assert.Equal(t, "あと2週間", row["due_label"], "past the scope the unit coarsens; the exact date is on hover")
+}
+
+func TestSpan_CoarsensWithTheDistance(t *testing.T) {
+	cases := map[int]string{
+		0: "0日", 1: "1日", 6: "6日",
+		7: "1週間", 13: "1週間", 27: "3週間",
+		28: "1か月", 45: "1か月", 60: "2か月", 364: "12か月",
+		365: "1年", 800: "2年",
+	}
+	for days, want := range cases {
+		assert.Equal(t, want, taskapi.Span(days), "%d days", days)
+	}
 }
 
 func TestList_RejectsAMeaninglessScope(t *testing.T) {

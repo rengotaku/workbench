@@ -260,7 +260,7 @@ func (a *API) view(t task.Task, today time.Time, scope int) View {
 	diff := int(d.Sub(today).Hours() / 24)
 	switch {
 	case diff < 0:
-		v.DueLabel = strconv.Itoa(-diff) + "日超過"
+		v.DueLabel = Span(-diff) + "超過"
 		v.DueClass = "over"
 		v.Overdue, v.InScope = true, true
 	case diff == 0:
@@ -274,12 +274,29 @@ func (a *API) view(t task.Task, today time.Time, scope int) View {
 		v.DueClass = "near"
 		v.InScope = true
 	default:
-		// Past the scope, still counted in days: the screen sorts these by due
-		// date, and a count reads alike with the in-scope rows above it.
-		v.DueLabel = "あと" + strconv.Itoa(diff) + "日"
+		// Past the scope the unit coarsens with the distance (Span); the
+		// screen sorts these by due date and shows the exact date on hover.
+		v.DueLabel = "あと" + Span(diff)
 		v.DueClass = "plain"
 	}
 	return v
+}
+
+// Span names a count of days in the unit that suits its size, the way a chat
+// says "3 weeks ago" instead of "23 days ago": days up to 6, then weeks up to
+// 27, months (30 days, at least 1) up to 364, then years. It rounds down.
+// The screen's span() in app.js follows the same steps.
+func Span(days int) string {
+	switch {
+	case days >= 365:
+		return strconv.Itoa(days/365) + "年"
+	case days >= 28:
+		return strconv.Itoa(max(1, days/30)) + "か月"
+	case days >= 7:
+		return strconv.Itoa(days/7) + "週間"
+	default:
+		return strconv.Itoa(days) + "日"
+	}
 }
 
 type addRequest struct {

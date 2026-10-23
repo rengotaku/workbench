@@ -666,11 +666,11 @@
   }
 
   .due {
-    /* One width for every label (10/27, あと18日, 期限なし), so the chip does not
+    /* One width for every label (あと12か月 and 12か月超過 are the longest), so the chip does not
        resize as the label changes. */
     display: inline-block;
     box-sizing: border-box;
-    width: 5.6em;
+    width: 6.2em;
     text-align: center;
     font-family: var(--mono);
     font-size: var(--fs-sm);

@@ -479,6 +479,32 @@
       return d.toISOString().slice(0, 10);
     }
 
+    // daysBetween counts calendar days from one YYYY-MM-DD date to another.
+    function daysBetween(from, to) {
+      var a = Date.parse(from + 'T00:00:00Z');
+      var b = Date.parse(to + 'T00:00:00Z');
+      return Math.round((b - a) / 86400000);
+    }
+
+    // span names a count of days in the unit that suits its size: days up to
+    // 6, weeks up to 27, months (30 days, at least 1) up to 364, then years,
+    // rounded down. It follows taskapi.Span, which makes the due labels.
+    function span(days) {
+      if (days >= 365) return Math.floor(days / 365) + '年';
+      if (days >= 28) return Math.max(1, Math.floor(days / 30)) + 'か月';
+      if (days >= 7) return Math.floor(days / 7) + '週間';
+      return days + '日';
+    }
+
+    // exactDue is the first line of the chip's hover: the date and the days to
+    // it, in full, since the label coarsens past a week.
+    function exactDue(t) {
+      var b = state.board || {};
+      var n = daysBetween(b.today, t.due);
+      var left = n > 0 ? 'あと' + n + '日' : n < 0 ? -n + '日超過' : '今日';
+      return '期限 ' + dateLabel(t.due) + '・' + left;
+    }
+
     function monthDay(ymd) {
       var m = /^\d{4}-(\d{2})-(\d{2})$/.exec(ymd || '');
       return m ? (+m[1]) + '/' + (+m[2]) : '';
@@ -494,6 +520,11 @@
     // is a border and cannot be hovered on its own, so the chip — which carries
     // the same colour — is where the explanation lives.
     function dueTitle(t) {
+      var head = t.due ? exactDue(t) + '\n' : '';
+      return head + dueReason(t);
+    }
+
+    function dueReason(t) {
       var b = state.board || {};
       var within = state.scope === 'all' ? 'いつでも' : monthDay(shiftDay(b.today, b.scope_days)) + ' まで';
       switch (t.due_class) {
@@ -1107,6 +1138,13 @@
       return Math.max(0, Math.round((b - a) / 86400000));
     }
 
+    // writtenAt is the hover on a status line's age: when it was written.
+    function writtenAt(iso) {
+      var d = new Date(iso);
+      var ymd = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+      return dateLabel(ymd) + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ' に書いた';
+    }
+
     // latestStatus is the one line under a row's name: the newest supplement.
     // It returns null when the task has none.
     function latestStatus(t) {
@@ -1123,7 +1161,8 @@
       var age = document.createElement('span');
       age.className = 'rs-age';
       var days = calendarDaysSince(last.created_at);
-      age.textContent = days === 0 ? '今日' : days + '日前';
+      age.textContent = days === 0 ? '今日' : span(days) + '前';
+      age.title = writtenAt(last.created_at);
       if (days >= 3) age.classList.add('stale');
       if (annotationLabel(last)) line.appendChild(annotationTag(last));
       line.appendChild(body);
