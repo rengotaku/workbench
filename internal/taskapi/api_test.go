@@ -194,6 +194,22 @@ func TestList_ATaskWithNoDueDateStaysVisible(t *testing.T) {
 	assert.EqualValues(t, 2, countsOf(t, body)["rest"])
 }
 
+func TestList_PastTheScopeStillCountsTheDaysLeft(t *testing.T) {
+	store, h := setup(t)
+	_, err := store.Add("ずっと先", "", dateIn(20), task.ActorHuman)
+	require.NoError(t, err)
+
+	_, body := call(t, h, http.MethodGet, "/api/tasks?scope=7", nil)
+
+	rows := rowsOf(t, body, "queue")
+	require.Len(t, rows, 1)
+	row, ok := rows[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, false, row["in_scope"])
+	assert.Equal(t, "plain", row["due_class"])
+	assert.Equal(t, "あと20日", row["due_label"], "the screen sorts these by due, so it reads as days like the rows in scope")
+}
+
 func TestList_RejectsAMeaninglessScope(t *testing.T) {
 	_, h := setup(t)
 	code, body := call(t, h, http.MethodGet, "/api/tasks?scope=soon", nil)

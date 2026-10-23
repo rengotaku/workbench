@@ -93,7 +93,7 @@
   .row-status { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--fs-sm2); color: var(--ink-soft); }
   .rs-body { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rs-age { flex: none; font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
-  .rs-age.stale { color: var(--near); font-weight: 600; }
+  .rs-age.stale { color: var(--stale); font-weight: 600; }
 
   /* The field that appends a status in the open row. */
   .status-add { display: flex; flex-direction: column; gap: 6px; }
@@ -666,6 +666,12 @@
   }
 
   .due {
+    /* One width for every label (10/27, あと18日, 期限なし), so the chip does not
+       resize as the label changes. */
+    display: inline-block;
+    box-sizing: border-box;
+    width: 5.6em;
+    text-align: center;
     font-family: var(--mono);
     font-size: var(--fs-sm);
     font-variant-numeric: tabular-nums;

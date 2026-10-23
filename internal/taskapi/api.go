@@ -274,7 +274,9 @@ func (a *API) view(t task.Task, today time.Time, scope int) View {
 		v.DueClass = "near"
 		v.InScope = true
 	default:
-		v.DueLabel = d.Format("1/2")
+		// Past the scope, still counted in days: the screen sorts these by due
+		// date, and a count reads alike with the in-scope rows above it.
+		v.DueLabel = "あと" + strconv.Itoa(diff) + "日"
 		v.DueClass = "plain"
 	}
 	return v

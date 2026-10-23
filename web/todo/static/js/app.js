@@ -344,11 +344,13 @@
       el.focusList.textContent = '';
       focus.forEach(function (t) { el.focusList.appendChild(queueRow(t)); });
 
-      // The queue splits in two by scope. Each part keeps queue order, and a
-      // drop is still placed against the whole queue (onDragEnd), so the split
-      // is only how the rows are shown.
+      // The queue splits in two by scope. The in-scope part keeps queue order;
+      // スコープ外 is shown nearest due first (queue order among the same day),
+      // since none of it is to be started yet and the date is what tells them
+      // apart. A drop is still placed against the whole queue (onDragEnd), so
+      // the split is only how the rows are shown.
       var queue = unfocusedQueue();
-      var outRows = queue.filter(function (t) { return !t.in_scope; });
+      var outRows = byDue(queue.filter(function (t) { return !t.in_scope; }));
       el.queue.textContent = '';
       queue.forEach(function (t) { if (t.in_scope) el.queue.appendChild(queueRow(t)); });
       el.outSec.hidden = outRows.length === 0;
@@ -2254,6 +2256,15 @@
       dropped = true;
     }
 
+    // byDue orders スコープ外 rows nearest due first. Every one of them has a
+    // due date (a row without one is in scope), and YYYY-MM-DD compares as a
+    // string. The sort is stable, so rows due the same day keep queue order.
+    function byDue(rows) {
+      return rows.slice().sort(function (a, b) {
+        return a.due < b.due ? -1 : a.due > b.due ? 1 : 0;
+      });
+    }
+
     // A list's drop area is its whole section, so an empty list (every task
     // focused, or every one past the scope) still takes a row, and a closed
     // スコープ外 takes one on its heading.
@@ -2319,6 +2330,13 @@
         to = inBand ? 0 : rest.filter(function (t) { return t.focused; }).length;
       }
       var due = scopeDue(task, list);
+      // スコープ外 is shown by due date, so a row moved within it would only
+      // jump back. Nothing is sent; the drop just puts it back.
+      if (!crossed && !due && list === el.outList) {
+        state.busy = false;
+        render();
+        return;
+      }
 
       // Crossing between the band and the list is a change of focus; the
       // server clamps the place to the block the task now belongs to. Within
