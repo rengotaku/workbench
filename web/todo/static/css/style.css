@@ -495,6 +495,9 @@
     background-color: var(--surface-sunk);
     box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent);
   }
+  /* A row just resumed from 待ち or いつか. The notice's colour, so the message
+     and the row read as one; only the colour, so a due stripe stays. */
+  .task.landed { background-color: var(--accent-soft); }
   .task.dragging { opacity: .4; }
   .task.openable { cursor: pointer; }
   .task.openable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

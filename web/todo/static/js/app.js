@@ -162,7 +162,10 @@
       busy: false, // a drag or a date field is in progress; do not redraw under it
       shownId: null, // the task the detail box is showing; the pointer moves it
       revealId: null, // the task a link named; its section is unfolded on first load
+      landedId: null, // the task just resumed; its row is tinted for a moment
     };
+    var landedTimer = null;
+    var LANDED_MS = 3000;
 
     // The detail box keeps the last task it was given. Letting it empty when the
     // pointer leaves the list would blank it mid-read, which is when it is most
@@ -283,10 +286,20 @@
 
     // flash says what just happened without looking like a failure, and offers
     // to take it back. Undo is where a mis-click gets fixed, so it belongs next
-    // to the message about the click.
-    function flash(text, undoable) {
+    // to the message about the click. go, when given, is one more button placed
+    // before undo: { label, run }.
+    function flash(text, undoable, go) {
       el.err.classList.add('notice');
       el.err.textContent = text;
+      if (go) {
+        var goLink = document.createElement('button');
+        goLink.type = 'button';
+        goLink.className = 'undo-link';
+        goLink.textContent = go.label;
+        goLink.addEventListener('click', go.run);
+        el.err.appendChild(document.createTextNode('  '));
+        el.err.appendChild(goLink);
+      }
       if (undoable !== false) {
         var link = document.createElement('button');
         link.type = 'button';
@@ -297,10 +310,14 @@
         el.err.appendChild(link);
       }
       el.err.hidden = false;
-      window.setTimeout(function () {
+      // A newer notice gets its own 6 seconds; the older one's timer would
+      // otherwise hide it early.
+      window.clearTimeout(flashTimer);
+      flashTimer = window.setTimeout(function () {
         if (el.err.classList.contains('notice')) el.err.hidden = true;
       }, 6000);
     }
+    var flashTimer = null;
 
     // undo reverses the last change, whoever made it — the page, the terminal or
     // the assistant. Cmd/Ctrl+Z reaches the same call.
@@ -525,6 +542,7 @@
       var li = document.createElement('li');
       li.className = 'task' + (opts.extraClass ? ' ' + opts.extraClass : '');
       li.dataset.id = opts.task.id;
+      if (state.landedId === opts.task.id) li.classList.add('landed');
 
       // The row itself opens the detail — there is no separate control. Rows
       // that have a panel are focusable so the keyboard can reach them.
@@ -1484,7 +1502,7 @@
         resume.addEventListener('click', function () {
           resume.disabled = true;
           request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/resume', { note: '' })
-            .then(function () { closeRow(t.id); return load().then(function () { flash('着手順へ戻した'); }); })
+            .then(function () { closeRow(t.id); return load().then(function () { landed(t); }); })
             .catch(function (err) { resume.disabled = false; showError(err); });
         });
         actions.appendChild(resume);
@@ -1532,6 +1550,50 @@
     // closeRow folds a row whose task changed state. The task moves to another
     // section, often a folded one, where an open panel would wait unseen.
     function closeRow(id) { if (state.openId === id) state.openId = null; }
+
+    // landed tells where a resumed task went. It goes to the end of the queue,
+    // which may be below the fold or in the closed スコープ外 section, so the
+    // row seemed to vanish. The notice names the place, and 見る opens the
+    // section and scrolls to the row. Nothing moves until 見る is pressed: the
+    // waiting list is often worked through top to bottom.
+    function landed(t) {
+      var now = ((state.board && state.board.queue) || []).filter(function (q) { return q.id === t.id; })[0];
+      // A task focused when it went to 待ち keeps the mark and returns to the
+      // end of the band, whatever its due date.
+      var where = !now ? '着手順'
+        : now.focused ? 'フォーカスの末尾'
+          : now.in_scope ? '着手順の末尾'
+          : 'スコープ外（期限 ' + monthDay(now.due) + '）';
+      flash('「' + t.name + '」を' + where + 'へ戻した', true, now && { label: '見る', run: function () { showRow(t.id); } });
+      if (now) markLanded(t.id);
+    }
+
+    function showRow(id) {
+      state.revealId = id;
+      reveal(state.board);
+      render();
+      var node = document.querySelector('.task[data-id="' + id + '"]');
+      if (!node) return;
+      // Focus follows the eye, so the keyboard can act on the row right away.
+      if (node.tabIndex >= 0) node.focus({ preventScroll: true });
+      var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      node.scrollIntoView({ block: 'center', behavior: still ? 'auto' : 'smooth' });
+      markLanded(id);
+    }
+
+    // markLanded tints the row for a moment. The id lives in state so a redraw
+    // in the meantime (the poll) keeps the tint.
+    function markLanded(id) {
+      state.landedId = id;
+      var node = document.querySelector('.task[data-id="' + id + '"]');
+      if (node) node.classList.add('landed');
+      window.clearTimeout(landedTimer);
+      landedTimer = window.setTimeout(function () {
+        state.landedId = null;
+        var n = document.querySelector('.task.landed');
+        if (n) n.classList.remove('landed');
+      }, LANDED_MS);
+    }
 
     // wireLiveField makes a piece of text save itself: a pause in typing writes
     // it, and so does leaving the field. There is no save button to forget.
