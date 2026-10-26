@@ -1,6 +1,7 @@
 package cliguard
 
 import (
+	"os/exec"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -38,16 +39,14 @@ func TestUnknownSubcommand_StopsATypedWordThatIsNoCommand(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, added)
 	assert.Contains(t, err.Error(), `"show" というサブコマンドはありません`)
-	assert.Contains(t, err.Error(), "todo -- show T094")
-	assert.Contains(t, err.Error(), `todo "show T094"`)
+	assert.Contains(t, err.Error(), "todo -- 'show T094' と書いて")
 }
 
 func TestUnknownSubcommand_SuggestsTheNearestCommand(t *testing.T) {
 	err, _ := run(t, "lst")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "list のことですか")
-	assert.Contains(t, err.Error(), "todo -- lst と書いて")
-	assert.NotContains(t, err.Error(), `"lst" と書いて`, "quoting one word does not help, so it is not offered")
+	assert.Contains(t, err.Error(), "todo -- 'lst' と書いて")
 }
 
 func TestUnknownSubcommand_LetsAddingThrough(t *testing.T) {
@@ -72,4 +71,22 @@ func TestUnknownSubcommand_LetsAddingThrough(t *testing.T) {
 
 func TestUnknownSubcommand_NoArgs(t *testing.T) {
 	assert.NoError(t, UnknownSubcommand(&cobra.Command{Use: "todo"}, nil))
+}
+
+// The suggested line is copied back into the shell, so nothing in the text may
+// run there.
+func TestShellQuote_KeepsTheTextLiteral(t *testing.T) {
+	cases := map[string]string{
+		"plain":        "show T094",
+		"substitution": "deploy $(touch /tmp/x) `id`",
+		"single quote": "it's ; rm -rf x",
+		"newline":      "a\nb",
+	}
+	for name, text := range cases {
+		t.Run(name, func(t *testing.T) {
+			out, err := exec.Command("sh", "-c", "printf %s "+shellQuote(text)).Output()
+			require.NoError(t, err)
+			assert.Equal(t, text, string(out))
+		})
+	}
 }

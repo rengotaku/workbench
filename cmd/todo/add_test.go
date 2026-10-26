@@ -15,7 +15,7 @@ func TestAdd_UnknownSubcommandAddsNothing(t *testing.T) {
 	err := failTodo(t, url, "show", "T094")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `"show" というサブコマンドはありません`)
-	assert.Contains(t, err.Error(), `todo "show T094"`)
+	assert.Contains(t, err.Error(), "todo -- 'show T094'")
 
 	tasks, _ := store.List()
 	assert.Empty(t, tasks)

@@ -68,7 +68,7 @@ func rootCmd(e *env) *cobra.Command {
 			"  note list --pending  AI がまだ拾っていないメモ\n" +
 			"  note route <id> --todo 名前 | --record   拾ったメモの行き先を決める\n\n" +
 			"英小文字の 1 語で始まり、どのサブコマンドとも一致しない引数は打ち間違いとみなし、登録せずに止める。\n" +
-			"そのまま登録するなら note -- 文字列... か note \"文字列...\" と書く。\n\n" +
+			"そのまま登録するなら note -- '文字列' のように -- の後ろに単一引用符で書く。\n\n" +
 			"サーバ（既定 " + noteclient.DefaultBaseURL + "、$NOTE_SERVER で変更）経由でのみ読み書きする。",
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,

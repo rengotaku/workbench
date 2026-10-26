@@ -4,7 +4,8 @@
 // `todo show T094` used to add a task called "show T094". A first argument that
 // looks like a subcommand (one word of lowercase ASCII) and matches none is
 // taken as a typo instead. Adding text that starts that way stays possible
-// after `--`, or with the whole text quoted as one argument.
+// after `--`, or with the whole text quoted as one argument; the error shows
+// the line to type.
 package cliguard
 
 import (
@@ -35,12 +36,15 @@ func UnknownSubcommand(root *cobra.Command, args []string) error {
 	if s := root.SuggestionsFor(args[0]); len(s) > 0 {
 		fmt.Fprintf(&b, "%s のことですか。", strings.Join(s, " / "))
 	}
-	text := strings.Join(args, " ")
-	// Quoting one word changes nothing the shell passes on, so only -- helps.
-	if len(args) == 1 {
-		fmt.Fprintf(&b, "この文字列のまま追加するなら %s -- %s と書いてください", name, text)
-	} else {
-		fmt.Fprintf(&b, "この文字列のまま追加するなら %s -- %s か %s %q と書いてください", name, text, name, text)
-	}
+	// One form for every case: -- also covers a single word, which quoting
+	// alone cannot, and the single quotes keep $(...) or backquotes in the text
+	// from running when the line is copied back into the shell.
+	fmt.Fprintf(&b, "この文字列のまま追加するなら %s -- %s と書いてください", name, shellQuote(strings.Join(args, " ")))
 	return fmt.Errorf("%s", b.String())
+}
+
+// shellQuote wraps s in single quotes for a POSIX shell, closing and reopening
+// them around each single quote inside.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
 }

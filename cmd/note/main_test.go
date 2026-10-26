@@ -421,7 +421,7 @@ func TestAnnotateTooLongShowsTheServerError(t *testing.T) {
 func TestUnknownSubcommandAddsNothing(t *testing.T) {
 	h := newHarness(t)
 	r := h.run("", true, "show-x", "1")
-	if r.code != 1 || !strings.Contains(r.errOut, `"show-x" というサブコマンドはありません`) || !strings.Contains(r.errOut, `note "show-x 1"`) {
+	if r.code != 1 || !strings.Contains(r.errOut, `"show-x" というサブコマンドはありません`) || !strings.Contains(r.errOut, "note -- 'show-x 1'") {
 		t.Fatalf("result = %+v", r)
 	}
 	if got := h.ok("list", "--json"); strings.Contains(got, "show-x") {

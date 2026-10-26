@@ -40,7 +40,7 @@ func rootCmd() *cobra.Command {
 			"端末から引数なしで実行すると、ブラウザで追加画面を開く。\n\n" +
 			"  todo \"名前 [1]\" --link \"<URL> 一言\"   関連 URL を添えて追加する。名前の [1] は 1 つ目の --link を指す\n\n" +
 			"英小文字の 1 語で始まり、どのサブコマンドとも一致しない引数は打ち間違いとみなし、追加せずに止める。\n" +
-			"そのまま追加するなら todo -- show T094 か todo \"show T094\" と書く。",
+			"そのまま追加するなら todo -- 'show T094' のように -- の後ろに単一引用符で書く。",
 		Args:         cobra.ArbitraryArgs,
 		SilenceUsage: true,
 		// main prints the error once; cobra would print it a second time.
