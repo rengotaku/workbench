@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/rengotaku/workbench/internal/cliguard"
 	"github.com/rengotaku/workbench/internal/note"
 	"github.com/rengotaku/workbench/internal/noteclient"
 	"github.com/rengotaku/workbench/internal/noteroute"
@@ -66,6 +67,8 @@ func rootCmd(e *env) *cobra.Command {
 			"  note \"本文 [1]\" --link \"<URL> 一言\"   関連 URL を添えて登録する。本文の [1] は 1 つ目の --link を指す\n\n" +
 			"  note list --pending  AI がまだ拾っていないメモ\n" +
 			"  note route <id> --todo 名前 | --record   拾ったメモの行き先を決める\n\n" +
+			"英小文字の 1 語で始まり、どのサブコマンドとも一致しない引数は打ち間違いとみなし、登録せずに止める。\n" +
+			"そのまま登録するなら note -- '文字列' のように -- の後ろに単一引用符で書く。\n\n" +
 			"サーバ（既定 " + noteclient.DefaultBaseURL + "、$NOTE_SERVER で変更）経由でのみ読み書きする。",
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
@@ -112,6 +115,9 @@ func (e *env) runAdd(cmd *cobra.Command, args []string) error {
 
 	var text string
 	if len(args) > 0 {
+		if err := cliguard.UnknownSubcommand(cmd, args); err != nil {
+			return err
+		}
 		text = strings.Join(args, " ")
 	} else {
 		b, err := io.ReadAll(e.stdin)
