@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/rengotaku/workbench/internal/cliguard"
 	"github.com/rengotaku/workbench/internal/legacy"
 	"github.com/rengotaku/workbench/internal/task"
 	"github.com/rengotaku/workbench/internal/taskclient"
@@ -37,10 +38,14 @@ func rootCmd() *cobra.Command {
 		Long: "着手順で持つ TODO リスト。\n\n" +
 			"引数にタスク名を渡すと末尾に追加する。順序は人が決めるもので、期限からは導出しない。\n" +
 			"端末から引数なしで実行すると、ブラウザで追加画面を開く。\n\n" +
-			"  todo \"名前 [1]\" --link \"<URL> 一言\"   関連 URL を添えて追加する。名前の [1] は 1 つ目の --link を指す",
+			"  todo \"名前 [1]\" --link \"<URL> 一言\"   関連 URL を添えて追加する。名前の [1] は 1 つ目の --link を指す\n\n" +
+			"英小文字の 1 語で始まり、どのサブコマンドとも一致しない引数は打ち間違いとみなし、追加せずに止める。\n" +
+			"そのまま追加するなら todo -- show T094 か todo \"show T094\" と書く。",
 		Args:         cobra.ArbitraryArgs,
 		SilenceUsage: true,
-		RunE:         runAdd,
+		// main prints the error once; cobra would print it a second time.
+		SilenceErrors: true,
+		RunE:          runAdd,
 	}
 
 	root.PersistentFlags().StringVar(&serverURL, "server", "", "server URL (default $TODO_ORDER_URL or "+taskclient.DefaultBaseURL+")")
@@ -67,6 +72,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		}
 		return openAddPage()
+	}
+	if err := cliguard.UnknownSubcommand(cmd, args); err != nil {
+		return err
 	}
 	due, _ := cmd.Flags().GetString("due")
 	detail, _ := cmd.Flags().GetString("detail")

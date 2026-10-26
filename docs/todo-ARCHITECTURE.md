@@ -26,6 +26,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | `cmd/server/` | note と共通のサーバの起動。設定読み込み・テンプレート読み込み・グレースフル停止 |
 | `internal/server/` | todo と note のルートを 1 つの gin エンジンにまとめる。httpguard と `/healthz` はここ |
 | `cmd/todo/` | CLI。サブコマンドの定義と人向けの出力整形だけを持つ |
+| `internal/cliguard/` | todo と note の CLI で共通の引数チェック。英小文字の 1 語で始まり、どのサブコマンドとも一致しない引数を打ち間違いとみなして止める（追加にしない）。そのまま追加するなら `--` の後ろに書くか、全体をクォートで 1 引数にする |
 | `internal/task/` | タスクの型・イベントの型・保存（`store.go`）・旧台帳の取り込み（`import.go`） |
 | `internal/taskapi/` | REST ハンドラ。期限の日数計算と区画分けはここで行い、画面と CLI が再計算しない |
 | `internal/noteroute/` | メモの行き先を決める API。todo 行きではここがタスクを作る（`AddFromNote`）。詳細は note-ARCHITECTURE |

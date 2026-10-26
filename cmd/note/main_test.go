@@ -125,7 +125,7 @@ func TestAddFromStdinEmptyFails(t *testing.T) {
 
 func TestAddJSON(t *testing.T) {
 	h := newHarness(t)
-	got := h.ok("--json", "x")
+	got := h.ok("--json", "メモ x")
 	if !strings.HasPrefix(got, "{") || !strings.Contains(got, `"id":1`) {
 		t.Errorf("--json out = %q", got)
 	}
@@ -207,7 +207,7 @@ func TestListAndShow(t *testing.T) {
 
 func TestAnnotateErrors(t *testing.T) {
 	h := newHarness(t)
-	h.ok("a")
+	h.ok("メモ a")
 	missing := filepath.Join(t.TempDir(), "none.md")
 	for _, tc := range []struct {
 		name string
@@ -237,7 +237,7 @@ func TestAnnotateErrors(t *testing.T) {
 
 func TestTopicCommands(t *testing.T) {
 	h := newHarness(t)
-	h.ok("a")
+	h.ok("メモ a")
 	if got := h.ok("topic", "1", "青分離"); got != "note #1 話題 青分離\n" {
 		t.Errorf("out = %q", got)
 	}
@@ -261,7 +261,7 @@ func TestTopicCommands(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	h := newHarness(t)
-	h.ok("a")
+	h.ok("メモ a")
 	if got := h.ok("delete", "1"); got != "note #1 削除\n" {
 		t.Errorf("out = %q", got)
 	}
@@ -410,9 +410,27 @@ func TestRouteCommand(t *testing.T) {
 
 func TestAnnotateTooLongShowsTheServerError(t *testing.T) {
 	h := newHarness(t)
-	h.ok("a")
+	h.ok("メモ a")
 	r := h.run("", true, "annotate", "1", "--kind", "memo", "--body", strings.Repeat("a", note.MaxAnnotationBody+1))
 	if r.code != 1 || !strings.Contains(r.errOut, "長すぎます") {
 		t.Errorf("result = %+v", r)
+	}
+}
+
+// A mistyped subcommand used to become a memo (#97).
+func TestUnknownSubcommandAddsNothing(t *testing.T) {
+	h := newHarness(t)
+	r := h.run("", true, "show-x", "1")
+	if r.code != 1 || !strings.Contains(r.errOut, `"show-x" というサブコマンドはありません`) || !strings.Contains(r.errOut, `note "show-x 1"`) {
+		t.Fatalf("result = %+v", r)
+	}
+	if got := h.ok("list", "--json"); strings.Contains(got, "show-x") {
+		t.Errorf("nothing should be stored: %s", got)
+	}
+	if got := h.ok("--", "show-x", "1"); got != "note #1 保存\n" {
+		t.Errorf("after -- it is a memo: %q", got)
+	}
+	if got := h.ok("show-x 1"); got != "note #2 保存\n" {
+		t.Errorf("quoted as one argument it is a memo: %q", got)
 	}
 }

@@ -14,7 +14,7 @@ last_verified: 2026-10-14   # 最後に実装と突合した日
 |---|---|
 | `cmd/server/` | todo と共通のサーバの起動。設定（`LISTEN_ADDR` / `PORT` / `TODO_DATA_DIR` / `NOTE_DATA_DIR`）の読み込み、ストアを開く、シャットダウン |
 | `internal/server/` | todo と note のルートを 1 つの gin エンジンにまとめる。httpguard と `/healthz` はここで 1 回だけ掛ける |
-| `cmd/note/` | CLI。引数・標準入力・サブコマンドを解釈して `internal/noteclient` を呼ぶ。端末かどうかの判定とブラウザを開く処理はここ |
+| `cmd/note/` | CLI。引数・標準入力・サブコマンドを解釈して `internal/noteclient` を呼ぶ。端末かどうかの判定とブラウザを開く処理はここ。サブコマンドの打ち間違いを登録にしない判定は `internal/cliguard/`（todo と共通） |
 | `internal/note/` | モデル（Note / Annotation / Link / Filter / TopicStat）とストア。検証、採番、`notes.json` の原子的な書き換え、操作ログの追記。話題の名前変更・統合・削除、話題ごとの件数と最終使用日時（`TopicStats`）、最近使った順の並べ替え（`RankByRecent`）もここ。URL の抽出、`[N]` 参照の切り出し（`link.go`）、ソース表示（ホストから導出）もここ |
 | `internal/noteapi/` | `/api` の JSON エンドポイント。ストアの入力エラーを 400、存在しない id・話題を 404 に写す。話題は `GET/POST /api/topics`、`PUT/DELETE /api/topics/*name`（名前変更・統合・削除。名前に `/` が入っても届くようワイルドカード）。応答は名前一覧 `topics` と、件数・最終使用日時つきの `details` |
 | `internal/notepages/` | 登録画面（`/notes`）とタイムライン（`/notes/timeline`）の外枠（中身は `add.js` / `timeline.js` がルーターの画面として描く）、`/notes/static`。話題チップに出す「最近使った上位 6 個＋選択中」と「他 N」の振り分け（`splitTopics`）もここ。ルート登録（`Mount`）と API の取り付けもここ。`GET /api/notes/timeline` はタイムラインと同じ組み立て（`buildTimeline`）の結果を JSON で返す（`?topic=` / `?no_topic=1` も同じ意味）。todo の `/`・`/static` とぶつからないよう `/notes` 配下に置く |
