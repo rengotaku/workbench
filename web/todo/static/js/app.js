@@ -310,10 +310,14 @@
         el.err.appendChild(link);
       }
       el.err.hidden = false;
-      window.setTimeout(function () {
+      // A newer notice gets its own 6 seconds; the older one's timer would
+      // otherwise hide it early.
+      window.clearTimeout(flashTimer);
+      flashTimer = window.setTimeout(function () {
         if (el.err.classList.contains('notice')) el.err.hidden = true;
       }, 6000);
     }
+    var flashTimer = null;
 
     // undo reverses the last change, whoever made it — the page, the terminal or
     // the assistant. Cmd/Ctrl+Z reaches the same call.
@@ -1554,8 +1558,11 @@
     // waiting list is often worked through top to bottom.
     function landed(t) {
       var now = ((state.board && state.board.queue) || []).filter(function (q) { return q.id === t.id; })[0];
+      // A task focused when it went to 待ち keeps the mark and returns to the
+      // end of the band, whatever its due date.
       var where = !now ? '着手順'
-        : now.in_scope ? '着手順の末尾'
+        : now.focused ? 'フォーカスの末尾'
+          : now.in_scope ? '着手順の末尾'
           : 'スコープ外（期限 ' + monthDay(now.due) + '）';
       flash('「' + t.name + '」を' + where + 'へ戻した', true, now && { label: '見る', run: function () { showRow(t.id); } });
       if (now) markLanded(t.id);
@@ -1567,6 +1574,8 @@
       render();
       var node = document.querySelector('.task[data-id="' + id + '"]');
       if (!node) return;
+      // Focus follows the eye, so the keyboard can act on the row right away.
+      if (node.tabIndex >= 0) node.focus({ preventScroll: true });
       var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       node.scrollIntoView({ block: 'center', behavior: still ? 'auto' : 'smooth' });
       markLanded(id);
