@@ -318,7 +318,9 @@
     background: none;
     border: 0;
     padding: 0;
-    flex: 0 1 auto;
+    /* A small basis keeps a long name on the first line, cut with an ellipsis;
+       only the tags and the button wrap when the line is narrow. */
+    flex: 1 1 8em;
     min-width: 6em;
     overflow: hidden;
     text-overflow: ellipsis;
