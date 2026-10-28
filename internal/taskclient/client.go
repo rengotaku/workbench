@@ -55,7 +55,10 @@ type Task struct {
 	DueLabel string `json:"due_label"`
 	DueClass string `json:"due_class"`
 	task.Task
-	StalledFor   int  `json:"stalled_for"`
+	StalledFor int `json:"stalled_for"`
+	// IdleDays is the days left without a person touching the task (ADR
+	// todo-0021); 0 when there is nothing to show.
+	IdleDays     int  `json:"idle_days"`
 	InScope      bool `json:"in_scope"`
 	Overdue      bool `json:"overdue"`
 	UntilReached bool `json:"until_reached"`

@@ -622,6 +622,9 @@
         writeName(txt, opts.task);
       }
       name.appendChild(txt);
+      // The long-run band shows no idle tag yet: the API carries the fields.
+      var idle = opts.task.state === 'long' ? null : idleTag(opts.task);
+      if (idle) name.appendChild(idle);
 
       body.appendChild(name);
 
@@ -1210,21 +1213,22 @@
       return tag;
     }
 
-    // calendarDaysSince counts midnights between a time and now, so a note from
-    // 23:50 yesterday is 1 day old at 00:10.
-    function calendarDaysSince(iso) {
-      var then = new Date(iso);
-      var now = new Date();
-      var a = Date.UTC(then.getFullYear(), then.getMonth(), then.getDate());
-      var b = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-      return Math.max(0, Math.round((b - a) / 86400000));
-    }
-
-    // writtenAt is the hover on a status line's age: when it was written.
-    function writtenAt(iso) {
-      var d = new Date(iso);
-      var ymd = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
-      return dateLabel(ymd) + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    // idleTag says how long a task has been left without a person touching it.
+    // The server counts the days and picks the stage (ADR todo-0021); the title
+    // says which date the count started from.
+    function idleTag(t) {
+      if (!t.idle_days) return null;
+      var from = {
+        due: '期限（' + monthDay(t.due) + '）',
+        annotation: '人の補足',
+        created: '作成',
+      }[t.idle_from] || '';
+      var tag = document.createElement('span');
+      tag.className = 'idle-tag s' + t.idle_stage;
+      tag.textContent = '止まって ' + t.idle_days + '日';
+      tag.title = from + 'から ' + t.idle_days + '日'
+        + (t.idle_from === 'annotation' ? '' : '。人が補足を書くと、そこから数え直す');
+      return tag;
     }
 
     // latestStatus is the one line under a row's name: the newest supplement.
@@ -1240,15 +1244,8 @@
       var body = document.createElement('span');
       body.className = 'rs-body';
       body.textContent = last.body;
-      var age = document.createElement('span');
-      age.className = 'rs-age';
-      var days = calendarDaysSince(last.created_at);
-      age.textContent = days === 0 ? '今日' : span(days) + '前';
-      age.title = writtenAt(last.created_at);
-      if (days >= 3) age.classList.add('stale');
       if (annotationLabel(last)) line.appendChild(annotationTag(last));
       line.appendChild(body);
-      line.appendChild(age);
       return line;
     }
 

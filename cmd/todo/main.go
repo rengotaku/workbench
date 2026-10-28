@@ -171,7 +171,7 @@ func printBoard(b taskclient.Board) {
 	if len(b.Long) > 0 {
 		fmt.Println("\n[長期]")
 		for _, t := range b.Long {
-			fmt.Printf("  ▶ %-6s %s  子 完了 %d / 未完 %d\n", t.ID, t.Name, t.KidsDone, t.KidsOpen)
+			fmt.Printf("  ▶ %-6s %s  子 完了 %d / 未完 %d%s\n", t.ID, t.Name, t.KidsDone, t.KidsOpen, idleSuffix(t.Task))
 			if t.Next != nil {
 				fmt.Printf("           次の一手 %s %s\n", t.Next.ID, t.Next.Name)
 			} else {
@@ -182,13 +182,13 @@ func printBoard(b taskclient.Board) {
 	if len(b.Focus) > 0 {
 		fmt.Println("\n[フォーカス]")
 		for _, t := range b.Focus {
-			fmt.Printf("  ◎ %-6s %s%s\n", t.ID, t.Name, dueSuffix(t))
+			fmt.Printf("  ◎ %-6s %s%s%s\n", t.ID, t.Name, dueSuffix(t), idleSuffix(t))
 		}
 	}
 	if len(b.Queue) > 0 {
 		fmt.Println("\n[着手順]")
 		for i, t := range b.Queue {
-			fmt.Printf("%3d %-6s %s%s%s%s\n", i+1, t.ID, t.Name, detailMark(t), parentMark(t), dueSuffix(t))
+			fmt.Printf("%3d %-6s %s%s%s%s%s\n", i+1, t.ID, t.Name, detailMark(t), parentMark(t), dueSuffix(t), idleSuffix(t))
 		}
 	}
 	if len(b.Waiting) > 0 {
@@ -860,6 +860,14 @@ func actorTag(e task.Event) string {
 		return "  (AI)"
 	}
 	return ""
+}
+
+// idleSuffix says how many days a task has been left alone, when it has been.
+func idleSuffix(t taskclient.Task) string {
+	if t.IdleDays <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("  止まって %d日", t.IdleDays)
 }
 
 func dueSuffix(t taskclient.Task) string {
