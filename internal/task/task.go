@@ -143,8 +143,18 @@ type Event struct {
 	Reason    string       `json:"reason,omitempty"`
 	ID        string       `json:"id"`
 	Jumped    []JumpedTask `json:"jumped,omitempty"`
-	FromOrder int          `json:"from_order,omitempty"`
-	ToOrder   int          `json:"to_order,omitempty"`
+	// Moved lists every task whose queue position changed because of this
+	// event, with the position it had before. Events written before it was
+	// added lack it; undo then moves only the event's own task.
+	Moved     []MovedTask `json:"moved,omitempty"`
+	FromOrder int         `json:"from_order,omitempty"`
+	ToOrder   int         `json:"to_order,omitempty"`
+}
+
+// MovedTask is a task's queue position before an event moved it.
+type MovedTask struct {
+	ID    string `json:"id"`
+	Order int    `json:"order"`
 }
 
 // JumpedTask records a task that this reorder overtook, with the due date that

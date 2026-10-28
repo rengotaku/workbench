@@ -1,6 +1,9 @@
 package task_test
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -307,4 +310,90 @@ func TestUnfocusedBandRuleSurvivesAReload(t *testing.T) {
 	require.NoError(t, s.Close())
 	re := openAt(t, dir)
 	assert.Equal(t, []string{"子", "親"}, queueNames(t, re))
+}
+
+// Unfocusing a parent lands it directly below its lowest child in one move,
+// however many children it has.
+func TestSetFocus_UnfocusingAParentWithManyChildrenKeepsThemAbove(t *testing.T) {
+	for _, n := range []int{6, 7, 12} {
+		s := newStore(t)
+		id := addAll(t, s, "X", "親")
+		_, err := s.SetFocus(id["親"], true, task.ActorHuman)
+		require.NoError(t, err)
+		for k := 0; k < n; k++ {
+			name := string(rune('a' + k))
+			_, err = s.AddChild(name, "", "", id["親"], nil, "", "", task.ActorHuman)
+			require.NoError(t, err)
+			// A child of a focused parent joins its band, above it.
+		}
+		tasks, _ := s.List()
+		for _, x := range tasks {
+			if x.Parent == id["親"] {
+				_, err = s.SetFocus(x.ID, false, task.ActorHuman) // back to the lower band
+				require.NoError(t, err)
+			}
+		}
+		before := queueNames(t, s)
+		_, err = s.SetFocus(id["親"], false, task.ActorHuman)
+		require.NoErrorf(t, err, "%d children", n)
+
+		got := queueNames(t, s)
+		parentAt := -1
+		for k, name := range got {
+			if name == "親" {
+				parentAt = k
+			}
+		}
+		for k, name := range got {
+			if len(name) == 1 && name != "X" {
+				assert.Less(t, k, parentAt, "%d children: %s above the parent", n, name)
+			}
+		}
+
+		_, err = s.Undo(task.ActorHuman)
+		require.NoError(t, err)
+		assert.Equal(t, before, queueNames(t, s), "%d children: undo puts the queue back", n)
+	}
+}
+
+// Undoing SetParent puts back every task the tie moved, not only the child.
+func TestUndo_SetParentPutsBackDescendantsItMoved(t *testing.T) {
+	s := newStore(t)
+	id := addAll(t, s, "P", "A", "G", "C")
+	_, err := s.SetParent(id["G"], id["C"], task.ActorHuman)
+	require.NoError(t, err)
+	require.Equal(t, []string{"P", "A", "G", "C"}, queueNames(t, s))
+
+	_, err = s.SetParent(id["C"], id["P"], task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"G", "C", "P", "A"}, queueNames(t, s))
+
+	_, err = s.Undo(task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"P", "A", "G", "C"}, queueNames(t, s))
+}
+
+// An event written before Moved existed still undoes: only the child goes back.
+func TestUndo_SetParentEventWithoutMovedStillUndoes(t *testing.T) {
+	dir := t.TempDir()
+	s := openAt(t, dir)
+	id := addAll(t, s, "親", "A", "B", "子")
+	_, err := s.SetParent(id["子"], id["親"], task.ActorHuman)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	files, err := filepath.Glob(filepath.Join(dir, "events-*.jsonl"))
+	require.NoError(t, err)
+	for _, f := range files {
+		b, rerr := os.ReadFile(f)
+		require.NoError(t, rerr)
+		out := regexp.MustCompile(`,"moved":\[[^\]]*\]`).ReplaceAll(b, nil)
+		require.NotEqual(t, string(b), string(out), "the event carried moved")
+		require.NoError(t, os.WriteFile(f, out, 0o600))
+	}
+
+	re := openAt(t, dir)
+	_, err = re.Undo(task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"親", "A", "B", "子"}, queueNames(t, re))
 }

@@ -61,10 +61,12 @@ func (s *Store) SetParent(id, parent string, actor Actor) (Task, error) {
 		// The child has to sit above an open parent in its band; if it was
 		// below, it moves directly above it. The old place is kept for undo.
 		if p := s.st.Tasks[s.mustIndex(parent)]; p.State == StateOpen && p.Focused == t.Focused && t.Order > p.Order {
+			before := s.openOrders()
 			open := s.openIndexes()
 			s.move(open, i, p.Order)
 			s.renumber()
 			ev.FromOrder, ev.ToOrder = t.Order, s.st.Tasks[i].Order
+			ev.Moved = s.movedSince(before)
 		}
 	}
 	if err := s.record(ev); err != nil {
@@ -211,6 +213,28 @@ func (s *Store) orderViolation() (child, parent Task, found bool) {
 	return Task{}, Task{}, false
 }
 
+// openOrders notes where every open task sits now.
+func (s *Store) openOrders() map[string]int {
+	out := map[string]int{}
+	for _, i := range s.openIndexes() {
+		out[s.st.Tasks[i].ID] = s.st.Tasks[i].Order
+	}
+	return out
+}
+
+// movedSince lists the open tasks whose position differs from before, with
+// the position they had, in queue order.
+func (s *Store) movedSince(before map[string]int) []MovedTask {
+	var out []MovedTask
+	for _, i := range s.openIndexes() {
+		t := s.st.Tasks[i]
+		if was, ok := before[t.ID]; ok && was != t.Order {
+			out = append(out, MovedTask{ID: t.ID, Order: was})
+		}
+	}
+	return out
+}
+
 func orderRule(child, parent Task) error {
 	return &ruleError{kind: ErrOrderRule, msg: fmt.Sprintf("子 %s は親 %s より上に置く", child.ID, parent.ID)}
 }
@@ -220,22 +244,31 @@ func orderRule(child, parent Task) error {
 // its lowest child. It reports whether the queue is clean afterwards. Used
 // where the caller named no place (the focus button).
 func (s *Store) placeByRule(i int) bool {
-	for range MaxDepth * 2 {
+	self := s.st.Tasks[i]
+	for range len(s.st.Tasks) + 1 {
 		c, p, found := s.orderViolation()
 		if !found {
 			return true
 		}
 		open := s.openIndexes()
 		switch {
-		case c.ID == s.st.Tasks[i].ID:
+		case c.ID == self.ID:
 			s.move(open, i, p.Order)
-		case p.ID == s.st.Tasks[i].ID:
-			s.move(open, i, c.Order)
+		case p.ID == self.ID:
+			// Directly below its lowest child in the band, in one move.
+			lowest := c.Order
+			for _, j := range open {
+				if k := s.st.Tasks[j]; k.Parent == self.ID && k.Focused == self.Focused {
+					lowest = max(lowest, k.Order)
+				}
+			}
+			s.move(open, i, lowest)
 		default:
 			return false
 		}
 	}
-	return false
+	_, _, found := s.orderViolation()
+	return !found
 }
 
 // childrenFirst puts every child ahead of its parent within one band, moving a
