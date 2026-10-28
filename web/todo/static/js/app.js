@@ -277,6 +277,12 @@
         .catch(showError);
     }
 
+    // reloadShowing draws the list again and then shows the error. load() clears
+    // the message when it succeeds, so showing it first would lose it at once.
+    function reloadShowing(err) {
+      return load().then(function () { showError(err); });
+    }
+
     function showError(err) {
       if (!err) { el.err.hidden = true; return; }
       el.err.classList.remove('notice');
@@ -471,13 +477,34 @@
       long.forEach(function (t) { el.longList.appendChild(longRow(t)); });
     }
 
-    // longOf finds a long-run task on the board, to know which parents are
-    // worth a tag on their children.
-    function longOf(id) {
-      var long = (state.board && state.board.long) || [];
-      for (var i = 0; i < long.length; i++) if (long[i].id === id) return long[i];
-      return null;
+    // boardTasks lists every task the board carries, whatever its section.
+    function boardTasks() {
+      var b = state.board || {};
+      return (b.queue || []).concat(b.long || [], b.waiting || [], b.someday || [], b.done || []);
     }
+
+    // longTasks are the long-run tasks, the parents that sit above the queue.
+    function longTasks() {
+      return (state.board && state.board.long) || [];
+    }
+
+    // treeFacts reads the parent links off the board: each task's children, and
+    // how many levels the tree under a task has (the task itself counts).
+    function treeFacts() {
+      var kids = {};
+      boardTasks().forEach(function (x) {
+        if (x.parent) (kids[x.parent] = kids[x.parent] || []).push(x.id);
+      });
+      function height(id, hops) {
+        var deepest = 0;
+        if (hops < 12) (kids[id] || []).forEach(function (c) { deepest = Math.max(deepest, height(c, hops + 1)); });
+        return deepest + 1;
+      }
+      return { kids: kids, height: function (id) { return height(id, 0); } };
+    }
+
+    // MAX_DEPTH is how many levels a tree may have, as in the server (ADR todo-0020).
+    var MAX_DEPTH = 3;
 
     // setFold shows a section's fold heading and list as open or closed.
     function setFold(head, list, open) {
@@ -811,20 +838,53 @@
         extraClass: cls,
       });
       li.draggable = true;
-      addParentTag(li, t);
-      return li;
+      return tagTree(li, t);
     }
 
-    // addParentTag names the long-run task a row was cut out of. A parent that
-    // is no longer long-run is not shown: the band it pointed at is gone.
+    // PARENT_TAG_CHARS is how much of the parent's name the tag shows.
+    var PARENT_TAG_CHARS = 6;
+
+    // addParentTag names the task a row was cut out of, with the first words of
+    // its name; the full path to it is in the tooltip. A parent the board does
+    // not know (removed) shows its ID.
     function addParentTag(li, t) {
-      if (!t.parent || !longOf(t.parent)) return;
+      if (!t.parent) return;
+      var shown = t.parent;
+      var path = t.parent;
+      if (t.parent_name) {
+        var chars = Array.from(t.parent_name);
+        shown = chars.slice(0, PARENT_TAG_CHARS).join('') + (chars.length > PARENT_TAG_CHARS ? '…' : '');
+        path = (t.parent_path || []).map(function (p) {
+          return (p.long ? '長期 ' : '') + p.id + ' ' + p.name;
+        }).join(' ＞ ');
+      }
       var tag = document.createElement('span');
       tag.className = 'parent-tag';
-      tag.textContent = t.parent;
-      tag.title = '長期 ' + t.parent + ' ' + longOf(t.parent).name + ' の子';
+      tag.textContent = '↑' + shown;
+      tag.title = path + ' の子';
       var name = li.querySelector('.name');
       name.insertBefore(tag, name.firstChild);
+    }
+
+    // addKidsTag counts the children of a row that has any: done / all of them.
+    // Long-run rows say it under the name instead, with the next step.
+    function addKidsTag(li, t) {
+      var total = (t.kids_done || 0) + (t.kids_open || 0);
+      if (!total) return;
+      var tag = document.createElement('span');
+      tag.className = 'kids-tag';
+      tag.textContent = '子 ' + (t.kids_done || 0) + '/' + total;
+      tag.title = '子 ' + total + ' 件のうち完了 ' + (t.kids_done || 0) + ' 件';
+      var name = li.querySelector('.name');
+      var first = name.querySelector('.parent-tag');
+      name.insertBefore(tag, first ? first.nextSibling : name.firstChild);
+    }
+
+    // tagTree puts the parent tag and the kids tag on a row.
+    function tagTree(li, t) {
+      addParentTag(li, t);
+      addKidsTag(li, t);
+      return li;
     }
 
     // longRow is a long-run task: not draggable (it is out of the queue), with
@@ -861,7 +921,8 @@
       return li;
     }
 
-    // addChildButton opens the add dialog with the parent filled in.
+    // addChildButton opens the add dialog with the parent filled in. A task
+    // already on the last level offers none.
     function addChildButton(t, cls) {
       var b = document.createElement('button');
       b.type = 'button';
@@ -877,32 +938,57 @@
       return b;
     }
 
-    // parentPicker ties a task to a long-run task, or unties it. It is offered
-    // only while there is a long-run task to choose.
+    // parentPicker ties a task to a parent, or unties it. It lists the long-run
+    // tasks and the queue, leaving out the task itself, what hangs under it and
+    // anything that would push the tree past MAX_DEPTH. The server checks the
+    // same rules (and the due dates, which the list cannot judge).
     function parentPicker(t) {
+      var facts = treeFacts();
+      var height = facts.height(t.id);
+      var below = {};
+      (function mark(id, hops) {
+        if (hops > 12) return;
+        (facts.kids[id] || []).forEach(function (c) { below[c] = true; mark(c, hops + 1); });
+      })(t.id, 0);
+      function offered(p) {
+        return p.id !== t.id && !below[p.id] && (p.parent_path || []).length + 1 + height <= MAX_DEPTH;
+      }
+
       var label = document.createElement('label');
       label.className = 'parent-pick';
-      label.appendChild(document.createTextNode('長期'));
+      label.appendChild(document.createTextNode('親'));
       var sel = document.createElement('select');
       var none = document.createElement('option');
       none.value = '';
       none.textContent = 'なし';
       sel.appendChild(none);
-      ((state.board && state.board.long) || []).forEach(function (p) {
-        var o = document.createElement('option');
-        o.value = p.id;
-        o.textContent = p.id + ' ' + p.name;
-        if (p.id === t.parent) o.selected = true;
-        sel.appendChild(o);
-      });
-      if (t.parent && !longOf(t.parent)) {
-        // The parent is no longer long-run: show the link as it is, so the
-        // picker tells the truth and なし takes it off.
-        var gone = document.createElement('option');
-        gone.value = t.parent;
-        gone.textContent = t.parent + '（長期ではない）';
-        gone.selected = true;
-        sel.appendChild(gone);
+      var listed = {};
+      function group(title, tasks) {
+        var rows = tasks.filter(offered);
+        if (!rows.length) return;
+        var og = document.createElement('optgroup');
+        og.label = title;
+        rows.forEach(function (p) {
+          var o = document.createElement('option');
+          o.value = p.id;
+          o.textContent = p.id + ' ' + p.name;
+          if (p.id === t.parent) o.selected = true;
+          listed[p.id] = true;
+          og.appendChild(o);
+        });
+        sel.appendChild(og);
+      }
+      group('長期', longTasks());
+      group('着手順', (state.board && state.board.queue) || []);
+      if (t.parent && !listed[t.parent]) {
+        // The parent is somewhere the list does not offer (waiting, someday,
+        // finished): show the link as it is, so the picker tells the truth and
+        // なし takes it off.
+        var kept = document.createElement('option');
+        kept.value = t.parent;
+        kept.textContent = t.parent + (t.parent_name ? ' ' + t.parent_name : '');
+        kept.selected = true;
+        sel.appendChild(kept);
       }
       sel.addEventListener('change', function () {
         sel.disabled = true;
@@ -910,7 +996,7 @@
           .then(function () {
             return load().then(function () { flash(sel.value ? sel.value + ' の子にした' : '親を外した'); });
           })
-          .catch(function (err) { sel.disabled = false; showError(err); });
+          .catch(reloadShowing);
       });
       label.appendChild(sel);
       return label;
@@ -941,7 +1027,7 @@
     function waitRow(t) {
       var days = t.stalled_for || 0;
       var level = days >= 10 ? '赤: 10日以上' : (days >= 5 ? '黄: 5日以上' : '灰: 5日未満');
-      return row({
+      return tagTree(row({
         task: t,
         // No mark: ◷ sat in the same column as the focus ◎ and read alike.
         // The section heading already says these are waiting.
@@ -953,7 +1039,7 @@
           + ' へ渡してから ' + days + '日。14日で理由を聞かれる',
         hasPanel: true,
         extraClass: 'waiting',
-      });
+      }), t);
     }
 
     // somedayRow shows a shelved task. Arriving is not overdue — nothing was
@@ -962,7 +1048,7 @@
     // chip is not editable here: Until is not Due, and there is no editor for
     // it in the row (only `todo someday --until` and the resume button).
     function somedayRow(t) {
-      return row({
+      return tagTree(row({
         task: t,
         mark: '◇',
         markClass: 'mark-someday',
@@ -973,7 +1059,7 @@
           : (t.until ? (t.until + ' まで見なくていい') : ''),
         hasPanel: true,
         extraClass: 'someday',
-      });
+      }), t);
     }
 
     function doneRow(t) {
@@ -1471,15 +1557,11 @@
         // A child is not a long-run task itself (one level only).
         if (!t.parent) actions.appendChild(longButton(t));
       }
-      if (t.state === 'long') {
-        actions.appendChild(longButton(t));
-        actions.appendChild(addChildButton(t));
-      }
-      // Offered while there is a long-run task to choose, and also while the
-      // task still points at a parent that is no longer long-run, so the link
-      // can be taken off.
-      var anyLong = ((state.board && state.board.long) || []).length > 0;
-      if ((anyLong || t.parent) && t.state !== 'long' && t.state !== 'done') actions.appendChild(parentPicker(t));
+      if (t.state === 'long') actions.appendChild(longButton(t));
+      // Any task that is not done can have children, down to MAX_DEPTH levels.
+      if (t.state !== 'done' && (t.parent_path || []).length + 1 < MAX_DEPTH) actions.appendChild(addChildButton(t));
+      // A long-run task is the top of a tree, so it has no parent to choose.
+      if (t.state !== 'long' && t.state !== 'done') actions.appendChild(parentPicker(t));
 
       actions.appendChild(copyUrlButton(t));
 
@@ -2100,7 +2182,7 @@
         closeDueMenu();
         request('PATCH', path, { due: value })
           .then(function () { return load().then(function () { flash(said); }); })
-          .catch(function (err) { showError(err); load(); });
+          .catch(reloadShowing);
       }
 
       var menu = document.createElement('div');
@@ -2149,7 +2231,7 @@
             closeDueMenu();
             request('POST', path + '/someday', {})
               .then(function () { closeRow(id); return load().then(function () { flash('いつかへ棚上げした'); }); })
-              .catch(function (err) { showError(err); load(); });
+              .catch(reloadShowing);
           }));
       }
       if (sec.childNodes.length) menu.appendChild(sec);
@@ -2453,8 +2535,7 @@
         })
         .catch(function (err) {
           state.busy = false;
-          showError(err);
-          load();
+          reloadShowing(err);
         });
     }
 

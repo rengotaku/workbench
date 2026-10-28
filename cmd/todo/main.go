@@ -52,7 +52,7 @@ func rootCmd() *cobra.Command {
 	root.PersistentFlags().BoolVar(&asJSON, "json", false, "print the raw JSON response")
 	root.Flags().String("due", "", "due date (YYYY-MM-DD)")
 	root.Flags().String("detail", "", "detail text")
-	root.Flags().String("parent", "", "長期のタスクの ID。そのタスクの子として追加する")
+	root.Flags().String("parent", "", "親にするタスクの ID。そのタスクの子として追加する")
 	root.Flags().StringArray("link", nil, "関連 URL（\"<URL> 一言\" の形。一言は省略可）。書いた順に [1] [2] … と番号が付く")
 
 	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), removeCmd(), waitCmd(), resumeCmd(),
@@ -897,7 +897,7 @@ func printRaw(raw []byte) error {
 	return err
 }
 
-// parentMark names the long-run task a queue row was cut out of.
+// parentMark names the task a queue row was cut out of.
 func parentMark(t taskclient.Task) string {
 	if t.Parent == "" {
 		return ""

@@ -78,7 +78,7 @@
       parent: document.getElementById('ap-parent'),
     };
     var due = '';
-    // parent is the long-run task the new tasks are cut out of, when the add
+    // parent is the task the new tasks are cut out of, when the add
     // screen was opened from its 子を追加 button (?parent=T051).
     var parent = '';
     var busy = false;
@@ -290,7 +290,7 @@
     hooks.show = function (url) {
       parent = (url && url.searchParams.get('parent')) || '';
       el.parent.hidden = !parent;
-      el.parent.textContent = parent ? '長期 ' + parent + ' の子として追加する' : '';
+      el.parent.textContent = parent ? parent + ' の子として追加する' : '';
       // The chips hold dates (今日, 明日 …): drawn on another day, they would
       // save that day's dates. Draw them again once the day has moved.
       if (shownOn !== ymd(new Date())) {

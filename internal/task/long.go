@@ -1,9 +1,6 @@
 package task
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // SetLong moves a queue task to the long-run band, or brings a long-run task
 // back (ADR todo-0019). Long-run is a state: the task leaves the queue and the
@@ -29,7 +26,7 @@ func (s *Store) SetLong(id string, on bool, actor Actor) (Task, error) {
 		return Task{}, fmt.Errorf("%s is not long-run", id)
 	}
 	if on && before.Parent != "" {
-		// One level only: a long-run task is a parent, never a child.
+		// A long-run task is the top of a tree, never a child.
 		return Task{}, fmt.Errorf("%s is a child of %s: unlink it before making it long-run", id, before.Parent)
 	}
 
@@ -57,57 +54,4 @@ func (s *Store) SetLong(id string, on bool, actor Actor) (Task, error) {
 		return Task{}, err
 	}
 	return s.mustGet(id), nil
-}
-
-// SetParent ties a task to a long-run task, or unties it when parent is empty.
-// The parent has to be long-run at the time of tying; the link is kept if the
-// parent later stops being long-run, and the page simply stops showing it.
-func (s *Store) SetParent(id, parent string, actor Actor) (Task, error) {
-	parent = strings.TrimSpace(parent)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	i, err := s.indexOf(id)
-	if err != nil {
-		return Task{}, err
-	}
-	t := s.st.Tasks[i]
-	if err := s.checkParent(t, parent); err != nil {
-		return Task{}, err
-	}
-	if t.Parent == parent {
-		return t, nil
-	}
-
-	from := t.Parent
-	t.Parent = parent
-	s.st.Tasks[i] = t
-	if err := s.record(Event{TaskID: id, Kind: KindParentSet, Actor: actor, FromValue: from, ToValue: parent}); err != nil {
-		return Task{}, err
-	}
-	if err := s.persist(); err != nil {
-		return Task{}, err
-	}
-	return s.mustGet(id), nil
-}
-
-func (s *Store) checkParent(t Task, parent string) error {
-	if parent == "" {
-		return nil
-	}
-	if t.ID != "" && parent == t.ID {
-		return fmt.Errorf("%s cannot be its own parent", t.ID)
-	}
-	if t.State == StateLong {
-		return fmt.Errorf("%s is long-run: a long-run task cannot be a child", t.ID)
-	}
-	j, err := s.indexOf(parent)
-	if err != nil {
-		return err
-	}
-	if s.st.Tasks[j].State != StateLong {
-		return fmt.Errorf("%s is not long-run: only a long-run task can be a parent", parent)
-	}
-	return nil
 }

@@ -153,7 +153,7 @@ func (c *Client) Long(id string, on bool) (Task, []byte, error) {
 	})
 }
 
-// SetParent ties a task to a long-run task; an empty parent unties it.
+// SetParent ties a task to a parent task; an empty parent unties it.
 func (c *Client) SetParent(id, parent string) (Task, []byte, error) {
 	return c.taskCall(http.MethodPatch, "/api/tasks/"+url.PathEscape(id), map[string]any{
 		"parent": parent, "actor": actor(),

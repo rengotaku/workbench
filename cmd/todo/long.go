@@ -47,7 +47,7 @@ func longCmd(on bool) *cobra.Command {
 func parentCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "parent <ID> <親ID|->",
-		Short: "長期のタスクにつなぐ（- で外す）",
+		Short: "親のタスクにつなぐ（- で外す）",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(_ *cobra.Command, args []string) error {
 			parent := args[1]

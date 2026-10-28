@@ -66,11 +66,27 @@ func (a *API) Mount(r gin.IRouter) {
 type View struct {
 	DueLabel string `json:"due_label"`
 	DueClass string `json:"due_class"`
+	// ParentName and ParentPath describe the parent, so the page needs no
+	// lookup: the path runs from the top of the tree down to the parent.
+	ParentName string    `json:"parent_name,omitempty"`
+	ParentPath []PathRef `json:"parent_path,omitempty"`
 	task.Task
+	// KidsDone and KidsOpen count the children, across every week (ADR
+	// todo-0020). Both are left out while there are no children.
+	KidsDone     int  `json:"kids_done,omitempty"`
+	KidsOpen     int  `json:"kids_open,omitempty"`
 	StalledFor   int  `json:"stalled_for,omitempty"`
 	InScope      bool `json:"in_scope"`
 	Overdue      bool `json:"overdue"`
 	UntilReached bool `json:"until_reached,omitempty"`
+}
+
+// PathRef is one task on the way from the top of a tree down to a parent.
+type PathRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Long marks a long-run task, which the page writes as 長期.
+	Long bool `json:"long,omitempty"`
 }
 
 // LongView is a long-run task with what the band shows under it: the next
@@ -132,6 +148,11 @@ func (a *API) build(scope int) listResponse {
 
 	tasks, rev := a.store.List()
 	res.Revision = rev
+	kids := countKids(tasks)
+	byID := make(map[string]task.Task, len(tasks))
+	for _, t := range tasks {
+		byID[t.ID] = t
+	}
 	// Dropped tasks are read from the log, not the list: they are gone from
 	// tasks.json by the time anyone wants to see what was given up on.
 	if dropped, err := a.store.Dropped(weekStart); err == nil {
@@ -143,6 +164,7 @@ func (a *API) build(scope int) listResponse {
 
 	for _, t := range tasks {
 		v := a.view(t, today, scope)
+		v.describeTree(byID, kids)
 		switch t.State {
 		case task.StateWaiting:
 			// Focused stays set, but the band is what to do next and the ball
@@ -151,7 +173,7 @@ func (a *API) build(scope int) listResponse {
 		case task.StateSomeday:
 			res.Someday = append(res.Someday, v)
 		case task.StateLong:
-			res.Long = append(res.Long, longView(v, tasks))
+			res.Long = append(res.Long, longView(v, kids))
 		case task.StateDone:
 			if t.CompletedAt != nil && t.CompletedAt.In(a.loc).Before(weekStart) {
 				continue
@@ -188,22 +210,63 @@ func (a *API) build(scope int) listResponse {
 	return res
 }
 
-// longView adds the children's facts to a long-run task. tasks is the whole
-// list in Order, so the first open child met is the one highest in the queue.
-func longView(v View, tasks []task.Task) LongView {
-	lv := LongView{View: v}
+// kidCount is what the children of one task add up to.
+type kidCount struct {
+	next       *ChildRef
+	done, open int
+}
+
+// countKids tallies every task's children. tasks is the whole list in Order,
+// so the first open child met is the one highest in the queue.
+func countKids(tasks []task.Task) map[string]*kidCount {
+	out := map[string]*kidCount{}
 	for _, t := range tasks {
-		if t.Parent != v.ID {
+		if t.Parent == "" {
 			continue
+		}
+		k := out[t.Parent]
+		if k == nil {
+			k = &kidCount{}
+			out[t.Parent] = k
 		}
 		if t.State == task.StateDone {
-			lv.KidsDone++
+			k.done++
 			continue
 		}
-		lv.KidsOpen++
-		if lv.Next == nil && t.State == task.StateOpen {
-			lv.Next = &ChildRef{ID: t.ID, Name: t.Name}
+		k.open++
+		if k.next == nil && t.State == task.StateOpen {
+			k.next = &ChildRef{ID: t.ID, Name: t.Name}
 		}
+	}
+	return out
+}
+
+// describeTree fills in the parent's name and path and the child counts.
+func (v *View) describeTree(byID map[string]task.Task, kids map[string]*kidCount) {
+	if k := kids[v.ID]; k != nil {
+		v.KidsDone, v.KidsOpen = k.done, k.open
+	}
+	var path []PathRef
+	for cur, hops := v.Parent, 0; cur != "" && hops < task.MaxDepth*4; hops++ {
+		p, ok := byID[cur]
+		if !ok {
+			break
+		}
+		path = append([]PathRef{{ID: p.ID, Name: p.Name, Long: p.State == task.StateLong}}, path...)
+		cur = p.Parent
+	}
+	if len(path) > 0 {
+		v.ParentPath = path
+		v.ParentName = path[len(path)-1].Name
+	}
+}
+
+// longView adds the next step to a long-run task: the open child highest in
+// the queue. The counts come with every row, long-run or not.
+func longView(v View, kids map[string]*kidCount) LongView {
+	lv := LongView{View: v, KidsDone: v.KidsDone, KidsOpen: v.KidsOpen}
+	if k := kids[v.ID]; k != nil {
+		lv.Next = k.next
 	}
 	return lv
 }
@@ -305,7 +368,7 @@ type addRequest struct {
 	URL      string `json:"url"`
 	LinkText string `json:"link_text"`
 	Due      string `json:"due"`
-	// Parent is the long-run task the new one is cut out of.
+	// Parent is the task the new one is cut out of.
 	Parent string `json:"parent"`
 	Actor  string `json:"actor"`
 	// Links are the related URLs, numbered 1..k in the order given.
@@ -342,7 +405,7 @@ type patchRequest struct {
 	URL    *string `json:"url"`
 	// Links is the task's full new list; absent leaves it alone, [] clears it.
 	Links *[]task.LinkInput `json:"links"`
-	// Parent ties the task to a long-run task; "" unties it.
+	// Parent ties the task to another task; "" unties it.
 	Parent   *string `json:"parent"`
 	LinkText string  `json:"link_text"`
 	Actor    string  `json:"actor"`
@@ -701,6 +764,10 @@ func (a *API) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, task.ErrAlreadyDone):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, task.ErrOrderRule):
+		// Like a stale list, the request is sound and the list is unchanged;
+		// the page shows the message and draws the list again.
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "rule": true})
 	case errors.Is(err, task.ErrStale):
 		// 409 rather than 400: nothing is wrong with the request, the list
 		// simply moved. The caller re-reads and decides again.
