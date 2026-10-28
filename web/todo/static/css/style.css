@@ -603,7 +603,8 @@
      width. The row itself is what is draggable. Pointer-less devices have no
      hover, so there it is always shown. */
   .task .grip { visibility: hidden; }
-  .task:hover .grip, .task.row-open .grip, .task:focus-within .grip { visibility: visible; }
+  .task:hover .grip, .task.row-open .grip, .task:focus-within .grip,
+  .task.dragging .grip { visibility: visible; }
   @media (hover: none) {
     .task .grip { visibility: visible; }
   }
