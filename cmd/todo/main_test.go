@@ -78,3 +78,14 @@ func TestDueSuffix_KeepsTheDateBesideTheCoarseLabel(t *testing.T) {
 	assert.Equal(t, "  [2026-10-30]", dueSuffix(taskclient.Task{Task: task.Task{Due: "2026-10-30"}}))
 	assert.Equal(t, "", dueSuffix(taskclient.Task{}))
 }
+
+// Rows left alone for a while say so; rows with nothing to show stay as they were.
+func TestPrintBoard_ShowsIdleDays(t *testing.T) {
+	idle := taskclient.Task{Task: task.Task{ID: "T001", Name: "止まり"}, IdleDays: 5}
+	calm := taskclient.Task{Task: task.Task{ID: "T002", Name: "ふつう"}}
+	out := captureStdout(t, func() {
+		printBoard(taskclient.Board{Queue: []taskclient.Task{idle, calm}})
+	})
+	assert.Contains(t, out, "止まり  止まって 5日")
+	assert.NotContains(t, out, "ふつう  止まって")
+}

@@ -92,8 +92,26 @@
   /* The newest status under a row's name. */
   .row-status { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--fs-sm2); color: var(--ink-soft); }
   .rs-body { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rs-age { flex: none; font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted); }
-  .rs-age.stale { color: var(--stale); font-weight: 600; }
+  /* Days a task has been left without a person touching it. Stage 1 has no
+     colour on purpose; the colour starts at 2 (ADR todo-0021). */
+  .idle-tag {
+    flex: none;
+    margin-left: 8px;
+    padding: 0 6px;
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    vertical-align: 1px;
+  }
+  .idle-tag.s1 { color: var(--muted); }
+  .idle-tag.s2 { color: var(--ink-soft); border-color: var(--line); }
+  .idle-tag.s3 { color: var(--near); border-color: var(--near); }
+  .idle-tag.s5 { color: var(--stale); border-color: var(--stale); font-weight: 600; }
+  .idle-tag.s8 { color: var(--over); border-color: var(--over); background: var(--over-soft); font-weight: 600; }
+  /* --line sits 1.03:1 from the band, so the stage-2 box would vanish there. */
+  .focus-band .idle-tag.s2 { border-color: var(--muted); }
 
   /* The field that appends a status in the open row. */
   .status-add { display: flex; flex-direction: column; gap: 6px; }

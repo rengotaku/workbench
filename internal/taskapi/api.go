@@ -66,6 +66,9 @@ func (a *API) Mount(r gin.IRouter) {
 type View struct {
 	DueLabel string `json:"due_label"`
 	DueClass string `json:"due_class"`
+	// IdleFrom says which date IdleDays counts from: "due", "annotation" or
+	// "created" (ADR todo-0021).
+	IdleFrom string `json:"idle_from,omitempty"`
 	// ParentName and ParentPath describe the parent, so the page needs no
 	// lookup: the path runs from the top of the tree down to the parent.
 	ParentName string    `json:"parent_name,omitempty"`
@@ -73,9 +76,14 @@ type View struct {
 	task.Task
 	// KidsDone and KidsOpen count the children, across every week (ADR
 	// todo-0020). Both are left out while there are no children.
-	KidsDone     int  `json:"kids_done,omitempty"`
-	KidsOpen     int  `json:"kids_open,omitempty"`
-	StalledFor   int  `json:"stalled_for,omitempty"`
+	KidsDone   int `json:"kids_done,omitempty"`
+	KidsOpen   int `json:"kids_open,omitempty"`
+	StalledFor int `json:"stalled_for,omitempty"`
+	// IdleDays is how many days a task has been left without a person
+	// touching it, and IdleStage the step the page colours it by. Both are
+	// left out when there is nothing to show.
+	IdleDays     int  `json:"idle_days,omitempty"`
+	IdleStage    int  `json:"idle_stage,omitempty"`
 	InScope      bool `json:"in_scope"`
 	Overdue      bool `json:"overdue"`
 	UntilReached bool `json:"until_reached,omitempty"`
@@ -165,6 +173,7 @@ func (a *API) build(scope int) listResponse {
 	for _, t := range tasks {
 		v := a.view(t, today, scope)
 		v.describeTree(byID, kids)
+		a.describeIdle(&v, t, today)
 		switch t.State {
 		case task.StateWaiting:
 			// Focused stays set, but the band is what to do next and the ball
