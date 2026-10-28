@@ -316,8 +316,27 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 		}
 		t.Parent = e.FromValue
 		s.st.Tasks[i] = t
-		if err := s.recordSpent(Event{TaskID: t.ID, Kind: KindParentSet, Actor: actor,
-			FromValue: e.ToValue, ToValue: e.FromValue}); err != nil {
+		ev := Event{TaskID: t.ID, Kind: KindParentSet, Actor: actor, FromValue: e.ToValue, ToValue: e.FromValue}
+		if len(e.Moved) > 0 && t.State == StateOpen {
+			// Tying it moved the child, and anything hanging under it, to keep
+			// children above parents (ADR todo-0020): put every one back.
+			from := t.Order
+			for _, m := range e.Moved {
+				if j, err := s.indexOf(m.ID); err == nil && s.st.Tasks[j].State == StateOpen {
+					s.st.Tasks[j].Order = m.Order
+				}
+			}
+			s.renumber()
+			ev.FromOrder, ev.ToOrder = from, s.st.Tasks[s.mustIndex(t.ID)].Order
+		} else if e.FromOrder != 0 && t.State == StateOpen {
+			// Older events kept only the child's own place.
+			from := t.Order
+			open := s.openIndexes()
+			s.move(open, i, s.clampToBlock(open, i, e.FromOrder))
+			s.renumber()
+			ev.FromOrder, ev.ToOrder = from, s.st.Tasks[i].Order
+		}
+		if err := s.recordSpent(ev); err != nil {
 			return "", err
 		}
 		if t.Parent == "" {

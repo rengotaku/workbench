@@ -65,6 +65,8 @@ func TestList_LongWithoutOpenChildHasNoNext(t *testing.T) {
 func TestAdd_WithABadParentAddsNothing(t *testing.T) {
 	store, h := setup(t)
 	plain, _ := store.Add("ふつう", "", "", task.ActorHuman)
+	_, err := store.Done(plain.ID, task.ActorHuman)
+	require.NoError(t, err)
 
 	code, _ := call(t, h, http.MethodPost, "/api/tasks", map[string]any{"name": "子", "parent": plain.ID})
 	assert.Equal(t, http.StatusBadRequest, code)

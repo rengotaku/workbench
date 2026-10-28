@@ -224,6 +224,7 @@
   .focus-band .check { border-color: var(--ink-soft); }
   /* --line sits 1.03:1 from the band, so the parent tag's box vanished there. */
   .focus-band .parent-tag { border-color: var(--muted); }
+  .focus-band .kids-tag { border-color: var(--muted); }
   .focus-empty {
     margin: 0;
     padding: 6px 0 8px;
@@ -322,6 +323,19 @@
     font-size: var(--fs-xs);
     color: var(--ink-soft);
     border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    vertical-align: 1px;
+  }
+  /* The children's count: the parent tag's size, with a dashed box so the two
+     read differently side by side. */
+  .kids-tag {
+    display: inline-block;
+    flex: none;
+    padding: 0 5px;
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    color: var(--ink-soft);
+    border: 1px dashed var(--muted);
     border-radius: var(--radius-sm);
     vertical-align: 1px;
   }

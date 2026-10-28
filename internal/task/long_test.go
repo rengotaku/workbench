@@ -66,7 +66,7 @@ func TestLongTask_CannotBeFocusedOrHandedOn(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestSetParent_OnlyALongRunTaskCanBeAParent(t *testing.T) {
+func TestSetParent_LongRunParentWorksAndADoneTaskIsNotAParent(t *testing.T) {
 	s := newStore(t)
 	id := addAll(t, s, "親", "子", "ふつう")
 	_, err := s.SetLong(id["親"], true, task.ActorHuman)
@@ -76,8 +76,10 @@ func TestSetParent_OnlyALongRunTaskCanBeAParent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, id["親"], child.Parent)
 
+	_, err = s.Done(id["ふつう"], task.ActorHuman)
+	require.NoError(t, err)
 	_, err = s.SetParent(id["子"], id["ふつう"], task.ActorHuman)
-	require.Error(t, err, "a queue task is not a parent")
+	require.Error(t, err, "a done task is not a parent")
 	_, err = s.SetParent(id["親"], id["親"], task.ActorHuman)
 	require.Error(t, err, "not its own parent")
 	_, err = s.SetParent(id["子"], "T999", task.ActorHuman)
@@ -88,7 +90,7 @@ func TestSetParent_OnlyALongRunTaskCanBeAParent(t *testing.T) {
 	assert.Empty(t, cleared.Parent)
 }
 
-func TestSetParent_OneLevelOnly(t *testing.T) {
+func TestSetParent_ALongRunTaskIsNeverAChild(t *testing.T) {
 	s := newStore(t)
 	id := addAll(t, s, "親", "子")
 	_, err := s.SetLong(id["親"], true, task.ActorHuman)
@@ -139,12 +141,14 @@ func TestUndo_UnlongAndDoneReturnToTheLongRunBand(t *testing.T) {
 	assert.Equal(t, []string{"B"}, queueNames(t, s))
 }
 
-// Adding a child is one change: a parent that is not long-run refuses it, and
-// one undo takes the child back out.
+// Adding a child is one change: a parent that is done refuses it, and one undo
+// takes the child back out.
 func TestAddChild_IsOneChange(t *testing.T) {
 	s := newStore(t)
 	id := addAll(t, s, "親", "ふつう")
-	_, err := s.AddChild("子", "", "", id["ふつう"], nil, "", "", task.ActorHuman)
+	_, err := s.Done(id["ふつう"], task.ActorHuman)
+	require.NoError(t, err)
+	_, err = s.AddChild("子", "", "", id["ふつう"], nil, "", "", task.ActorHuman)
 	require.Error(t, err)
 	tasks, _ := s.List()
 	assert.Len(t, tasks, 2, "nothing is added without its parent")

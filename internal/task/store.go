@@ -172,10 +172,11 @@ func (s *Store) AddFromNote(name, detail, due string, noteID int, actor Actor) (
 	return s.add(name, detail, due, "", "", nil, noteID, "", actor)
 }
 
-// AddChild appends a task cut out of a long-run task (ADR todo-0019). Checking
-// the parent, adding and tying are one change under one lock: a parent that
-// stops being long-run meanwhile refuses the add rather than leaving the task
-// behind untied, and one undo takes the task back out.
+// AddChild appends a task cut out of another task (ADR todo-0019, todo-0020).
+// Checking the parent, adding and tying are one change under one lock: a
+// parent that is finished meanwhile refuses the add rather than leaving the
+// task behind untied, and one undo takes the task back out. Under an open
+// parent the child goes directly above it, in the same band.
 func (s *Store) AddChild(name, detail, due, parent string, links []LinkInput, url, linkText string, actor Actor) (Task, error) {
 	parent = strings.TrimSpace(parent)
 	if parent == "" {
@@ -221,7 +222,7 @@ func (s *Store) add(name, detail, due, url, linkText string, linkInputs []LinkIn
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.checkParent(Task{}, parent); err != nil {
+	if err := s.checkParent(Task{Due: due}, parent); err != nil {
 		return Task{}, err
 	}
 	if existing, ok := s.findBySourceNote(noteID); ok {
@@ -249,8 +250,18 @@ func (s *Store) add(name, detail, due, url, linkText string, linkInputs []LinkIn
 	if url != "" {
 		t.LinkText = linkText
 	}
+	var parentOrder = -1
+	if parent != "" {
+		if p := s.st.Tasks[s.mustIndex(parent)]; p.State == StateOpen {
+			t.Focused = p.Focused
+			parentOrder = p.Order
+		}
+	}
 	s.st.NextTask++
 	s.st.Tasks = append(s.st.Tasks, t)
+	if parentOrder >= 0 {
+		s.move(s.openIndexes(), len(s.st.Tasks)-1, parentOrder)
+	}
 	s.renumber()
 
 	if err := s.record(Event{TaskID: t.ID, Kind: KindCreated, Actor: actor, ToValue: name}); err != nil {
@@ -526,11 +537,20 @@ func (s *Store) FocusAt(id string, on bool, to, expectRevision int, actor Actor)
 		return Task{}, fmt.Errorf("%s is long-run: it has its own band", id)
 	}
 	from := t.Order
+	backup := append([]Task(nil), s.st.Tasks...)
 	t.Focused = on
 	s.st.Tasks[i] = t
 	if t.State == StateOpen {
 		open := s.openIndexes()
 		s.move(open, i, s.clampToBlock(open, i, to))
+		if c, p, bad := s.orderViolation(); bad {
+			// A place the caller named is refused; with none named (the
+			// button) the task goes to the nearest place that keeps the rule.
+			if to >= 0 || !s.placeByRule(i) {
+				s.st.Tasks = backup
+				return Task{}, orderRule(c, p)
+			}
+		}
 		s.renumber()
 	}
 
@@ -569,6 +589,9 @@ func (s *Store) SetDue(id, due string, actor Actor) (Task, error) {
 	t := s.st.Tasks[i]
 	from := t.Due
 	t.Due = due
+	if err := s.checkDue(t); err != nil {
+		return Task{}, err
+	}
 	s.st.Tasks[i] = t
 
 	if err := s.record(Event{TaskID: id, Kind: KindDueSet, Actor: actor, FromValue: from, ToValue: due}); err != nil {
@@ -809,7 +832,12 @@ func (s *Store) Reorder(id string, to, scopeDays, expectRevision int, actor Acto
 		}
 	}
 
+	backup := append([]Task(nil), s.st.Tasks...)
 	s.move(open, i, to)
+	if c, p, bad := s.orderViolation(); bad {
+		s.st.Tasks = backup
+		return Task{}, orderRule(c, p)
+	}
 	s.renumber()
 
 	ev := Event{TaskID: id, Kind: KindReordered, Actor: actor, FromOrder: from, ToOrder: to, Jumped: jumped}
@@ -1105,16 +1133,22 @@ func (s *Store) clampToBlock(open []int, storeIdx, to int) int {
 // someday and done tasks past it in that order, so Order alone sorts the whole list the
 // way the page shows it. Focused tasks come first in the queue, keeping their
 // order among themselves (ADR todo-0012), so a resume or an undo cannot leave
-// one below an unfocused task.
+// one below an unfocused task. Within a band a child goes above its parent.
 func (s *Store) renumber() {
 	pos := 0
 	open := s.openIndexes()
 	for _, focused := range []bool{true, false} {
+		var group []int
 		for _, i := range open {
 			if s.st.Tasks[i].Focused == focused {
-				s.st.Tasks[i].Order = pos
-				pos++
+				group = append(group, i)
 			}
+		}
+		// A child never sits below its open parent in the same band (ADR
+		// todo-0020): resume, reopen and unfocus paths all come through here.
+		for _, i := range s.childrenFirst(group) {
+			s.st.Tasks[i].Order = pos
+			pos++
 		}
 	}
 	for _, i := range s.indexesWithState(StateLong) {
