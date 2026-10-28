@@ -35,6 +35,9 @@ func (s *Store) SetLong(id string, on bool, actor Actor) (Task, error) {
 	if on {
 		t.State = StateLong
 		t.Focused = false
+		if t.ReviewOn == "" {
+			t.ReviewOn = s.today().AddDate(0, 0, DefaultReviewDays).Format(DateLayout)
+		}
 		s.st.Tasks[i] = t
 		s.renumber()
 		snapshot := before
@@ -48,6 +51,46 @@ func (s *Store) SetLong(id string, on bool, actor Actor) (Task, error) {
 		ev.Kind, ev.ToOrder = KindUnlonged, s.st.Tasks[i].Order
 	}
 	if err := s.record(ev); err != nil {
+		return Task{}, err
+	}
+	if err := s.persist(); err != nil {
+		return Task{}, err
+	}
+	return s.mustGet(id), nil
+}
+
+// DefaultReviewDays is how far ahead the next review goes when none is given.
+const DefaultReviewDays = 7
+
+// Review sets the day a long-run task is next looked at, empty meaning a week
+// from today, and notes that somebody has just looked at it (ADR todo-0022).
+func (s *Store) Review(id, on string, actor Actor) (Task, error) {
+	if on != "" {
+		if _, err := ParseDate(on, s.loc); err != nil {
+			return Task{}, err
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	i, err := s.indexOf(id)
+	if err != nil {
+		return Task{}, err
+	}
+	t := s.st.Tasks[i]
+	if t.State != StateLong {
+		return Task{}, fmt.Errorf("%s is %s: only a long-run task is reviewed", id, t.State)
+	}
+	if on == "" {
+		on = s.today().AddDate(0, 0, DefaultReviewDays).Format(DateLayout)
+	}
+
+	snapshot := t
+	now := s.now()
+	t.ReviewOn, t.ReviewedAt = on, &now
+	s.st.Tasks[i] = t
+	if err := s.record(Event{TaskID: id, Kind: KindReviewSet, Actor: actor, FromValue: snapshot.ReviewOn, ToValue: on, Snapshot: &snapshot}); err != nil {
 		return Task{}, err
 	}
 	if err := s.persist(); err != nil {

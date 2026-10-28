@@ -80,7 +80,7 @@ func undoable(k Kind) bool {
 	case KindCreated, KindRemoved, KindRenamed, KindDetail, KindDueSet,
 		KindLinked, KindLinks, KindDone, KindReopened, KindWaiting, KindResumed,
 		KindShelved, KindReordered, KindFocused, KindUnfocused,
-		KindLonged, KindUnlonged, KindParentSet:
+		KindLonged, KindUnlonged, KindParentSet, KindReviewSet:
 		return true
 	default:
 		return false
@@ -284,6 +284,7 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 		from := t.Order
 		t.State = StateOpen
 		t.Focused = e.Snapshot.Focused
+		t.ReviewOn = e.Snapshot.ReviewOn // making it long set a date; take it back
 		s.st.Tasks[i] = t
 		open := s.openIndexes()
 		s.move(open, i, s.clampToBlock(open, i, e.FromOrder))
@@ -343,6 +344,18 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 			return fmt.Sprintf("親を外した: %s %s", t.ID, t.Name), nil
 		}
 		return fmt.Sprintf("親を戻した: %s %s → %s", t.ID, t.Name, t.Parent), nil
+
+	case KindReviewSet:
+		if t.State != StateLong || t.ReviewOn != e.ToValue || e.Snapshot == nil {
+			return "", errSkipUndo // changed again since
+		}
+		t.ReviewOn, t.ReviewedAt = e.Snapshot.ReviewOn, e.Snapshot.ReviewedAt
+		s.st.Tasks[i] = t
+		if err := s.recordSpent(Event{TaskID: t.ID, Kind: KindReviewSet, Actor: actor,
+			FromValue: e.ToValue, ToValue: e.FromValue}); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("見直しを戻した: %s %s", t.ID, t.Name), nil
 
 	case KindShelved:
 		if t.State != StateSomeday || e.Snapshot == nil {

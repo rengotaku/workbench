@@ -37,10 +37,15 @@ func (a *API) idleDays(t task.Task, today time.Time) (int, string) {
 	}
 
 	var human time.Time
+	touch := "annotation"
 	for _, an := range t.Annotations {
 		if an.Author == task.ActorHuman && an.CreatedAt.After(human) {
 			human = an.CreatedAt
 		}
+	}
+	// For a long-run task a review is a person looking at it (ADR todo-0022).
+	if t.State == task.StateLong && t.ReviewedAt != nil && t.ReviewedAt.After(human) {
+		human, touch = *t.ReviewedAt, "review"
 	}
 
 	var start time.Time
@@ -68,7 +73,7 @@ func (a *API) idleDays(t task.Task, today time.Time) (int, string) {
 	}
 	if !human.IsZero() {
 		if h := dayOf(human, a.loc); start.IsZero() || h.After(start) {
-			start, from = h, "annotation"
+			start, from = h, touch
 		}
 	}
 

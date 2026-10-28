@@ -70,9 +70,13 @@ type LongTask struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"next"`
+	// ReviewReasons is why the task needs a review: no_next, review_due or
+	// stalled (ADR todo-0022).
+	ReviewReasons []string `json:"review_reasons"`
 	Task
-	KidsDone int `json:"kids_done"`
-	KidsOpen int `json:"kids_open"`
+	KidsDone    int  `json:"kids_done"`
+	KidsOpen    int  `json:"kids_open"`
+	NeedsReview bool `json:"needs_review"`
 }
 
 // Board is the whole list, split the way the page shows it.
@@ -153,6 +157,13 @@ func (c *Client) Focus(id string, on bool) (Task, []byte, error) {
 func (c *Client) Long(id string, on bool) (Task, []byte, error) {
 	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/long", map[string]any{
 		"on": on, "actor": actor(),
+	})
+}
+
+// Review sets a long-run task's next review date; empty means a week out.
+func (c *Client) Review(id, on string) (Task, []byte, error) {
+	return c.taskCall(http.MethodPost, "/api/tasks/"+url.PathEscape(id)+"/review", map[string]any{
+		"review_on": on, "actor": actor(),
 	})
 }
 

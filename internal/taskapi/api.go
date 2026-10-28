@@ -47,6 +47,7 @@ func (a *API) Mount(r gin.IRouter) {
 	g.POST("/tasks/:id/done", a.doneTask)
 	g.POST("/tasks/:id/focus", a.focusTask)
 	g.POST("/tasks/:id/long", a.longTask)
+	g.POST("/tasks/:id/review", a.reviewTask)
 	g.POST("/tasks/:id/reopen", a.reopenTask)
 	g.POST("/tasks/:id/wait", a.waitTask)
 	g.POST("/tasks/:id/resume", a.resumeTask)
@@ -66,7 +67,7 @@ func (a *API) Mount(r gin.IRouter) {
 type View struct {
 	DueLabel string `json:"due_label"`
 	DueClass string `json:"due_class"`
-	// IdleFrom says which date IdleDays counts from: "due", "annotation" or
+	// IdleFrom says which date IdleDays counts from: "due", "annotation", "review" or
 	// "created" (ADR todo-0021).
 	IdleFrom string `json:"idle_from,omitempty"`
 	// ParentName and ParentPath describe the parent, so the page needs no
@@ -102,9 +103,13 @@ type PathRef struct {
 // and not done. Children are counted across every week, not only this one.
 type LongView struct {
 	Next *ChildRef `json:"next,omitempty"`
+	// ReviewReasons says why the task needs a review: no_next, review_due or
+	// stalled (ADR todo-0022). The screen and the CLI do not work these out.
+	ReviewReasons []string `json:"review_reasons,omitempty"`
 	View
-	KidsDone int `json:"kids_done"`
-	KidsOpen int `json:"kids_open"`
+	KidsDone    int  `json:"kids_done"`
+	KidsOpen    int  `json:"kids_open"`
+	NeedsReview bool `json:"needs_review"`
 }
 
 // ChildRef names a child task without carrying all of it.
@@ -182,7 +187,7 @@ func (a *API) build(scope int) listResponse {
 		case task.StateSomeday:
 			res.Someday = append(res.Someday, v)
 		case task.StateLong:
-			res.Long = append(res.Long, longView(v, kids))
+			res.Long = append(res.Long, longView(v, kids, res.Today))
 		case task.StateDone:
 			if t.CompletedAt != nil && t.CompletedAt.In(a.loc).Before(weekStart) {
 				continue
@@ -272,13 +277,27 @@ func (v *View) describeTree(byID map[string]task.Task, kids map[string]*kidCount
 
 // longView adds the next step to a long-run task: the open child highest in
 // the queue. The counts come with every row, long-run or not.
-func longView(v View, kids map[string]*kidCount) LongView {
+func longView(v View, kids map[string]*kidCount, today string) LongView {
 	lv := LongView{View: v, KidsDone: v.KidsDone, KidsOpen: v.KidsOpen}
 	if k := kids[v.ID]; k != nil {
 		lv.Next = k.next
 	}
+	if lv.KidsOpen == 0 {
+		lv.ReviewReasons = append(lv.ReviewReasons, "no_next")
+	}
+	// A task with no review date counts as due, so an old one surfaces once.
+	if v.ReviewOn == "" || v.ReviewOn <= today {
+		lv.ReviewReasons = append(lv.ReviewReasons, "review_due")
+	}
+	if v.IdleDays >= StalledDays {
+		lv.ReviewReasons = append(lv.ReviewReasons, "stalled")
+	}
+	lv.NeedsReview = len(lv.ReviewReasons) > 0
 	return lv
 }
+
+// StalledDays is the idle length at which a long-run task needs a review.
+const StalledDays = 8
 
 // undo reverses the last change, whoever made it: one entry point for the page
 // and the CLI, so undoing does not depend on which one did the thing.
@@ -575,6 +594,23 @@ func (a *API) longTask(c *gin.Context) {
 		return
 	}
 	t, err := a.store.SetLong(c.Param("id"), *req.On, actorOf(req.Actor))
+	a.respond(c, t, err)
+}
+
+type reviewRequest struct {
+	ReviewOn string `json:"review_on"`
+	Actor    string `json:"actor"`
+}
+
+// reviewTask sets a long-run task's next review date (a week out when none is
+// given) and notes that it has just been looked at (ADR todo-0022).
+func (a *API) reviewTask(c *gin.Context) {
+	var req reviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		badRequest(c, err)
+		return
+	}
+	t, err := a.store.Review(c.Param("id"), req.ReviewOn, actorOf(req.Actor))
 	a.respond(c, t, err)
 }
 

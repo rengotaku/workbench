@@ -60,6 +60,9 @@ const (
 	// KindParentSet ties a task to a long-run task; from/to hold the old and
 	// new parent IDs.
 	KindParentSet Kind = "parent_set"
+	// KindReviewSet moves a long-run task's next review date; from/to hold the
+	// old and new dates, and the snapshot the task as it was (ADR todo-0022).
+	KindReviewSet Kind = "review_set"
 	// KindAnnotated is a supplement appended to a task. It is not undoable:
 	// see ADR todo-0010.
 	KindAnnotated Kind = "annotated"
@@ -115,6 +118,10 @@ type Task struct {
 	// Parent is the long-run task this one was cut out of; empty when none.
 	// One level only: a long-run task is never a child (ADR todo-0019).
 	Parent string `json:"parent,omitempty"`
+	// ReviewOn is the day a long-run task is next looked at (ADR todo-0022);
+	// empty counts as due. ReviewedAt is when somebody last reviewed it.
+	ReviewOn   string     `json:"review_on,omitempty"`
+	ReviewedAt *time.Time `json:"reviewed_at,omitempty"`
 	// Annotations are appended supplements, oldest first. Undo leaves them.
 	Annotations []Annotation `json:"annotations,omitempty"`
 	// Links are the related URLs the name refers to as [1], [2] …. The old

@@ -43,3 +43,48 @@ func TestList_IdleFields(t *testing.T) {
 		}
 	}
 }
+
+// Review through the API: the date moves a week out, review_due and stalled
+// clear, and no_next stays while there is no open child.
+func TestReview_ThroughTheAPI(t *testing.T) {
+	store, h := setup(t)
+	x, _ := store.Add("長い仕事", "", "", task.ActorHuman)
+	other, _ := store.Add("ふつう", "", "", task.ActorHuman)
+	code, _ := call(t, h, http.MethodPost, "/api/tasks/"+x.ID+"/long", map[string]any{"on": true})
+	require.Equal(t, http.StatusOK, code)
+
+	longRow := func() map[string]any {
+		_, body := call(t, h, http.MethodGet, "/api/tasks", nil)
+		return asMap(t, rowsOf(t, body, "long")[0])
+	}
+	row := longRow()
+	assert.Equal(t, dateIn(7), row["review_on"], "becoming long sets a date a week out")
+	assert.Equal(t, []any{"no_next"}, row["review_reasons"])
+
+	_, err := store.Review(x.ID, dateIn(-1), task.ActorHuman)
+	require.NoError(t, err)
+	assert.Equal(t, []any{"no_next", "review_due"}, longRow()["review_reasons"])
+
+	code, body := call(t, h, http.MethodPost, "/api/tasks/"+x.ID+"/review", map[string]any{})
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, dateIn(7), taskOf(t, body)["review_on"])
+	row = longRow()
+	assert.Equal(t, []any{"no_next"}, row["review_reasons"], "the alert stays while there is no next action")
+	assert.Equal(t, true, row["needs_review"])
+
+	_, err = store.AddChild("次", "", "", x.ID, nil, "", "", task.ActorHuman)
+	require.NoError(t, err)
+	row = longRow()
+	assert.Equal(t, false, row["needs_review"])
+	assert.NotContains(t, row, "review_reasons")
+
+	// A task that is not long-run is never reviewed and never carries the fields.
+	code, _ = call(t, h, http.MethodPost, "/api/tasks/"+other.ID+"/review", map[string]any{})
+	assert.Equal(t, http.StatusBadRequest, code)
+	code, _ = call(t, h, http.MethodPost, "/api/tasks/"+x.ID+"/review", map[string]any{"review_on": "soon"})
+	assert.Equal(t, http.StatusBadRequest, code)
+	_, list := call(t, h, http.MethodGet, "/api/tasks", nil)
+	for _, r := range rowsOf(t, list, "queue") {
+		assert.NotContains(t, asMap(t, r), "needs_review")
+	}
+}
