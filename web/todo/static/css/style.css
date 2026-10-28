@@ -280,37 +280,86 @@
   }
   .panel-actions button.focus-on { color: var(--accent); border-color: var(--accent); }
 
-  /* ---- long-run band: months-long jobs, above the focus band (ADR todo-0019) ---- */
-  /* Closed by default and absent when there is none. Amber when a job has no
-     next step, so a stalled one shows even folded. */
-  .long-band {
-    background: var(--surface-sunk);
+  /* ---- long-run fold: months-long jobs, below the queue (ADR todo-0022) ---- */
+  /* A fold like スコープ外 and 待ち. What needs attention comes up in the review
+     band above the focus band, by condition, not by position. */
+
+  /* ---- review band: long-run tasks that need a look, above the focus band ---- */
+  /* Absent when none does. A yellow edge and tint, set apart from the focus band. */
+  .review-band {
+    background: var(--near-soft);
+    border-left: 3px solid var(--near);
     border-bottom: 1px solid var(--line);
-    padding: 8px 22px;
+    padding: 8px 22px 8px 19px;
   }
-  .long-band.warn { background: var(--near-soft); }
-  /* nowrap keeps 長期 on one line: as a bare text node in the flex heading it
-     would otherwise shrink to one character wide beside a long note. */
-  .long-band .fold-head { color: var(--ink-soft); max-width: 100%; white-space: nowrap; }
-  .long-band .n {
+  .review-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-family: var(--sans);
+    font-size: var(--fs-md);
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .review-head .n {
     font-family: var(--mono);
     font-size: var(--fs-sm);
-    letter-spacing: 0;
+    font-weight: 400;
     background: var(--surface);
     padding: 1px 6px;
     border-radius: var(--radius-sm);
   }
-  .long-band .fold-note {
-    min-width: 0;
+  .review-list { list-style: none; margin: 0; padding: 0; }
+  /* Wraps so that three reason tags never squeeze the name to nothing. */
+  .review-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 4px 0; min-width: 0; }
+  .rv-mark { flex: none; width: 1em; text-align: center; font-weight: 700; color: var(--near); }
+  .rv-name {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    flex: 0 1 auto;
+    min-width: 6em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    letter-spacing: 0;
-    text-transform: none;
-    color: var(--muted);
+    font: inherit;
+    font-size: var(--fs-xl);
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
   }
-  .long-band .fold-note.long-warn { color: var(--near); font-weight: 600; }
-  .long-list { margin-top: 6px; }
+  .rv-name:hover { text-decoration: underline; }
+  .rv-name:focus-visible, .rv-done:focus-visible { outline: 2px solid var(--near); outline-offset: 2px; }
+  /* The text stays --ink: --near on the tint is under 4.5:1, so only the edge is amber. */
+  .reason-tag {
+    flex: none;
+    padding: 0 6px;
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+    color: var(--ink);
+    border: 1px solid var(--near);
+    border-radius: var(--radius-sm);
+    vertical-align: 1px;
+  }
+  .rv-done {
+    appearance: none;
+    flex: none;
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--near);
+    border-radius: var(--radius-chip);
+    padding: 0 10px;
+    font: inherit;
+    font-size: var(--fs-sm2);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .rv-done:hover { background: var(--surface); }
+  .rv-done:disabled { opacity: .5; cursor: default; }
+  .long-row .name .reason-tag, .task.long .name .reason-tag { margin-left: 4px; }
   .mark-long { color: var(--ink-soft); }
   .long-next {
     display: flex;

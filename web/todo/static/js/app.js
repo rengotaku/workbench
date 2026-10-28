@@ -33,11 +33,9 @@
     '      </div>',
     '    </div>',
     '',
-    '    <section class="long-band" id="long-band" hidden>',
-    '      <button type="button" class="fold-head" id="long-fold" aria-expanded="false" aria-controls="long-list">',
-    '        <span class="caret" aria-hidden="true">▶</span>長期<span class="n" id="long-count">0</span><span class="fold-note" id="long-note"></span>',
-    '      </button>',
-    '      <ul class="list long-list" id="long-list" hidden></ul>',
+    '    <section class="review-band" id="review-band" hidden>',
+    '      <div class="review-head">長期の見直し<span class="n" id="review-count">0</span></div>',
+    '      <ul class="review-list" id="review-list"></ul>',
     '    </section>',
     '',
     '    <section class="focus-band" id="focus-band">',
@@ -54,6 +52,13 @@
     '        <button type="button" class="as-button" id="add-trigger">タスクを追加</button>',
     '        <kbd aria-hidden="true">N</kbd>',
     '      </div>',
+    '    </section>',
+    '',
+    '    <section class="sec" id="long-band" hidden>',
+    '      <button type="button" class="fold-head" id="long-fold" aria-expanded="false" aria-controls="long-list">',
+    '        <span class="caret" aria-hidden="true">▶</span>長期<span class="n" id="long-count">0</span><span class="fold-note" id="long-note"></span>',
+    '      </button>',
+    '      <ul class="list long-list" id="long-list" hidden></ul>',
     '    </section>',
     '',
     '    <section class="sec" id="out-sec" hidden>',
@@ -204,6 +209,9 @@
       longList: document.getElementById('long-list'),
       longCount: document.getElementById('long-count'),
       longNote: document.getElementById('long-note'),
+      reviewBand: document.getElementById('review-band'),
+      reviewList: document.getElementById('review-list'),
+      reviewCount: document.getElementById('review-count'),
       focusBand: document.getElementById('focus-band'),
       focusList: document.getElementById('focus-list'),
       focusCount: document.getElementById('focus-count'),
@@ -456,25 +464,95 @@
       if (t.due_class === 'today') return 'near';
       return '';
     }
-    // renderLong draws the long-run band (ADR todo-0019). With no long-run task
-    // the band is not shown at all. Folded, the heading still names what it
-    // holds, and turns amber when one of them has no next step.
+    // renderLong draws the long-run fold (ADR todo-0022): closed by default, with
+    // the others below the queue. With no long-run task it is not shown at all.
+    // What needs attention comes up in the review band instead, by condition.
     function renderLong(long) {
       el.longBand.hidden = long.length === 0;
       el.longCount.textContent = long.length;
-      var stuck = long.filter(function (t) { return !t.next; }).length;
-      el.longBand.classList.toggle('warn', stuck > 0);
-      el.longNote.classList.toggle('long-warn', stuck > 0);
-      if (stuck > 0) {
-        el.longNote.textContent = '次の一手なし ' + stuck;
-      } else if (long.length) {
-        el.longNote.textContent = long[0].name + (long.length > 1 ? ' ほか ' + (long.length - 1) + ' 件' : '');
-      } else {
-        el.longNote.textContent = '';
-      }
+      el.longNote.textContent = long.length ? '次に見る日が来たら上に出る' : '';
       setFold(el.longFold, el.longList, state.longOpen);
       el.longList.textContent = '';
       long.forEach(function (t) { el.longList.appendChild(longRow(t)); });
+      renderReview(long.filter(function (t) { return t.needs_review; }));
+    }
+
+    // reasonLabel is the words for one reason a long-run task needs a review.
+    // The server decides the reasons; this only says them.
+    function reasonLabel(t, reason) {
+      switch (reason) {
+        case 'no_next': return '次の一手なし';
+        case 'review_due':
+          return t.review_on ? '見直し日 ' + monthDay(t.review_on) + ' を過ぎた' : '見直し日が未設定';
+        case 'stalled': return '止まって ' + (t.idle_days || 0) + '日';
+        default: return reason;
+      }
+    }
+
+    function reasonTags(t) {
+      return (t.review_reasons || []).map(function (r) {
+        var tag = document.createElement('span');
+        tag.className = 'reason-tag';
+        tag.textContent = reasonLabel(t, r);
+        return tag;
+      });
+    }
+
+    // renderReview is the band above the focus band: one line for each
+    // long-run task that needs a review, and nothing at all when none does.
+    function renderReview(tasks) {
+      el.reviewBand.hidden = tasks.length === 0;
+      el.reviewCount.textContent = tasks.length;
+      el.reviewList.textContent = '';
+      tasks.forEach(function (t) {
+        var li = document.createElement('li');
+        li.className = 'review-line';
+        var mark = document.createElement('span');
+        mark.className = 'rv-mark';
+        mark.setAttribute('aria-hidden', 'true');
+        mark.textContent = '!';
+        li.appendChild(mark);
+
+        var name = document.createElement('button');
+        name.type = 'button';
+        name.className = 'rv-name';
+        name.textContent = t.name;
+        name.title = t.id + ' ' + t.name + ' を長期の枠で開く';
+        name.addEventListener('click', function () { openLongTask(t.id); });
+        li.appendChild(name);
+
+        reasonTags(t).forEach(function (tag) { li.appendChild(tag); });
+
+        var done = document.createElement('button');
+        done.type = 'button';
+        done.className = 'rv-done';
+        done.textContent = '見直した';
+        done.title = '次に見る日を 1 週間先にして、見直した印を付ける';
+        done.addEventListener('click', function () {
+          done.disabled = true;
+          request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/review', {})
+            .then(function (data) {
+              var on = data.task && data.task.review_on;
+              return load().then(function () { flash('見直した。次に見る日は ' + monthDay(on)); });
+            })
+            .catch(function (err) { done.disabled = false; reloadShowing(err); });
+        });
+        li.appendChild(done);
+        el.reviewList.appendChild(li);
+      });
+    }
+
+    // openLongTask opens the long-run fold and the task's row in it.
+    function openLongTask(id) {
+      state.longOpen = true;
+      state.openId = id;
+      render();
+      var node = el.longList.querySelector('[data-id="' + id + '"]');
+      if (!node) return;
+      // render() dropped the button that was pressed, so move the focus to the
+      // row: the next Tab then goes on from there, as showRow does.
+      node.focus({ preventScroll: true });
+      if (node.scrollIntoView) node.scrollIntoView({ block: 'center' });
     }
 
     // boardTasks lists every task the board carries, whatever its section.
@@ -622,8 +700,7 @@
         writeName(txt, opts.task);
       }
       name.appendChild(txt);
-      // The long-run band shows no idle tag yet: the API carries the fields.
-      var idle = opts.task.state === 'long' ? null : idleTag(opts.task);
+      var idle = idleTag(opts.task);
       if (idle) name.appendChild(idle);
 
       body.appendChild(name);
@@ -647,11 +724,11 @@
       if (opts.editableDue) {
         due = document.createElement('button');
         due.type = 'button';
-        due.className = 'due due-edit';
+        due.className = 'due due-edit' + (opts.reviewChip ? ' review-chip' : '');
         if (opts.dueTitle) due.title = opts.dueTitle;
         due.setAttribute('aria-haspopup', 'menu');
         due.setAttribute('aria-expanded', 'false');
-        due.dataset.due = opts.task.due || '';
+        due.dataset.due = opts.reviewChip ? (opts.task.review_on || '') : (opts.task.due || '');
       } else {
         due = document.createElement('span');
         due.className = 'due';
@@ -897,13 +974,18 @@
         task: t,
         mark: '▶',
         markClass: 'mark-long',
-        dueLabel: t.due_label,
-        dueClass: dueChip(t),
+        // The chip slot holds the next review day, not the due date.
+        // The weekday goes to the hover: with it the label outgrows the chip.
+        dueLabel: t.review_on ? '見る ' + monthDay(t.review_on) : '見る 未設定',
+        dueClass: t.needs_review && (t.review_reasons || []).indexOf('review_due') >= 0 ? 'near' : '',
         hasPanel: true,
         editableDue: true,
-        dueTitle: dueTitle(t),
+        reviewChip: true,
+        dueTitle: (t.review_on ? dateLabel(t.review_on) + '・' : '') + '次に見る日。押して決める（見直すと 1 週間先になる）',
         extraClass: 'long',
       });
+      var nameLine = li.querySelector('.name');
+      reasonTags(t).forEach(function (tag) { nameLine.appendChild(tag); });
       var next = document.createElement('div');
       next.className = 'long-next' + (t.next ? '' : ' warn');
       var label = document.createElement('span');
@@ -1221,6 +1303,7 @@
       var from = {
         due: '期限（' + monthDay(t.due) + '）',
         annotation: '人の補足',
+        review: '見直し',
         created: '作成',
       }[t.idle_from] || '';
       var tag = document.createElement('span');
@@ -1923,6 +2006,7 @@
       longed: '長期にした',
       unlonged: '長期から外した',
       parent_set: '親を変更',
+      review_set: '見直し',
       reordered: '順序変更',
       due_set: '期限',
       waiting: '待ちへ',
@@ -2003,6 +2087,7 @@
         case 'waiting':
           return ' ' + (e.to_value || '');
         case 'parent_set':
+        case 'review_set':
           return ' ' + (e.from_value || 'なし') + ' → ' + (e.to_value || 'なし');
         default:
           return '';
@@ -2171,6 +2256,7 @@
     }
 
     function openDueMenu(chip) {
+      if (chip.classList.contains('review-chip')) { openReviewMenu(chip); return; }
       var id = chip.closest('.task').dataset.id;
       var current = chip.dataset.due || '';
       var path = '/api/tasks/' + encodeURIComponent(id);
@@ -2233,6 +2319,56 @@
       }
       if (sec.childNodes.length) menu.appendChild(sec);
 
+      showMenu(chip, menu, input);
+    }
+
+    // openReviewMenu is the due menu for a long-run row's review day: a date, or
+    // a step ahead of today. It posts to /review, which also marks it as looked at.
+    function openReviewMenu(chip) {
+      var id = chip.closest('.task').dataset.id;
+      var current = chip.dataset.due || '';
+
+      function setReview(value) {
+        closeDueMenu();
+        request('POST', '/api/tasks/' + encodeURIComponent(id) + '/review', { review_on: value })
+          .then(function () { return load().then(function () { flash('次に見る日を ' + monthDay(value) + ' にした'); }); })
+          .catch(reloadShowing);
+      }
+
+      var menu = document.createElement('div');
+      menu.className = 'due-menu';
+      menu.setAttribute('role', 'menu');
+      menu.setAttribute('aria-label', '次に見る日');
+
+      var sec = document.createElement('div');
+      sec.className = 'dm-sec';
+      sec.appendChild(dueMenuLabel('次に見る日'));
+      var input = document.createElement('input');
+      input.type = 'date';
+      input.className = 'due-input';
+      input.value = current;
+      input.setAttribute('aria-label', '次に見る日の日付');
+      input.addEventListener('change', function () {
+        if (input.value) setReview(input.value);
+      });
+      sec.appendChild(input);
+      menu.appendChild(sec);
+
+      var base = new Date(((state.board && state.board.today) || ymd(new Date())) + 'T00:00:00');
+      sec = document.createElement('div');
+      sec.className = 'dm-sec';
+      sec.appendChild(dueMenuLabel('今日（' + shortDate(base) + '）から'));
+      [['+1週間', addDays(base, 7)], ['+2週間', addDays(base, 14)], ['+1ヶ月', addMonths(base, 1)]]
+        .forEach(function (o) {
+          sec.appendChild(dueMenuItem(o[0], shortDate(o[1]), '', function () { setReview(ymd(o[1])); }));
+        });
+      menu.appendChild(sec);
+
+      showMenu(chip, menu, input);
+    }
+
+    // showMenu keys, places and registers a menu hung off a chip.
+    function showMenu(chip, menu, input) {
       menu.addEventListener('keydown', function (e) {
         if (composing(e)) return;
         var items = Array.prototype.slice.call(menu.querySelectorAll('input, button:not([disabled])'));

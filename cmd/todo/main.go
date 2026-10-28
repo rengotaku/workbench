@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -57,7 +58,7 @@ func rootCmd() *cobra.Command {
 
 	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), removeCmd(), waitCmd(), resumeCmd(),
 		somedayCmd(), orderCmd(), dueCmd(), detailCmd(), annotateCmd(), renameCmd(), focusCmd(true), focusCmd(false),
-		longCmd(true), longCmd(false), parentCmd(),
+		longCmd(true), longCmd(false), parentCmd(), reviewCmd(),
 		undoCmd(), askCmd(), whyCmd(), contextCmd(), importCmd())
 	return root
 }
@@ -168,16 +169,8 @@ func printBoard(b taskclient.Board) {
 	fmt.Printf("着手順  %s  スコープ %d日  超過 %d / 今日 %d / その他 %d\n",
 		b.Today, b.ScopeDays, b.Counts.Over, b.Counts.Near, b.Counts.Rest)
 
-	if len(b.Long) > 0 {
-		fmt.Println("\n[長期]")
-		for _, t := range b.Long {
-			fmt.Printf("  ▶ %-6s %s  子 完了 %d / 未完 %d%s\n", t.ID, t.Name, t.KidsDone, t.KidsOpen, idleSuffix(t.Task))
-			if t.Next != nil {
-				fmt.Printf("           次の一手 %s %s\n", t.Next.ID, t.Next.Name)
-			} else {
-				fmt.Println("           次の一手なし")
-			}
-		}
+	if n := reviewCount(b.Long); n > 0 {
+		fmt.Printf("長期の見直し %d 件\n", n)
 	}
 	if len(b.Focus) > 0 {
 		fmt.Println("\n[フォーカス]")
@@ -189,6 +182,18 @@ func printBoard(b taskclient.Board) {
 		fmt.Println("\n[着手順]")
 		for i, t := range b.Queue {
 			fmt.Printf("%3d %-6s %s%s%s%s%s\n", i+1, t.ID, t.Name, detailMark(t), parentMark(t), dueSuffix(t), idleSuffix(t))
+		}
+	}
+	if len(b.Long) > 0 {
+		fmt.Println("\n[長期]")
+		for _, t := range b.Long {
+			fmt.Printf("  ▶ %-6s %s  子 完了 %d / 未完 %d  %s%s%s\n", t.ID, t.Name, t.KidsDone, t.KidsOpen,
+				reviewDay(t.ReviewOn), idleSuffix(t.Task), reviewReasons(t))
+			if t.Next != nil {
+				fmt.Printf("           次の一手 %s %s\n", t.Next.ID, t.Next.Name)
+			} else {
+				fmt.Println("           次の一手なし")
+			}
 		}
 	}
 	if len(b.Waiting) > 0 {
@@ -224,6 +229,58 @@ func printBoard(b taskclient.Board) {
 			fmt.Printf("  ✓ %-6s %s  %s\n", t.ID, t.Name, done)
 		}
 	}
+}
+
+// reviewCount is how many long-run tasks need a review.
+func reviewCount(long []taskclient.LongTask) int {
+	n := 0
+	for _, t := range long {
+		if t.NeedsReview {
+			n++
+		}
+	}
+	return n
+}
+
+// reviewDay writes a long-run task's next review date as 見る M/D.
+func reviewDay(on string) string {
+	if on == "" {
+		return "見る 未設定"
+	}
+	return "見る " + monthDay(on)
+}
+
+// monthDay writes YYYY-MM-DD as M/D.
+func monthDay(ymd string) string {
+	d, err := time.Parse(task.DateLayout, ymd)
+	if err != nil {
+		return ymd
+	}
+	return fmt.Sprintf("%d/%d", int(d.Month()), d.Day())
+}
+
+// reviewReasons says in words why a long-run task needs a review; empty when it
+// does not.
+func reviewReasons(t taskclient.LongTask) string {
+	if !t.NeedsReview {
+		return ""
+	}
+	var parts []string
+	for _, r := range t.ReviewReasons {
+		switch r {
+		case "no_next":
+			parts = append(parts, "次の一手なし")
+		case "review_due":
+			if t.ReviewOn == "" {
+				parts = append(parts, "見直し日が未設定")
+			} else {
+				parts = append(parts, "見直し日 "+monthDay(t.ReviewOn)+" を過ぎた")
+			}
+		case "stalled":
+			parts = append(parts, fmt.Sprintf("止まって %d日", t.IdleDays))
+		}
+	}
+	return "  要見直し: " + strings.Join(parts, "・")
 }
 
 // ---- state changes ----
