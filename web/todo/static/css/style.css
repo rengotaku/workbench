@@ -311,7 +311,8 @@
     border-radius: var(--radius-sm);
   }
   .review-list { list-style: none; margin: 0; padding: 0; }
-  .review-line { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; min-width: 0; }
+  /* Wraps so that three reason tags never squeeze the name to nothing. */
+  .review-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 4px 0; min-width: 0; }
   .rv-mark { flex: none; width: 1em; text-align: center; font-weight: 700; color: var(--near); }
   .rv-name {
     appearance: none;
@@ -319,7 +320,7 @@
     border: 0;
     padding: 0;
     flex: 0 1 auto;
-    min-width: 0;
+    min-width: 6em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

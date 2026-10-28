@@ -87,8 +87,13 @@ func (s *Store) Review(id, on string, actor Actor) (Task, error) {
 	}
 
 	snapshot := t
-	now := s.now()
-	t.ReviewOn, t.ReviewedAt = on, &now
+	t.ReviewOn = on
+	// Only a person's review counts as a touch: an AI moving the date must not
+	// hide a long-run task that nobody has looked at (ADR todo-0021).
+	if actor == ActorHuman {
+		now := s.now()
+		t.ReviewedAt = &now
+	}
 	s.st.Tasks[i] = t
 	if err := s.record(Event{TaskID: id, Kind: KindReviewSet, Actor: actor, FromValue: snapshot.ReviewOn, ToValue: on, Snapshot: &snapshot}); err != nil {
 		return Task{}, err

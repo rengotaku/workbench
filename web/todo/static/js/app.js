@@ -548,7 +548,11 @@
       state.openId = id;
       render();
       var node = el.longList.querySelector('[data-id="' + id + '"]');
-      if (node && node.scrollIntoView) node.scrollIntoView({ block: 'center' });
+      if (!node) return;
+      // render() dropped the button that was pressed, so move the focus to the
+      // row: the next Tab then goes on from there, as showRow does.
+      node.focus({ preventScroll: true });
+      if (node.scrollIntoView) node.scrollIntoView({ block: 'center' });
     }
 
     // boardTasks lists every task the board carries, whatever its section.

@@ -46,6 +46,28 @@ func TestReview_DefaultsToAWeekAndOnlyLongRunTasks(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestReview_ByAIMovesTheDateButIsNotATouch(t *testing.T) {
+	s := newStore(t)
+	id := addAll(t, s, "A")
+	_, err := s.SetLong(id["A"], true, task.ActorHuman)
+	require.NoError(t, err)
+
+	got, err := s.Review(id["A"], dateIn(3), task.ActorAI)
+	require.NoError(t, err)
+	assert.Equal(t, dateIn(3), got.ReviewOn)
+	assert.Nil(t, got.ReviewedAt, "an AI review leaves the person's last touch alone")
+
+	got, err = s.Review(id["A"], dateIn(5), task.ActorHuman)
+	require.NoError(t, err)
+	require.NotNil(t, got.ReviewedAt)
+	touched := *got.ReviewedAt
+
+	got, err = s.Review(id["A"], dateIn(9), task.ActorAI)
+	require.NoError(t, err)
+	require.NotNil(t, got.ReviewedAt)
+	assert.True(t, touched.Equal(*got.ReviewedAt), "the person's review time is kept")
+}
+
 func TestUndo_ReviewPutsBackTheDateAndTheTime(t *testing.T) {
 	s := newStore(t)
 	id := addAll(t, s, "A")
