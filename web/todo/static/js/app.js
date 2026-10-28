@@ -47,7 +47,7 @@
     '    <section class="sec">',
     '      <ul class="list" id="queue"></ul>',
     '      <div class="add" id="add-slot">',
-    '        <span></span><span></span>',
+    '        <span></span>',
     '        <span class="plus" aria-hidden="true">＋</span>',
     '        <button type="button" class="as-button" id="add-trigger">タスクを追加</button>',
     '        <kbd aria-hidden="true">N</kbd>',
@@ -664,11 +664,17 @@
       grip.textContent = opts.draggable ? '⠿' : '';
       li.appendChild(grip);
 
-      var num = document.createElement('span');
-      num.className = 'num' + (opts.markClass ? ' ' + opts.markClass : '');
-      num.textContent = opts.mark;
-      if (opts.markClass) num.setAttribute('aria-hidden', 'true');
-      li.appendChild(num);
+      // Queue, focus and out-of-scope rows have nothing for this column, so
+      // they leave it out; the others keep it so their left edge lines up.
+      if (opts.noNum) {
+        li.classList.add('no-num');
+      } else {
+        var num = document.createElement('span');
+        num.className = 'num' + (opts.markClass ? ' ' + opts.markClass : '');
+        num.textContent = opts.mark;
+        if (opts.markClass) num.setAttribute('aria-hidden', 'true');
+        li.appendChild(num);
+      }
 
       var check = document.createElement('input');
       check.type = 'checkbox';
@@ -705,13 +711,6 @@
 
       body.appendChild(name);
 
-      // The newest status sits under the name, so a row says where it stands
-      // without opening. Open rows list all of them in the panel instead.
-      if (opts.hasPanel && !isOpen(opts.task.id)) {
-        var status = latestStatus(opts.task);
-        if (status) body.appendChild(status);
-      }
-
       if (opts.hasPanel && isOpen(opts.task.id)) {
         body.appendChild(panelFor(opts.task));
       }
@@ -735,6 +734,9 @@
         if (opts.dueTitle) due.title = opts.dueTitle;
       }
       if (opts.dueClass) due.classList.add(opts.dueClass);
+      // "期限なし" only shows on the hovered row (CSS), so the list is not a
+      // column of them; the review chip of a long-run row always shows.
+      if (opts.editableDue && !opts.reviewChip && !opts.task.due) due.classList.add('due-none');
       due.textContent = opts.dueLabel;
       li.appendChild(due);
 
@@ -910,6 +912,7 @@
         // `todo order` uses it.
         mark: '',
         markClass: '',
+        noNum: true,
         dueLabel: t.due_label,
         dueClass: dueChip(t),
         hasPanel: true,
@@ -1312,24 +1315,6 @@
       tag.title = from + 'から ' + t.idle_days + '日'
         + (t.idle_from === 'annotation' ? '' : '。人が補足を書くと、そこから数え直す');
       return tag;
-    }
-
-    // latestStatus is the one line under a row's name: the newest supplement.
-    // It returns null when the task has none.
-    function latestStatus(t) {
-      var anns = t.annotations || [];
-      if (anns.length === 0) return null;
-      var last = anns.reduce(function (m, a) {
-        return Date.parse(a.created_at) >= Date.parse(m.created_at) ? a : m;
-      });
-      var line = document.createElement('div');
-      line.className = 'row-status';
-      var body = document.createElement('span');
-      body.className = 'rs-body';
-      body.textContent = last.body;
-      if (annotationLabel(last)) line.appendChild(annotationTag(last));
-      line.appendChild(body);
-      return line;
     }
 
     // statusBlock is the field that appends one line of status to the open row.

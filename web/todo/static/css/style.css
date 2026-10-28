@@ -32,10 +32,11 @@
   .panes { display: contents; }
   .detail { display: none; }
   @media (min-width: 900px) {
-    .wrap { max-width: 1012px; }
+    /* The list takes what the narrow detail box leaves: 1100 - 260 - 18 = 822px. */
+    .wrap { max-width: 1100px; }
     .panes {
       display: grid;
-      grid-template-columns: 660px 1fr;
+      grid-template-columns: minmax(0, 1fr) 260px;
       gap: 18px;
       align-items: start;
     }
@@ -54,6 +55,7 @@
   }
   .d-eyebrow {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     gap: 10px;
     font-family: var(--mono);
@@ -62,13 +64,13 @@
     color: var(--muted);
     margin-bottom: 9px;
   }
-  .d-name { font-size: var(--fs-lg2); font-weight: 500; line-height: 1.6; margin: 0 0 8px; }
-  .d-body { font-size: var(--fs-md); line-height: 1.85; color: var(--ink-soft); white-space: pre-wrap; }
+  .d-name { font-size: var(--fs-lg2); font-weight: 500; line-height: 1.6; margin: 0 0 8px; overflow-wrap: anywhere; }
+  .d-body { font-size: var(--fs-md); line-height: 1.85; color: var(--ink-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
   .d-body.none { color: var(--muted); }
   .d-sec { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line-soft); }
   .d-sec h2 { margin: 0 0 6px; font-size: var(--fs-xs); letter-spacing: .08em; color: var(--muted); font-weight: 500; }
   .d-trail { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
-  .d-trail li { font-size: var(--fs-sm2); color: var(--ink-soft); line-height: 1.6; }
+  .d-trail li { font-size: var(--fs-sm2); color: var(--ink-soft); line-height: 1.6; overflow-wrap: anywhere; }
   .d-trail time { font-family: var(--mono); color: var(--muted); margin-right: 6px; }
   .d-from { display: inline-block; margin-bottom: 6px; font-size: var(--fs-sm2); color: var(--muted); text-decoration: underline; }
   /* One status per line: when, which label, what. */
@@ -77,7 +79,7 @@
   .d-ann-body { font-size: var(--fs-md); line-height: 1.75; color: var(--ink); white-space: pre-wrap; min-width: 0; overflow-wrap: anywhere; }
   .d-ann-body.ai { color: var(--ink-soft); }
 
-  /* The label on a status, in the detail and under a row's name. */
+  /* The label on a status in the detail box. */
   .ann-tag {
     display: inline-block;
     padding: 0 6px;
@@ -89,9 +91,6 @@
     background: var(--line-soft);
   }
 
-  /* The newest status under a row's name. */
-  .row-status { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--fs-sm2); color: var(--ink-soft); }
-  .rs-body { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Days a task has been left without a person touching it. Stage 1 has no
      colour on purpose; the colour starts at 2 (ADR todo-0021). */
   .idle-tag {
@@ -443,7 +442,7 @@
      It is a button that opens the add dialog: the list stays quiet. */
   .add {
     display: grid;
-    grid-template-columns: 10px 16px 18px 1fr auto 22px;
+    grid-template-columns: 10px 18px 1fr auto 22px;
     column-gap: 6px;
     align-items: center;
     margin-inline: -22px;
@@ -599,6 +598,18 @@
   }
   .task:hover .grip { color: var(--muted); }
   .grip.empty { cursor: default; }
+  /* The handle only shows on the row being pointed at, open, or reached by the
+     keyboard, so the list is not a column of them. visibility keeps the column's
+     width. The row itself is what is draggable. Pointer-less devices have no
+     hover, so there it is always shown. */
+  .task .grip { visibility: hidden; }
+  .task:hover .grip, .task.row-open .grip, .task:focus-within .grip { visibility: visible; }
+  @media (hover: none) {
+    .task .grip { visibility: visible; }
+  }
+  /* Queue, focus and out-of-scope rows have no mark column (the position is not
+     shown), so their check sits one column in. */
+  .task.no-num { grid-template-columns: 10px 18px 1fr auto 22px; }
 
   /* The second column holds ◎ for focused queue rows, ◇ for someday and ✓ for
      done. Waiting rows leave it empty — ◷ read too much like ◎ — but the column
@@ -779,6 +790,15 @@
     font-family: var(--mono);
   }
   button.due-edit:hover { border-color: var(--line); }
+  /* A row with no due date shows its 期限なし chip only while pointed at, open,
+     reached by the keyboard (a hidden button cannot take Tab, so the focused row
+     reveals it first) or while its menu is open. */
+  .due.due-none { visibility: hidden; }
+  .task:hover .due-none, .task.row-open .due-none, .task:focus-within .due-none,
+  .due-none[aria-expanded="true"] { visibility: visible; }
+  @media (hover: none) {
+    .due.due-none { visibility: visible; }
+  }
   button.due-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   button.due-edit[aria-expanded="true"] { border-color: var(--accent); }
   .due-input {
@@ -896,8 +916,17 @@
     .scope-set button { transition: background .15s ease, color .15s ease; }
   }
 
+  /* Narrow, the chip sits on its own line under the name, so a hidden one
+     would still hold that line open: take it out of the flow instead. Touch
+     screens always show it, as above. */
+  @media (max-width: 460px) and (hover: hover) {
+    .task:not(:hover):not(.row-open):not(:focus-within) .due.due-none:not([aria-expanded="true"]) { display: none; }
+  }
   @media (max-width: 460px) {
     .task { grid-template-columns: 10px 16px 18px 1fr 22px; margin-inline: -16px; padding: 9px 16px 9px 13px; }
+    .task.no-num { grid-template-columns: 10px 18px 1fr 22px; }
+    .task.no-num .due { grid-column: 3; }
+    .task.no-num .del-slot { grid-column: 4; }
     .due { grid-column: 4; justify-self: start; }
     .del-slot { grid-column: 5; grid-row: 1; }
     .app-head { padding: 12px 16px; }
