@@ -105,13 +105,16 @@
     border-radius: var(--radius-sm);
     vertical-align: 1px;
   }
-  .idle-tag.s1 { color: var(--muted); }
+  /* Stage 1 has no colour of its own, but its text still needs AA contrast. */
+  .idle-tag.s1 { color: var(--ink-soft); }
   .idle-tag.s2 { color: var(--ink-soft); border-color: var(--line); }
   .idle-tag.s3 { color: var(--near); border-color: var(--near); }
   .idle-tag.s5 { color: var(--stale); border-color: var(--stale); font-weight: 600; }
   .idle-tag.s8 { color: var(--over); border-color: var(--over); background: var(--over-soft); font-weight: 600; }
   /* --line sits 1.03:1 from the band, so the stage-2 box would vanish there. */
   .focus-band .idle-tag.s2 { border-color: var(--muted); }
+  /* --near text falls below 4.5:1 on the band; keep the amber in the border. */
+  .focus-band .idle-tag.s3 { color: var(--ink); }
 
   /* The field that appends a status in the open row. */
   .status-add { display: flex; flex-direction: column; gap: 6px; }
