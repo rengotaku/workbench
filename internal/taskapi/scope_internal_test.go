@@ -46,3 +46,8 @@ func TestScopeDays_NumbersAndAllStillWork(t *testing.T) {
 	_, err = scopeDays("month", today)
 	assert.Error(t, err)
 }
+
+func TestFromLabel(t *testing.T) {
+	assert.Equal(t, "11/5 から", fromLabel(time.Date(2026, 11, 5, 0, 0, 0, 0, time.Local)))
+	assert.Equal(t, "12/20 から", fromLabel(time.Date(2026, 12, 20, 0, 0, 0, 0, time.Local)))
+}

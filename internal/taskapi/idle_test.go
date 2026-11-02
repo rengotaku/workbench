@@ -28,7 +28,7 @@ func TestList_IdleFields(t *testing.T) {
 		rows[id] = m
 	}
 	assert.EqualValues(t, 3, rows[late.ID]["idle_days"])
-	assert.EqualValues(t, 3, rows[late.ID]["idle_stage"])
+	assert.EqualValues(t, 1, rows[late.ID]["idle_stage"])
 	assert.Equal(t, "due", rows[late.ID]["idle_from"])
 	_, has := rows[fresh.ID]["idle_days"]
 	assert.False(t, has, "created today: nothing")

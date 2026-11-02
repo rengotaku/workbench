@@ -3,6 +3,7 @@ package taskapi_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -194,7 +195,7 @@ func TestList_ATaskWithNoDueDateStaysVisible(t *testing.T) {
 	assert.EqualValues(t, 2, countsOf(t, body)["rest"])
 }
 
-func TestList_PastTheScopeStillCountsTheDaysLeft(t *testing.T) {
+func TestList_PastTheScopeReadsAsADate(t *testing.T) {
 	store, h := setup(t)
 	_, err := store.Add("ずっと先", "", dateIn(20), task.ActorHuman)
 	require.NoError(t, err)
@@ -207,7 +208,69 @@ func TestList_PastTheScopeStillCountsTheDaysLeft(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, false, row["in_scope"])
 	assert.Equal(t, "plain", row["due_class"])
-	assert.Equal(t, "あと2週間", row["due_label"], "past the scope the unit coarsens; the exact date is on hover")
+	assert.Equal(t, fromIn(20), row["due_label"], "a date, not a countdown; the days left are on hover")
+}
+
+// A due date 1-3 days out is "soon"; 4 and beyond stay "near" (in scope) or
+// "plain". All of them read "M/D から", and none counts as overdue.
+func TestList_DueClassBoundary(t *testing.T) {
+	store, h := setup(t)
+	ids := map[int]string{}
+	for _, n := range []int{1, 3, 4} {
+		added, err := store.Add("x", "", dateIn(n), task.ActorHuman)
+		require.NoError(t, err)
+		ids[n] = added.ID
+	}
+
+	_, body := call(t, h, http.MethodGet, "/api/tasks?scope=all", nil)
+	rows := map[string]map[string]any{}
+	for _, r := range rowsOf(t, body, "queue") {
+		m := asMap(t, r)
+		id, _ := m["id"].(string)
+		rows[id] = m
+	}
+	assert.Equal(t, "soon", rows[ids[1]]["due_class"])
+	assert.Equal(t, "soon", rows[ids[3]]["due_class"])
+	assert.Equal(t, "near", rows[ids[4]]["due_class"])
+	for n, id := range ids {
+		assert.Equal(t, fromIn(n), rows[id]["due_label"])
+	}
+	assert.EqualValues(t, 3, countsOf(t, body)["rest"], "soon rows count with the rest, not as today")
+}
+
+// fromIn is the "M/D から" label for a date n days from today.
+func fromIn(n int) string {
+	d := time.Now().AddDate(0, 0, n)
+	return fmt.Sprintf("%d/%d から", int(d.Month()), d.Day())
+}
+
+func TestList_NextDue(t *testing.T) {
+	store, h := setup(t)
+	_, body := call(t, h, http.MethodGet, "/api/tasks", nil)
+	_, has := body["next_due"]
+	assert.False(t, has, "nothing in the queue")
+
+	_, err := store.Add("今日", "", dateIn(0), task.ActorHuman)
+	require.NoError(t, err)
+	_, err = store.Add("期限なし", "", "", task.ActorHuman)
+	require.NoError(t, err)
+	far, err := store.Add("DSC-1 遠い", "", dateIn(9), task.ActorHuman)
+	require.NoError(t, err)
+	_, body = call(t, h, http.MethodGet, "/api/tasks", nil)
+	nd := asMap(t, body["next_due"])
+	assert.Equal(t, far.ID, nd["id"], "today and no-date rows are not the next due")
+	assert.Equal(t, dateIn(9), nd["due"])
+	assert.Equal(t, "DSC-1 遠い", nd["name"], "the name is sent as is; the page drops the ticket key")
+
+	near, err := store.Add("近い", "", dateIn(2), task.ActorHuman)
+	require.NoError(t, err)
+	_, body = call(t, h, http.MethodGet, "/api/tasks", nil)
+	assert.Equal(t, near.ID, asMap(t, body["next_due"])["id"])
+
+	_, err = store.Wait(near.ID, "相手", "", task.ActorHuman)
+	require.NoError(t, err)
+	_, body = call(t, h, http.MethodGet, "/api/tasks", nil)
+	assert.Equal(t, far.ID, asMap(t, body["next_due"])["id"], "a waiting task is not in the queue")
 }
 
 func TestSpan_CoarsensWithTheDistance(t *testing.T) {

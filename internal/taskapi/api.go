@@ -119,6 +119,10 @@ type ChildRef struct {
 }
 
 type listResponse struct {
+	// NextDue is the nearest due date after today among the queue (focus
+	// included), so the page names it without scanning the rows. Nil when no
+	// queue task has a later due date (ADR todo-0023).
+	NextDue *NextDue    `json:"next_due,omitempty"`
 	Today   string      `json:"today"`
 	Queue   []View      `json:"queue"`
 	Focus   []View      `json:"focus"`
@@ -147,6 +151,28 @@ func (a *API) listTasks(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, a.build(scope))
+}
+
+// NextDue names the queue task whose due date is the nearest one after today.
+type NextDue struct {
+	Due  string `json:"due"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// nextDue picks the earliest due date strictly after today; among the same
+// day the first in queue order wins.
+func nextDue(queue []View, today string) *NextDue {
+	var best *NextDue
+	for _, v := range queue {
+		if v.Due == "" || v.Due <= today {
+			continue
+		}
+		if best == nil || v.Due < best.Due {
+			best = &NextDue{Due: v.Due, ID: v.ID, Name: v.Name}
+		}
+	}
+	return best
 }
 
 func (a *API) build(scope int) listResponse {
@@ -208,6 +234,8 @@ func (a *API) build(scope int) listResponse {
 			}
 		}
 	}
+
+	res.NextDue = nextDue(res.Queue, res.Today)
 
 	// Someday reads as a shelf, not a queue: what to look at soonest comes
 	// first, and what has no date at all trails behind everything that does.
@@ -361,16 +389,33 @@ func (a *API) view(t task.Task, today time.Time, scope int) View {
 		v.DueLabel, v.DueClass = "今日", "today"
 		v.Overdue, v.InScope = true, true
 	case diff <= scope:
-		v.DueLabel = "あと" + strconv.Itoa(diff) + "日"
+		// A start date still ahead is read as a date, not a countdown: the
+		// row is not due yet (ADR todo-0023). 1-3 days out is "soon" and gets
+		// the amber stripe; further in scope stays plain.
+		v.DueLabel = fromLabel(d)
 		v.DueClass = "near"
+		if diff <= SoonDays {
+			v.DueClass = "soon"
+		}
 		v.InScope = true
 	default:
-		// Past the scope the unit coarsens with the distance (Span); the
-		// screen sorts these by due date and shows the exact date on hover.
-		v.DueLabel = "あと" + Span(diff)
+		// The screen sorts these by due date and shows the days left on hover.
+		v.DueLabel = fromLabel(d)
 		v.DueClass = "plain"
+		if diff <= SoonDays {
+			v.DueClass = "soon"
+		}
 	}
 	return v
+}
+
+// SoonDays is how many days ahead a due date counts as "soon" (due_class
+// "soon"): the row gets the amber stripe from then on (ADR todo-0023).
+const SoonDays = 3
+
+// fromLabel is the chip text for a start date that has not come: "11/5 から".
+func fromLabel(d time.Time) string {
+	return strconv.Itoa(int(d.Month())) + "/" + strconv.Itoa(d.Day()) + " から"
 }
 
 // Span names a count of days in the unit that suits its size, the way a chat

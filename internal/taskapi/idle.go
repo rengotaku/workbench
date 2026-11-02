@@ -7,8 +7,9 @@ import (
 )
 
 // idleStages are the steps the page colours "idle days" by, highest first
-// (ADR todo-0021). The first step has no colour of its own.
-var idleStages = []int{8, 5, 3, 2, 1}
+// (ADR todo-0023, which replaced the 1/2/3/5/8 steps of todo-0021). Step 1 is
+// text only and covers 1-4 days; the colour starts at 5.
+var idleStages = []int{8, 5, 1}
 
 // describeIdle fills in IdleDays, IdleStage and IdleFrom for a task.
 func (a *API) describeIdle(v *View, t task.Task, today time.Time) {
@@ -53,6 +54,11 @@ func (a *API) idleDays(t task.Task, today time.Time) (int, string) {
 	if t.Due != "" {
 		d, err := task.ParseDate(t.Due, a.loc)
 		if err != nil {
+			return 0, ""
+		}
+		// Not due yet: the task is not being left, so nothing is counted until
+		// the due date comes (ADR todo-0023), whatever was written before.
+		if d.After(today) {
 			return 0, ""
 		}
 		start, from = d, "due"

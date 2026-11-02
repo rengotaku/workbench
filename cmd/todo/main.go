@@ -933,6 +933,10 @@ func dueSuffix(t taskclient.Task) string {
 	}
 	// The label coarsens past a week (taskapi.Span), so the date goes with it:
 	// the CLI has no hover to recover it.
+	if strings.HasSuffix(t.DueLabel, " から") {
+		// "11/4 から" already is the date.
+		return "  [" + t.DueLabel + "]"
+	}
 	if t.DueLabel != "" {
 		return "  [" + t.Due + " " + t.DueLabel + "]"
 	}
