@@ -111,9 +111,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if topic != "" {
-		if t, raw, err = c.SetTopic(t.ID, topic); err != nil {
-			return fmt.Errorf("追加 %s は済んだが話題を付けられなかった: %w", t.ID, err)
+		// SetTopic returns a zero Task on failure, so keep the added ID apart.
+		added := t.ID
+		tt, rawTopic, terr := c.SetTopic(added, topic)
+		if terr != nil {
+			return fmt.Errorf("追加 %s は済んだが話題を付けられなかった（todo topic %s %s で付け直せる）: %w", added, added, topic, terr)
 		}
+		t, raw = tt, rawTopic
 	}
 	if asJSON {
 		return printRaw(raw)

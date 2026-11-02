@@ -1510,9 +1510,17 @@
 
       var last = t.topic || '';
       var timer = null;
+      // One PATCH at a time: a later save waits for the one in flight and then
+      // sends whatever the field holds, so an older value can never land last.
+      var saving = false;
+      var again = false;
+      var reloadAfter = false;
       function save(reload) {
+        if (reload) reloadAfter = true;
+        if (saving) { again = true; return; }
         var value = input.value.trim();
-        if (value === last) return;
+        if (value === last) { finish(); return; }
+        saving = true;
         var inRow = !!input.closest('.panel'); // the box beside the list has no save slot
         if (inRow) mark(input, '保存中…');
         request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), { topic: value })
@@ -1520,9 +1528,19 @@
             last = value;
             t.topic = value;
             if (inRow) mark(input, '保存した', true);
-            if (reload && !state.busy) load();
           })
-          .catch(function (err) { showError(err); input.value = last; });
+          // Keep what was typed: it may already be newer than the failed value.
+          .catch(function (err) { showError(err); })
+          .then(function () {
+            saving = false;
+            if (again) { again = false; save(false); return; }
+            finish();
+          });
+      }
+      function finish() {
+        if (!reloadAfter || saving) return;
+        reloadAfter = false;
+        if (!state.busy) load();
       }
       input.addEventListener('focus', function () { state.busy = true; });
       input.addEventListener('input', function () {
