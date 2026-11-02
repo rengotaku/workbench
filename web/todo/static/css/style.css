@@ -579,10 +579,9 @@
   /* 1-3 days ahead: the stripe only, the row stays untinted. */
   .task.soon { border-left-color: var(--near); }
   /* A due date from tomorrow on: the row waits, so its name is one step paler. */
-  .task.ahead .name .txt { color: var(--muted); }
+  /* --ink-soft, not --muted: --muted is 3.8:1 on white, under AA for names. */
+  .task.ahead .name .txt { color: var(--ink-soft); }
   .task.ahead .name .txt.live { color: var(--ink); }
-  /* --muted falls to 2.8:1 on the darker band. */
-  .focus-band .task.ahead .name .txt { color: var(--ink-soft); }
   .task.overdue {
     border-left-color: var(--over);
     background: linear-gradient(90deg, var(--over-soft) 0, var(--over-soft) 44px, transparent 68px);
