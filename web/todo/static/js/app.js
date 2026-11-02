@@ -25,10 +25,13 @@
     '          <button type="button" data-scope="custom" aria-pressed="false">指定</button>',
     '        </div>',
     '        <label class="scope-until" id="scope-until-wrap" hidden>～<input type="date" id="scope-until" aria-label="スコープの締め日"></label>',
-    '        <div class="counts">',
-    '          <span class="count over" title="期限超過"><i aria-hidden="true"></i><b id="c-over">0</b><span class="sr">件 期限超過</span></span>',
-    '          <span class="count near" title="期限が今日"><i aria-hidden="true"></i><b id="c-near">0</b><span class="sr">件 期限が今日</span></span>',
-    '          <span class="count rest" title="期限がまだ先・期限なし"><i aria-hidden="true"></i><b id="c-rest">0</b><span class="sr">件 期限がまだ先・期限なし</span></span>',
+    '        <div class="counts-col">',
+    '          <div class="counts">',
+    '            <span class="count over" title="期限超過"><i aria-hidden="true"></i>超過 <b id="c-over">0</b><span class="sr">件 期限超過</span></span>',
+    '            <span class="count near" title="期限が今日"><i aria-hidden="true"></i>今日 <b id="c-near">0</b><span class="sr">件 期限が今日</span></span>',
+    '            <span class="count rest" title="期限がまだ先・期限なし"><i aria-hidden="true"></i>ほか <b id="c-rest">0</b><span class="sr">件 期限がまだ先・期限なし</span></span>',
+    '          </div>',
+    '          <p class="next-due" id="next-due" hidden></p>',
     '        </div>',
     '      </div>',
     '    </div>',
@@ -106,7 +109,7 @@
     '',
     '  <div class="legend">',
     '    <span class="l-over"><i></i>期限超過</span>',
-    '    <span class="l-near"><i></i>期限が今日</span>',
+    '    <span class="l-near"><i></i>期限が今日・3日以内</span>',
     '    <span class="l-rest"><i></i>期限がまだ先・期限なし</span>',
     '  </div>',
     '  <p class="err" id="err" hidden></p>',
@@ -204,6 +207,7 @@
       over: document.getElementById('c-over'),
       near: document.getElementById('c-near'),
       rest: document.getElementById('c-rest'),
+      nextDue: document.getElementById('next-due'),
       longBand: document.getElementById('long-band'),
       longFold: document.getElementById('long-fold'),
       longList: document.getElementById('long-list'),
@@ -360,6 +364,7 @@
 
       // The colour is the whole legend, so each swatch says what it means. The
       // counts split the queue the same way as the row stripes.
+      renderNextDue(b.next_due);
       setTitle('.count.over', '赤: 期限を過ぎている — ' + b.counts.over + '件');
       setTitle('.count.near', '黄: 期限が今日 — ' + b.counts.near + '件');
       setTitle('.count.rest', '灰: 期限がまだ先、または期限なし — ' + b.counts.rest + '件');
@@ -449,6 +454,16 @@
       if (state.shownId === null) showDetail(all[0]);
     }
 
+    // renderNextDue names the nearest due date after today (the server picks it,
+    // ADR todo-0023). Without one the line is left out. The name loses its
+    // ticket key and is cut short by CSS; the title has all of it.
+    function renderNextDue(nd) {
+      el.nextDue.hidden = !nd;
+      if (!nd) return;
+      el.nextDue.textContent = '次の期限 ' + monthDay(nd.due) + '\u3000' + stripTicket(nd.name);
+      el.nextDue.title = nd.name;
+    }
+
     function setTitle(sel, text) {
       var node = document.querySelector(sel);
       if (node) node.title = text;
@@ -459,9 +474,11 @@
     // where it is: red once it has passed, amber on the day. A date still ahead
     // and no date at all stay uncoloured, so the few that need moving stand out.
     // dueChip is the chip's colour class; dueStripe is the row's.
+    // 1-3 days out ("soon", ADR todo-0023) is amber too, but only on the stripe
+    // and the chip: the row keeps no tint. A date 4 or more days ahead fades the row's text.
     function dueChip(t) {
       if (t.due_class === 'over') return 'over';
-      if (t.due_class === 'today') return 'near';
+      if (t.due_class === 'today' || t.due_class === 'soon') return 'near';
       return '';
     }
     // renderLong draws the long-run fold (ADR todo-0022): closed by default, with
@@ -626,7 +643,18 @@
     function dueStripe(t) {
       if (t.due_class === 'over') return 'overdue';
       if (t.due_class === 'today') return 'in-window';
+      if (t.due_class === 'soon') return 'soon';
+      if (t.due_class === 'near' || t.due_class === 'plain') return 'ahead';
       return '';
+    }
+
+    // TICKET_KEY is the ticket number a name may start with, and the spaces
+    // after it. The name in the data keeps it; only the row's name drops it.
+    var TICKET_KEY = /^([A-Z]+-\d+)\s*/;
+
+    function stripTicket(name) {
+      var m = TICKET_KEY.exec(name || '');
+      return m && name.length > m[0].length ? name.slice(m[0].length) : (name || '');
     }
 
     // dueTitle is the chip's hover: only what the label does not already say.
@@ -636,7 +664,7 @@
       if (!t.due) return '';
       var n = daysBetween((state.board || {}).today, t.due);
       var date = dateLabel(t.due);
-      if (n >= 7) return date + '・あと' + n + '日';
+      if (n >= 1) return date + '・あと' + n + '日';
       if (n <= -7) return date + '・' + -n + '日超過';
       return date;
     }
@@ -703,7 +731,11 @@
         wireLiveField(txt, opts.task, 'name', { single: true });
       } else {
         txt.title = opts.task.name;
-        writeName(txt, opts.task);
+        var split = opts.ticketBadge ? splitTicket(opts.task) : null;
+        writeName(txt, split ? split.task : opts.task);
+        // The badge sits at the head of the name text, so a wrapped line runs
+        // under it instead of leaving a column of its own.
+        if (split) txt.insertBefore(split.badge, txt.firstChild);
       }
       name.appendChild(txt);
       var idle = idleTag(opts.task);
@@ -913,6 +945,7 @@
         mark: '',
         markClass: '',
         noNum: true,
+        ticketBadge: true,
         dueLabel: t.due_label,
         dueClass: dueChip(t),
         hasPanel: true,
@@ -922,6 +955,41 @@
       });
       li.draggable = true;
       return tagTree(li, t);
+    }
+
+    // splitTicket cuts a leading ticket number off a name and makes the badge
+    // for it. It returns the badge and a copy of the task with the rest of the
+    // name; the task's own name is untouched. When the task's link starts on
+    // the ticket key, the badge is that link and the rest keeps what is left of
+    // it. A link that only partly covers the key is left alone: no badge.
+    function splitTicket(t) {
+      var m = TICKET_KEY.exec(t.name || '');
+      if (!m || t.name.length === m[0].length) return null;
+      var key = m[1];
+      var copy = Object.assign({}, t, { name: t.name.slice(m[0].length) });
+      var badge;
+      var r = linkRange(t);
+      if (t.url && r && r.start < key.length && !(r.start === 0 && r.end >= key.length)) return null;
+      if (t.url && r && r.start === 0) {
+        badge = document.createElement('a');
+        badge.className = 'ticket tk-tag';
+        badge.href = t.url;
+        badge.target = '_blank';
+        badge.rel = 'noopener noreferrer';
+        badge.title = t.url;
+        badge.draggable = false;
+        if (r.end > m[0].length) {
+          copy.link_text = t.name.slice(m[0].length, r.end);
+        } else {
+          copy.url = '';
+          copy.link_text = '';
+        }
+      } else {
+        badge = document.createElement('span');
+        badge.className = 'tk-tag';
+      }
+      badge.textContent = key;
+      return { badge: badge, task: copy };
     }
 
     // PARENT_TAG_CHARS is how much of the parent's name the tag shows.
@@ -935,7 +1003,9 @@
       var shown = t.parent;
       var path = t.parent;
       if (t.parent_name) {
-        var chars = Array.from(t.parent_name);
+        // The ticket key says nothing the row below does not already, so the
+        // tag spends its characters on the words after it.
+        var chars = Array.from(parentTagText(t.parent_name, t.name));
         shown = chars.slice(0, PARENT_TAG_CHARS).join('') + (chars.length > PARENT_TAG_CHARS ? '…' : '');
         path = (t.parent_path || []).map(function (p) {
           return (p.long ? '長期 ' : '') + p.id + ' ' + p.name;
@@ -945,8 +1015,35 @@
       tag.className = 'parent-tag';
       tag.textContent = '↑' + shown;
       tag.title = path + ' の子';
-      var name = li.querySelector('.name');
-      name.insertBefore(tag, name.firstChild);
+      var host = tagHost(li);
+      host.insertBefore(tag, host.firstChild);
+    }
+
+    // tagHost is where a row's parent and kids tags go: inside the name text
+    // (inline, so wrapped lines run under them) for queue-style rows, or beside
+    // it while the name is being edited, so the editable text stays plain.
+    function tagHost(li) {
+      var txt = li.querySelector('.name .txt');
+      if (txt && li.classList.contains('no-num') && !txt.classList.contains('live')) return txt;
+      return li.querySelector('.name');
+    }
+
+    // parentTagText is what the parent tag spells out. After the ticket key,
+    // the part of the parent's name that the child's name starts with too is
+    // skipped (siblings of one project all begin the same way), cutting only
+    // after a space or a closing bracket so no word is split. When nothing is
+    // left, the name without its ticket key is used.
+    function parentTagText(parentName, childName) {
+      var p = Array.from(stripTicket(parentName));
+      var c = Array.from(stripTicket(childName));
+      var n = 0;
+      while (n < p.length && n < c.length && p[n] === c[n]) n++;
+      for (var k = n; k > 0; k--) {
+        if (!/[\s\u3000）)]/.test(p[k - 1])) continue;
+        var rest = p.slice(k).join('').replace(/^[\s\u3000]+/, '');
+        return rest || p.join('');
+      }
+      return p.join('');
     }
 
     // addKidsTag counts the children of a row that has any: done / all of them.
@@ -958,9 +1055,9 @@
       tag.className = 'kids-tag';
       tag.textContent = '子 ' + (t.kids_done || 0) + '/' + total;
       tag.title = '子 ' + total + ' 件のうち完了 ' + (t.kids_done || 0) + ' 件';
-      var name = li.querySelector('.name');
-      var first = name.querySelector('.parent-tag');
-      name.insertBefore(tag, first ? first.nextSibling : name.firstChild);
+      var host = tagHost(li);
+      var first = host.querySelector('.parent-tag');
+      host.insertBefore(tag, first ? first.nextSibling : host.firstChild);
     }
 
     // tagTree puts the parent tag and the kids tag on a row.
