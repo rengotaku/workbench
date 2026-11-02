@@ -80,7 +80,7 @@ func undoable(k Kind) bool {
 	case KindCreated, KindRemoved, KindRenamed, KindDetail, KindDueSet,
 		KindLinked, KindLinks, KindDone, KindReopened, KindWaiting, KindResumed,
 		KindShelved, KindReordered, KindFocused, KindUnfocused,
-		KindLonged, KindUnlonged, KindParentSet, KindReviewSet:
+		KindLonged, KindUnlonged, KindParentSet, KindReviewSet, KindTopicSet:
 		return true
 	default:
 		return false
@@ -147,6 +147,15 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 			return "", err
 		}
 		return fmt.Sprintf("詳細を戻した: %s %s", t.ID, t.Name), nil
+
+	case KindTopicSet:
+		t.Topic = e.FromValue
+		s.st.Tasks[i] = t
+		if err := s.recordSpent(Event{TaskID: t.ID, Kind: KindTopicSet, Actor: actor,
+			FromValue: e.ToValue, ToValue: e.FromValue}); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("話題を戻した: %s %s", t.ID, t.Name), nil
 
 	case KindLinked:
 		t.URL = e.FromValue

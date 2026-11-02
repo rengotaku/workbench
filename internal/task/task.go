@@ -63,6 +63,9 @@ const (
 	// KindReviewSet moves a long-run task's next review date; from/to hold the
 	// old and new dates, and the snapshot the task as it was (ADR todo-0022).
 	KindReviewSet Kind = "review_set"
+	// KindTopicSet changes the task's topic; from/to hold the old and new text
+	// (empty = no topic). ADR todo-0024.
+	KindTopicSet Kind = "topic_set"
 	// KindAnnotated is a supplement appended to a task. It is not undoable:
 	// see ADR todo-0010.
 	KindAnnotated Kind = "annotated"
@@ -122,6 +125,9 @@ type Task struct {
 	// empty counts as due. ReviewedAt is when somebody last reviewed it.
 	ReviewOn   string     `json:"review_on,omitempty"`
 	ReviewedAt *time.Time `json:"reviewed_at,omitempty"`
+	// Topic is a short label the page can group the queue by (ADR todo-0024);
+	// empty means none.
+	Topic string `json:"topic,omitempty"`
 	// Annotations are appended supplements, oldest first. Undo leaves them.
 	Annotations []Annotation `json:"annotations,omitempty"`
 	// Links are the related URLs the name refers to as [1], [2] …. The old

@@ -178,6 +178,65 @@
   .scope-set button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); font-weight: 500; }
   .scope-set button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+  /* The queue's grouping switch. The note is a small helper label, so it takes
+     --ink-soft (--muted is 3.8:1 on white, under AA for 11px text). */
+  .group-set { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .group-toggle {
+    appearance: none;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-ctl);
+    background: var(--surface);
+    color: var(--ink-soft);
+    font-family: var(--sans);
+    font-size: var(--fs-md2);
+    padding: 6px 11px;
+    cursor: pointer;
+  }
+  .group-toggle[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
+  .group-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .group-note { font-size: var(--fs-xs); color: var(--ink-soft); line-height: 1.3; }
+
+  /* A topic heading inside the queue. It starts at the card's 22px edge like
+     the grip column of the rows, and bleeds like the rows do. */
+  .topic-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-inline: -22px;
+    padding: 12px 22px 4px;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: var(--fs-md2);
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .topic-head.none .th-name { color: var(--ink-soft); font-weight: 500; }
+  .topic-head .th-n {
+    font-family: var(--mono);
+    font-size: var(--fs-sm);
+    font-weight: 400;
+    color: var(--ink-soft);
+    background: var(--surface-sunk);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* The one-line topic input, in the open row and in the box beside the list. */
+  .topic-line { display: flex; align-items: center; gap: 8px; }
+  .topic-label { flex: none; font-size: var(--fs-xs); letter-spacing: .08em; color: var(--ink-soft); }
+  .topic-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 4px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--fs-md2);
+  }
+  .topic-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .detail > .topic-line { margin-bottom: 8px; }
+
   .scope-until { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: var(--fs-md); color: var(--muted); }
   .scope-until input {
     font-family: var(--mono);

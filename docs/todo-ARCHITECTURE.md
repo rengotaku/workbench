@@ -100,6 +100,9 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | チェックを入れる | 完了。今週完了へ移る |
 | 完了行のチェックを外す | 復活。着手順の末尾へ戻る |
 | 期限チップを押す（着手順の行） | メニューが開く: 日付の指定 / +1週間・+2週間・+1ヶ月 / 期限なし / いつかにする。+N は今日と今の期限の遅い方から数える（超過した期限から数えると、ずらしてもまだ超過のことがあるため）。メニューは todo 一覧のルート要素の直下に置き（CSS を届かせるため）、開いている間はポーリングを止める |
+| 見出しの「話題で分ける」 | トグル。既定はオフ（今の 1 本の列）。オンにすると、着手順のスコープ内でフォーカス以外の行だけを話題ごとの小見出し（話題名と件数）の下に並べる。話題の並びは、その話題で着手順の一番上にある行の順。各話題の中は着手順のまま。話題の無い行は最後の「話題なし」。フォーカスの帯・長期・スコープ外・待ち・いつか・完了は区切らない。状態は localStorage（`todo-order.group-by-topic`）。トグルの下に「分けている間は並べ替えできない」と出す（ADR todo-0024） |
+| 区切っている間の着手順の行 | ハンドルを出さず、ドラッグできない。着手順への drop も受けない（帯とスコープ外の中・間は今まで通り）。位置の番号は出さない |
+| 開いた行・右の詳細の箱の「話題」 | 1 行入力（`datalist` に使われている話題を候補で出す）。打ち終わり（0.9 秒）と離れた時に保存し（`PATCH` の `topic`）、空にすると外れる。行には話題の札を出さない |
 | 行の削除アイコン（期限の隣） | ホバーしている行にだけ出る。作ってから 1 時間未満のタスクは押すとその場で取り除く（確認は挟まない）。1 時間以上たったタスクは理由の入力欄が出て、書いてから Enter か「削除する」で取り除く（Escape・欄の外で取りやめ。ADR todo-0016）。消したものは通知の「元に戻す」か `Cmd/Ctrl+Z` で戻る |
 | タスク名（関連 URL を持つタスク） | 名前の `[N]` が関連 URL N へのリンクになる。詳細欄に関連 URL の一覧が出る（ADR todo-0014） |
 | タスク名（`url` を持つ古いタスク） | 名前のうちリンクだった部分がその URL へのリンクになる。関連 URL ができる前に作ったタスクだけ（ADR todo-0008） |
@@ -119,6 +122,16 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 カードの中は左端が 1 本（22px）。`.app-head` / `.sec` / `.add-row` の水平 padding と、行の `border-left`(3px) + `padding-left`(19px) を同じ値に保つ。行だけがカード端まで伸びるのは、色帯を縁に置くため。
 
 画面幅が 900px 以上のときは、一覧の右に詳細の箱が常に出る（`.panes` の 2 列）。箱は 260px 固定で、一覧が残りを取る（`minmax(0, 1fr) 260px`、間 18px）。全体の上限は 1100px なので、一覧は最大 822px。箱の中の名前・詳細・関連 URL・経緯・状況は折り返し、横にはみ出さない。900px 未満では箱ごと消える。
+
+## 話題
+
+`Task.Topic` は短い文字列（空は話題なし）で、着手順を画面で区切って見るための札（ADR todo-0024）。着手順の順序（`Order`）とは無関係で、区切りは表示だけ。
+
+- `task.NormalizeTopic` が前後の空白を落とし、`MaxTopicLen`（20 文字。文字数で数える）と改行を検査する。`Store.SetTopic`（`PATCH /api/tasks/:id` の `topic`、`todo topic`）が設定・解除する。同じ値なら何も記録しない
+- イベントは `topic_set`（`from_value` / `to_value` が新旧の話題、空は話題なし）。undo は前の話題（なしを含む）へ戻す
+- 一覧の応答の `topics` は使われている話題を重複なしで返す。順序はキュー（フォーカス含む）で最初に出た順、続けて長期・待ち・いつか。話題が無ければ `[]`。画面の入力候補（`datalist`）に使う
+- CLI: `todo topic <ID> <話題|->`（`-` で外す）、`todo "名前" --topic 話題`（追加してから話題を付ける。話題が不正なら何も追加しない）。`todo list` は区切らず、フォーカスと着手順の行の末尾に `{話題}` を付ける
+- 画面の区切りは `app.js` の `groupByTopic`（並べる）と `renderGrouped`（見出しを描く）。区切り中は `queueRow(t, true)` でハンドルを出さず、`onDragOver` が着手順への drop を受けない
 
 ## 人と AI が同時に触ったとき
 
@@ -262,6 +275,9 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | 画面からの状況の追記（入力欄） | `web/todo/static/js/app.js` の `statusBlock`、見た目は `style.css` の `.status-*` |
 | 一覧の行に出す最新の状況 | `web/todo/static/js/app.js` の `latestStatus`、見た目は `style.css` の `.row-status` |
 | CLI の出力 | `cmd/todo/main.go`（サーバへの呼び出しは `internal/taskclient`） |
+| 話題の検査・設定・上限 | `internal/task/topic.go`（`NormalizeTopic` / `SetTopic` / `MaxTopicLen`）、undo は `internal/task/undo.go` の `KindTopicSet` |
+| 話題の候補（`topics`） | `internal/taskapi/api.go` の `topicsInUse` |
+| 話題の入力欄・区切り表示 | `web/todo/static/js/app.js` の `topicField` / `groupByTopic` / `renderGrouped`、見た目は `style.css` の `.topic-*` / `.group-*` |
 | 保存の形 | `internal/task/store.go`。`persist` が状態、`appendEvent` がログ |
 | 旧台帳の読み取り | `internal/legacy/legacy.go` |
 | ポート・待ち受け・データ置き場 | `cmd/server/main.go` の `Config`（env で上書き）と `launchd/` のテンプレート |

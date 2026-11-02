@@ -53,11 +53,12 @@ func rootCmd() *cobra.Command {
 	root.PersistentFlags().BoolVar(&asJSON, "json", false, "print the raw JSON response")
 	root.Flags().String("due", "", "due date (YYYY-MM-DD)")
 	root.Flags().String("detail", "", "detail text")
+	root.Flags().String("topic", "", "話題（"+fmt.Sprint(task.MaxTopicLen)+" 文字まで）。着手順を話題で分けて見るための札")
 	root.Flags().String("parent", "", "親にするタスクの ID。そのタスクの子として追加する")
 	root.Flags().StringArray("link", nil, "関連 URL（\"<URL> 一言\" の形。一言は省略可）。書いた順に [1] [2] … と番号が付く")
 
 	root.AddCommand(listCmd(), doneCmd(), reopenCmd(), removeCmd(), waitCmd(), resumeCmd(),
-		somedayCmd(), orderCmd(), dueCmd(), detailCmd(), annotateCmd(), renameCmd(), focusCmd(true), focusCmd(false),
+		somedayCmd(), orderCmd(), dueCmd(), detailCmd(), topicCmd(), annotateCmd(), renameCmd(), focusCmd(true), focusCmd(false),
 		longCmd(true), longCmd(false), parentCmd(), reviewCmd(),
 		undoCmd(), askCmd(), whyCmd(), contextCmd(), importCmd())
 	return root
@@ -80,6 +81,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	due, _ := cmd.Flags().GetString("due")
 	detail, _ := cmd.Flags().GetString("detail")
 	parent, _ := cmd.Flags().GetString("parent")
+	topic, _ := cmd.Flags().GetString("topic")
+	// Checked before anything is created, so a bad topic adds nothing.
+	topic, err := task.NormalizeTopic(topic)
+	if err != nil {
+		return err
+	}
 	name := strings.Join(args, " ")
 	rawLinks, _ := cmd.Flags().GetStringArray("link")
 	links := make([]task.LinkInput, 0, len(rawLinks))
@@ -102,6 +109,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	if err != nil {
 		return err
+	}
+	if topic != "" {
+		// SetTopic returns a zero Task on failure, so keep the added ID apart.
+		added := t.ID
+		tt, rawTopic, terr := c.SetTopic(added, topic)
+		if terr != nil {
+			return fmt.Errorf("追加 %s は済んだが話題を付けられなかった（todo topic %s %s で付け直せる）: %w", added, added, topic, terr)
+		}
+		t, raw = tt, rawTopic
 	}
 	if asJSON {
 		return printRaw(raw)
@@ -175,13 +191,13 @@ func printBoard(b taskclient.Board) {
 	if len(b.Focus) > 0 {
 		fmt.Println("\n[フォーカス]")
 		for _, t := range b.Focus {
-			fmt.Printf("  ◎ %-6s %s%s%s\n", t.ID, t.Name, dueSuffix(t), idleSuffix(t))
+			fmt.Printf("  ◎ %-6s %s%s%s%s\n", t.ID, t.Name, dueSuffix(t), idleSuffix(t), topicMark(t))
 		}
 	}
 	if len(b.Queue) > 0 {
 		fmt.Println("\n[着手順]")
 		for i, t := range b.Queue {
-			fmt.Printf("%3d %-6s %s%s%s%s%s\n", i+1, t.ID, t.Name, detailMark(t), parentMark(t), dueSuffix(t), idleSuffix(t))
+			fmt.Printf("%3d %-6s %s%s%s%s%s%s\n", i+1, t.ID, t.Name, detailMark(t), parentMark(t), dueSuffix(t), idleSuffix(t), topicMark(t))
 		}
 	}
 	if len(b.Long) > 0 {
@@ -685,6 +701,37 @@ func annotateCmd() *cobra.Command {
 	return c
 }
 
+func topicCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "topic <ID> <話題|->",
+		Short: "話題を付ける（- で外す）",
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(_ *cobra.Command, args []string) error {
+			topic := strings.Join(args[1:], " ")
+			if topic == "-" {
+				topic = ""
+			}
+			cl, err := newClient()
+			if err != nil {
+				return err
+			}
+			t, raw, err := cl.SetTopic(args[0], topic)
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return printRaw(raw)
+			}
+			if t.Topic == "" {
+				fmt.Printf("話題を外した %s  %s\n", t.ID, t.Name)
+			} else {
+				fmt.Printf("話題 %s  %s  {%s}\n", t.ID, t.Name, t.Topic)
+			}
+			return nil
+		},
+	}
+}
+
 func renameCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "rename <ID> <新しい名前>",
@@ -941,6 +988,14 @@ func dueSuffix(t taskclient.Task) string {
 		return "  [" + t.Due + " " + t.DueLabel + "]"
 	}
 	return "  [" + t.Due + "]"
+}
+
+// topicMark puts the topic at the end of a row as {話題}.
+func topicMark(t taskclient.Task) string {
+	if t.Topic == "" {
+		return ""
+	}
+	return "  {" + t.Topic + "}"
 }
 
 func detailMark(t taskclient.Task) string {

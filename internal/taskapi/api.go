@@ -131,6 +131,10 @@ type listResponse struct {
 	Someday []View      `json:"someday"`
 	Done    []View      `json:"done"`
 	Dropped []task.Drop `json:"dropped"`
+	// Topics are the topics in use, each once, in the order they first appear
+	// down the queue (focus first), then long, waiting and someday. They feed
+	// the page's input suggestions (ADR todo-0024).
+	Topics []string `json:"topics"`
 	// Counts splits the queue the same way as the row stripe (ADR todo-0011):
 	// over = start date passed, near = start date is today, rest = everything
 	// else. The keys keep their names because the page and the CLI read them.
@@ -236,6 +240,7 @@ func (a *API) build(scope int) listResponse {
 	}
 
 	res.NextDue = nextDue(res.Queue, res.Today)
+	res.Topics = topicsInUse(res)
 
 	// Someday reads as a shelf, not a queue: what to look at soonest comes
 	// first, and what has no date at all trails behind everything that does.
@@ -250,6 +255,32 @@ func (a *API) build(scope int) listResponse {
 		return u < v
 	})
 	return res
+}
+
+// topicsInUse lists each topic once, in the order it first appears down the
+// queue, then the long, waiting and someday rows. Never nil, so the JSON is [].
+func topicsInUse(res listResponse) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	add := func(t string) {
+		if t != "" && !seen[t] {
+			seen[t] = true
+			out = append(out, t)
+		}
+	}
+	for _, v := range res.Queue {
+		add(v.Topic)
+	}
+	for _, v := range res.Long {
+		add(v.Topic)
+	}
+	for _, v := range res.Waiting {
+		add(v.Topic)
+	}
+	for _, v := range res.Someday {
+		add(v.Topic)
+	}
+	return out
 }
 
 // kidCount is what the children of one task add up to.
@@ -479,7 +510,9 @@ type patchRequest struct {
 	// Links is the task's full new list; absent leaves it alone, [] clears it.
 	Links *[]task.LinkInput `json:"links"`
 	// Parent ties the task to another task; "" unties it.
-	Parent   *string `json:"parent"`
+	Parent *string `json:"parent"`
+	// Topic sets the topic; "" clears it (ADR todo-0024).
+	Topic    *string `json:"topic"`
 	LinkText string  `json:"link_text"`
 	Actor    string  `json:"actor"`
 }
@@ -497,6 +530,12 @@ func (a *API) patchTask(c *gin.Context) {
 	if req.Links != nil {
 		if err := task.ValidateLinks(*req.Links); err != nil {
 			a.fail(c, err)
+			return
+		}
+	}
+	if req.Topic != nil {
+		if _, err := task.NormalizeTopic(*req.Topic); err != nil {
+			badRequest(c, err)
 			return
 		}
 	}
@@ -541,8 +580,14 @@ func (a *API) patchTask(c *gin.Context) {
 			return
 		}
 	}
-	if req.Name == nil && req.Due == nil && req.Detail == nil && req.URL == nil && req.Links == nil && req.Parent == nil {
-		badRequest(c, errors.New("nothing to change: pass name, due, detail, url, links or parent"))
+	if req.Topic != nil {
+		if t, err = a.store.SetTopic(id, *req.Topic, actor); err != nil {
+			a.respond(c, t, err)
+			return
+		}
+	}
+	if req.Name == nil && req.Due == nil && req.Detail == nil && req.URL == nil && req.Links == nil && req.Parent == nil && req.Topic == nil {
+		badRequest(c, errors.New("nothing to change: pass name, due, detail, url, links, parent or topic"))
 		return
 	}
 	a.respond(c, t, nil)

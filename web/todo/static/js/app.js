@@ -18,6 +18,10 @@
     '        <span class="app-date"></span>',
     '      </div>',
     '      <div class="head-right">',
+    '        <div class="group-set">',
+    '          <button type="button" class="group-toggle" id="group-toggle" aria-pressed="false" title="着手順を話題ごとの見出しで区切って見せる。順序は変わらない">話題で分ける</button>',
+    '          <span class="group-note" id="group-note" hidden>分けている間は並べ替えできない</span>',
+    '        </div>',
     '        <div class="scope-set" role="group" aria-label="スコープ">',
     '          <button type="button" data-scope="week" aria-pressed="true" title="今週の日曜まで">1週間</button>',
     '          <button type="button" data-scope="2weeks" aria-pressed="false" title="来週の日曜まで">2週間</button>',
@@ -105,6 +109,7 @@
     '    </div>',
     '  </div>',
     '  <aside class="detail" id="detail" aria-live="polite"></aside>',
+    '  <datalist id="todo-topics"></datalist>',
     '  </div>',
     '',
     '  <div class="legend">',
@@ -149,6 +154,7 @@
     var OUT_KEY = 'todo-order.out-open';
     var WAIT_KEY = 'todo-order.wait-open';
     var LONG_KEY = 'todo-order.long-open';
+    var GROUP_KEY = 'todo-order.group-by-topic';
     var POLL_MS = 4000;
     // A task this old asks for a reason before the trash icon takes it out.
     var ASK_DROP_AFTER_MS = 60 * 60 * 1000;
@@ -161,6 +167,9 @@
       // The long-run band is a reminder, not today's work: closed by default
       // (ADR todo-0019).
       longOpen: false,
+      // Group the queue under a heading per topic. Display only: the order is
+      // still one list (ADR todo-0024).
+      groupByTopic: false,
       board: null,
       openId: null, // only one row is open at a time; another row closes it
       doneOpen: false, // the completed list is a record, not a queue
@@ -226,6 +235,9 @@
       doneCount: document.getElementById('done-count'),
       dropFold: document.getElementById('drop-fold'),
       dropCount: document.getElementById('drop-count'),
+      groupToggle: document.getElementById('group-toggle'),
+      groupNote: document.getElementById('group-note'),
+      topicList: document.getElementById('todo-topics'),
       untilWrap: document.getElementById('scope-until-wrap'),
       until: document.getElementById('scope-until'),
       err: document.getElementById('err'),
@@ -388,7 +400,15 @@
       var queue = unfocusedQueue();
       var outRows = byDue(queue.filter(function (t) { return !t.in_scope; }));
       el.queue.textContent = '';
-      queue.forEach(function (t) { if (t.in_scope) el.queue.appendChild(queueRow(t)); });
+      var inScope = queue.filter(function (t) { return t.in_scope; });
+      if (state.groupByTopic) {
+        renderGrouped(inScope);
+      } else {
+        inScope.forEach(function (t) { el.queue.appendChild(queueRow(t)); });
+      }
+      el.groupToggle.setAttribute('aria-pressed', String(state.groupByTopic));
+      el.groupNote.hidden = !state.groupByTopic;
+      fillTopicList(b.topics || []);
       el.outSec.hidden = outRows.length === 0;
       el.outCount.textContent = outRows.length;
       el.outFrom.textContent = '期限 ' + monthDay(shiftDay(b.today, b.scope_days + 1)) + ' 以降';
@@ -437,6 +457,53 @@
       el.dropList.hidden = !state.dropOpen;
       el.dropList.textContent = '';
       dropped.forEach(function (d) { el.dropList.appendChild(dropRow(d)); });
+    }
+
+    // groupByTopic splits rows (already in queue order) into topics. Topics
+    // come in the order of their top row; rows without one go last. Each group
+    // keeps the queue order, so no row moves relative to its group-mates.
+    function groupByTopic(rows) {
+      var order = [];
+      var by = Object.create(null); // a topic may be spelled like an Object method
+      rows.forEach(function (t) {
+        var k = t.topic || '';
+        if (!by[k]) { by[k] = []; if (k !== '') order.push(k); }
+        by[k].push(t);
+      });
+      var groups = order.map(function (k) { return { topic: k, rows: by[k] }; });
+      if (by['']) groups.push({ topic: '', rows: by[''] });
+      return groups;
+    }
+
+    // renderGrouped draws the in-scope queue under a small heading per topic.
+    // The rows cannot be dragged here: a drop inside a group has no meaning for
+    // a queue that is still one list (ADR todo-0024).
+    function renderGrouped(rows) {
+      groupByTopic(rows).forEach(function (g) {
+        var head = document.createElement('li');
+        head.className = 'topic-head' + (g.topic === '' ? ' none' : '');
+        var name = document.createElement('span');
+        name.className = 'th-name';
+        name.textContent = g.topic === '' ? '話題なし' : g.topic;
+        var n = document.createElement('span');
+        n.className = 'th-n';
+        n.textContent = g.rows.length;
+        head.appendChild(name);
+        head.appendChild(n);
+        el.queue.appendChild(head);
+        g.rows.forEach(function (t) { el.queue.appendChild(queueRow(t, true)); });
+      });
+    }
+
+    // fillTopicList refreshes the suggestions every topic field offers.
+    function fillTopicList(topics) {
+      if (!el.topicList) return;
+      el.topicList.textContent = '';
+      topics.forEach(function (name) {
+        var o = document.createElement('option');
+        o.value = name;
+        el.topicList.appendChild(o);
+      });
     }
 
     // After a reload the box holds an older copy of the task. Redraw it from the
@@ -933,11 +1000,11 @@
 
     // queueRow draws a queue task, in the band or in the list below it: the same
     // row either way, so a focused task opens where it is.
-    function queueRow(t) {
+    function queueRow(t, fixed) {
       var cls = dueStripe(t);
       var li = row({
         task: t,
-        draggable: true,
+        draggable: !fixed,
         // The position is not shown. The order is what the list is for, and the
         // row above/below already says it; a number only adds a value that goes
         // stale the moment anything moves. It is still kept server-side, and
@@ -953,7 +1020,7 @@
         dueTitle: dueTitle(t),
         extraClass: cls,
       });
-      li.draggable = true;
+      li.draggable = !fixed;
       return tagTree(li, t);
     }
 
@@ -1311,6 +1378,9 @@
     // any operation with it.
     function showDetail(t) {
       if (!el.detail) return;
+      // Typing in the box's topic field: another row under the pointer must not
+      // swap the box (and the field) away mid-edit.
+      if (el.detail.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
       state.shownId = t.id;
       el.detail.textContent = '';
 
@@ -1328,6 +1398,8 @@
       name.className = 'd-name';
       writeName(name, t);
       el.detail.appendChild(name);
+
+      el.detail.appendChild(topicField(t, 'd-topic-' + t.id));
 
       var body = document.createElement('div');
       body.className = 'd-body' + (t.detail ? '' : ' none');
@@ -1412,6 +1484,82 @@
       tag.title = from + 'から ' + t.idle_days + '日'
         + (t.idle_from === 'annotation' ? '' : '。人が補足を書くと、そこから数え直す');
       return tag;
+    }
+
+    // topicField is the one-line input for a task's topic, in the open row and
+    // in the box beside the list. The value is saved when typing stops or the
+    // field is left, like the name and detail; "" clears it. Suggestions come
+    // from the datalist of topics in use.
+    function topicField(t, id) {
+      var line = document.createElement('div');
+      line.className = 'topic-line';
+      var label = document.createElement('label');
+      label.className = 'topic-label';
+      label.htmlFor = id;
+      label.textContent = '話題';
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.id = id;
+      input.className = 'topic-input';
+      input.autocomplete = 'off';
+      input.spellcheck = false;
+      input.maxLength = 20; // task.MaxTopicLen; the server checks it again
+      input.setAttribute('list', 'todo-topics');
+      input.placeholder = 'なし';
+      input.value = t.topic || '';
+
+      var last = t.topic || '';
+      var timer = null;
+      // One PATCH at a time: a later save waits for the one in flight and then
+      // sends whatever the field holds, so an older value can never land last.
+      var saving = false;
+      var again = false;
+      var reloadAfter = false;
+      function save(reload) {
+        if (reload) reloadAfter = true;
+        if (saving) { again = true; return; }
+        var value = input.value.trim();
+        if (value === last) { finish(); return; }
+        saving = true;
+        var inRow = !!input.closest('.panel'); // the box beside the list has no save slot
+        if (inRow) mark(input, '保存中…');
+        request('PATCH', '/api/tasks/' + encodeURIComponent(t.id), { topic: value })
+          .then(function () {
+            last = value;
+            t.topic = value;
+            if (inRow) mark(input, '保存した', true);
+          })
+          // Keep what was typed: it may already be newer than the failed value.
+          .catch(function (err) { showError(err); })
+          .then(function () {
+            saving = false;
+            if (again) { again = false; save(false); return; }
+            finish();
+          });
+      }
+      function finish() {
+        if (!reloadAfter || saving) return;
+        reloadAfter = false;
+        if (!state.busy) load();
+      }
+      input.addEventListener('focus', function () { state.busy = true; });
+      input.addEventListener('input', function () {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(function () { save(false); }, 900);
+      });
+      input.addEventListener('blur', function () {
+        window.clearTimeout(timer);
+        state.busy = false;
+        save(true);
+      });
+      input.addEventListener('keydown', function (e) {
+        if (composing(e)) return;
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { e.stopPropagation(); input.blur(); }
+      });
+      line.appendChild(label);
+      line.appendChild(input);
+      return line;
     }
 
     // statusBlock is the field that appends one line of status to the open row.
@@ -1680,6 +1828,8 @@
       detail.textContent = t.detail || '';
       wireLiveField(detail, t, 'detail', { single: false });
       panel.appendChild(detail);
+
+      panel.appendChild(topicField(t, 'topic-' + t.id));
 
       panel.appendChild(statusBlock(t));
 
@@ -2089,6 +2239,7 @@
       unlonged: '長期から外した',
       parent_set: '親を変更',
       review_set: '見直し',
+      topic_set: '話題',
       reordered: '順序変更',
       due_set: '期限',
       waiting: '待ちへ',
@@ -2170,6 +2321,7 @@
           return ' ' + (e.to_value || '');
         case 'parent_set':
         case 'review_set':
+        case 'topic_set':
           return ' ' + (e.from_value || 'なし') + ' → ' + (e.to_value || 'なし');
         default:
           return '';
@@ -2540,6 +2692,12 @@
       render();
     });
 
+    el.groupToggle.addEventListener('click', function () {
+      state.groupByTopic = !state.groupByTopic;
+      try { localStorage.setItem(GROUP_KEY, state.groupByTopic ? '1' : '0'); } catch (e) { /* private window */ }
+      render();
+    });
+
     el.longFold.addEventListener('click', function () {
       state.longOpen = !state.longOpen;
       try { localStorage.setItem(LONG_KEY, state.longOpen ? '1' : '0'); } catch (e) { /* private window */ }
@@ -2610,6 +2768,9 @@
     function onDragOver(list) {
       return function (ev) {
         if (!dragged) return;
+        // Grouped: nothing can land in the queue. No preventDefault, so the
+        // browser shows the drop as not allowed and the drag ends as a cancel.
+        if (state.groupByTopic && list === el.queue) return;
         ev.preventDefault();
         var over = ev.target.closest('.task');
         if (over && over !== dragged && over.parentNode === list) {
@@ -2766,6 +2927,7 @@
       state.outOpen = localStorage.getItem(OUT_KEY) === '1';
       state.waitOpen = localStorage.getItem(WAIT_KEY) === '1';
       state.longOpen = localStorage.getItem(LONG_KEY) === '1';
+      state.groupByTopic = localStorage.getItem(GROUP_KEY) === '1';
     } catch (e) { /* storage unavailable; closed is the default */ }
 
     try {
