@@ -48,3 +48,12 @@ func TestList_ReadsTheLongBand(t *testing.T) {
 	assert.Equal(t, 1, b.Long[0].KidsDone)
 	assert.Equal(t, 2, b.Long[0].KidsOpen)
 }
+
+func TestSetTopic_PatchesTheTopic(t *testing.T) {
+	c, rec := serve(t, http.StatusOK, oneTask)
+	_, _, err := c.SetTopic("T1", "青環離")
+	require.NoError(t, err)
+	assert.Equal(t, http.MethodPatch, rec.method)
+	assert.Equal(t, "/api/tasks/T1", rec.path)
+	assert.Equal(t, "青環離", rec.body["topic"])
+}

@@ -225,6 +225,13 @@ func (c *Client) SetDetail(id, detail string) (Task, []byte, error) {
 	})
 }
 
+// SetTopic sets the topic; "" clears it.
+func (c *Client) SetTopic(id, topic string) (Task, []byte, error) {
+	return c.taskCall(http.MethodPatch, "/api/tasks/"+url.PathEscape(id), map[string]any{
+		"topic": topic, "actor": actor(),
+	})
+}
+
 // Annotate appends a supplement to a task. The author is the CLI's actor.
 func (c *Client) Annotate(id string, in task.AnnotationInput) (task.Annotation, []byte, error) {
 	var wrap struct {
