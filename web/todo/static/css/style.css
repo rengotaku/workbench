@@ -153,11 +153,14 @@
     justify-content: space-between;
     gap: 10px 16px;
     flex-wrap: wrap;
-    padding: 14px 22px;
+    /* The bottom and the row gap below leave room for .group-note, which
+       hangs under its button out of flow. The room is there whether the
+       note shows or not, so pressing the button moves nothing. */
+    padding: 14px 22px 22px;
     border-bottom: 1px solid var(--line);
   }
   .head-left { display: flex; align-items: baseline; gap: 10px; }
-  .head-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .head-right { display: flex; align-items: center; gap: 20px 12px; flex-wrap: wrap; }
   .app-name { font-size: var(--fs-title); font-weight: 700; letter-spacing: .02em; margin: 0; line-height: 1.2; }
   .app-date { font-family: var(--mono); font-size: var(--fs-md); color: var(--muted); letter-spacing: .04em; }
 
@@ -179,8 +182,10 @@
   .scope-set button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
   /* The queue's grouping switch. The note is a small helper label, so it takes
-     --ink-soft (--muted is 3.8:1 on white, under AA for 11px text). */
-  .group-set { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+     --ink-soft (--muted is 3.8:1 on white, under AA for 11px text). The note
+     hangs below the button out of flow: if it took space, its width would
+     widen the header controls and wrap them, moving the button just pressed. */
+  .group-set { position: relative; }
   .group-toggle {
     appearance: none;
     border: 1px solid var(--line);
@@ -194,7 +199,11 @@
   }
   .group-toggle[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 500; }
   .group-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .group-note { font-size: var(--fs-xs); color: var(--ink-soft); line-height: 1.3; }
+  .group-note {
+    position: absolute; top: 100%; left: 0; margin-top: 2px;
+    white-space: nowrap;
+    font-size: var(--fs-xs); color: var(--ink-soft); line-height: 1.3;
+  }
 
   /* A topic heading inside the queue. It starts at the card's 22px edge like
      the grip column of the rows, and bleeds like the rows do. */
@@ -1034,7 +1043,7 @@
     .task.no-num .del-slot { grid-column: 4; }
     .due { grid-column: 4; justify-self: start; }
     .del-slot { grid-column: 5; grid-row: 1; }
-    .app-head { padding: 12px 16px; }
+    .app-head { padding: 12px 16px 22px; }
     .sec, .add-row { padding-inline: 16px; }
   }
 
