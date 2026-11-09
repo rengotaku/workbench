@@ -17,7 +17,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 - **書き手はサーバだけ**。CLI もブラウザも REST を叩く。CLI はサーバが落ちていればエラーで止まり、ファイルを直接書かない
 - サーバはループバック固定で認証を持たない。LAN へは出さない
-- 画面は JS で描き、ビルド工程は無い。描画は Preact と htm（同梱の `web/shared/static/vendor/htm-preact.umd.js`）へ画面ごとに移している途中で、移していない画面は素の JS で DOM を組み立てる（ADR todo-0025、#119）。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の HTML を描く。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
+- 画面は JS で描き、ビルド工程は無い。描画は Preact と htm（同梱の `web/shared/static/vendor/htm-preact.umd.js`）へ画面ごとに移している途中で、移していない画面は素の JS で DOM を組み立てる（ADR todo-0025、#119）。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の枠を描く。todo 一覧は Preact に移してあり、枠の中の見出し・区画・行は `list.js` が描く（「一覧の描画」）。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
 
 ## ディレクトリ
 
@@ -32,7 +32,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | `internal/noteroute/` | メモの行き先を決める API。todo 行きではここがタスクを作る（`AddFromNote`）。詳細は note-ARCHITECTURE |
 | `internal/taskclient/` | CLI からサーバを叩く HTTP クライアント |
 | `internal/legacy/` | 旧台帳（テキストの TODO ファイルと順序 YAML）の読み取りと移行計画の組み立て |
-| `internal/taskweb/` | 画面（`/`・`/add`）の外枠と `/static` の配信、`/api` のマウント（`Mount`）。中身は `app.js` / `add.js` がルーターの画面として描く |
+| `internal/taskweb/` | 画面（`/`・`/add`）の外枠と `/static` の配信、`/api` のマウント（`Mount`）。中身は `app.js`・`list.js` / `add.js` がルーターの画面として描く |
 | `web/shared/` | todo と note 共通のレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・`common.js`（API 呼び出し、追加ダイアログへの通知 `tell` / `leave`）・`router.js`（画面の切り替えとダイアログへの貸し出し `lend`）・`modal.js`（追加ダイアログ）・`vendor/`（同梱の Preact と htm。版と入れ替え手順は `vendor/README.md`）。`/shared` で配信 |
 | `web/todo/` | テンプレート・CSS・JS。`embed` でバイナリに焼き込む |
 | `e2e/` | 画面の E2E テスト（`//go:build e2e`）。実サーバを作って起動し、headless Chrome を chromedp で動かす |
@@ -124,6 +124,19 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 画面幅が 900px 以上のときは、一覧の右に詳細の箱が常に出る（`.panes` の 2 列）。箱は 260px 固定で、一覧が残りを取る（`minmax(0, 1fr) 260px`、間 18px）。全体の上限は 1100px なので、一覧は最大 822px。箱の中の名前・詳細・関連 URL・経緯・状況は折り返し、横にはみ出さない。900px 未満では箱ごと消える。
 
+## 一覧の描画
+
+todo 一覧は 2 つのファイルで描く（ADR todo-0025、#121）。
+
+| ファイル | 持つもの |
+|---|---|
+| `web/todo/static/js/list.js` | Preact の部品。`.app` の中（見出し・件数・長期の見直しの帯・フォーカスの帯・各区画・行・札）を `render(container, view)` で描く。状態は持たず、`app.js` から盤面（`board`）と `state` を受け取る。行は task の ID を key にするので、描き直しで変わっていない行の DOM が残る（開いた行・入力中の欄・フォーカス・CSS アニメーション） |
+| `web/todo/static/js/app.js` | 状態（`state`）・API 呼び出し・ポーリング・ドラッグ・期限メニュー・開いた行の詳細（`panelFor`）と名前の欄（`wireLiveField`）。`render()` が `list.render` を呼ぶ |
+
+- 素の JS と同居する形: 開いた行の名前の欄（`.txt.live`）と詳細パネル（`.panel`）は、Preact が子を管理しない宿（`Host`）として空の要素だけ描き、中身は `app.js` の `mountName` / `mountPanel` が満たす。宿は盤面の `revision` が変わると作り直すが、`state.busy`（欄にフォーカスがある間・ドラッグ中・メニューが開いている間）は作り直さない。そのため入力中の欄は、ポーリングの応答で描き直されても同じ要素のまま文字が残る（#115）。宿が DOM から外れたとき、フォーカスが中にあれば `state.busy` を戻す（blur が来ない場合に備える）
+- Preact が描く要素を素の JS から直接書き換えない。期限メニューと削除の理由欄は `.app` の外（画面のルート要素の直下）に置く。メニューが開いている行の印（`aria-expanded`）と戻した行の色（`landed`）は、`state.menuId` / `state.landedId` から描く。ドラッグのプレビューは行の要素を直接動かすので、`render()` が先にそれを元の場所へ戻してから描く
+- `load()` は連番（`loadSeq`）を持ち、遅れて届いた古い一覧の応答は捨てる（タイムラインの `seq` と同じ）
+
 ## 話題
 
 `Task.Topic` は短い文字列（空は話題なし）で、着手順を画面で区切って見るための札（ADR todo-0024）。着手順の順序（`Order`）とは無関係で、区切りは表示だけ。
@@ -132,7 +145,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 - イベントは `topic_set`（`from_value` / `to_value` が新旧の話題、空は話題なし）。undo は前の話題（なしを含む）へ戻す
 - 一覧の応答の `topics` は使われている話題を重複なしで返す。順序はキュー（フォーカス含む）で最初に出た順、続けて長期・待ち・いつか。話題が無ければ `[]`。画面の入力候補（`datalist`）に使う
 - CLI: `todo topic <ID> <話題|->`（`-` で外す）、`todo "名前" --topic 話題`（追加してから話題を付ける。話題が不正なら何も追加しない）。`todo list` は区切らず、フォーカスと着手順の行の末尾に `{話題}` を付ける
-- 画面の区切りは `app.js` の `groupByTopic`（並べる）と `renderGrouped`（見出しを描く）。区切り中は `queueRow(t, true)` でハンドルを出さず、`onDragOver` が着手順への drop を受けない
+- 画面の区切りは `list.js` の `groupByTopic`（並べる）と `groupedRows`（見出しを描く）。区切り中は `queueRow(t, true, v)` でハンドルを出さず、`app.js` の `onDragOver` が着手順への drop を受けない
 
 ## 人と AI が同時に触ったとき
 
@@ -202,7 +215,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | 期限がスコープ外 | `plain` | 帯なし + 灰チップ「M/D から」。行の文字は薄い。「スコープ外」の区画に出る | その他 |
 | 期限なし | `none` | 帯なし。**常に表示する** | その他 |
 
-超過の日数の単位は `taskapi.Span`（画面は `app.js` の `span`）が決める。6 日までは日、27 日までは週、364 日までは月（30 日。最低 1）、それより先は年で、端数は切り捨てる。期限がまだ来ていない行のラベルは日付（`fromLabel`。`11/5 から`）で、日数は出さない。チップにマウスを乗せると、日付（曜日付き）とあと何日か（例: `10/30 (金)・あと7日`）が出る（ADR todo-0023）。期限なしの行には出さない。色の意味はページ下の凡例が説明する。着手順・フォーカス・スコープ外の行には、期限の色とは別に「止まって N日」の札を出す（次の「止まっている日数」）。
+超過の日数の単位は `taskapi.Span` が決める。6 日までは日、27 日までは週、364 日までは月（30 日。最低 1）、それより先は年で、端数は切り捨てる。期限がまだ来ていない行のラベルは日付（`fromLabel`。`11/5 から`）で、日数は出さない。チップにマウスを乗せると、日付（曜日付き）とあと何日か（例: `10/30 (金)・あと7日`）が出る（ADR todo-0023）。期限なしの行には出さない。色の意味はページ下の凡例が説明する。着手順・フォーカス・スコープ外の行には、期限の色とは別に「止まって N日」の札を出す（次の「止まっている日数」）。
 
 期限は「この日ごろに着手する」目安で、優先度は並び順で表す。色は並び順では分からないこと、つまり「着手日が来たのに、まだ上へ動かしていない」行だけに付ける（ADR todo-0011）。帯とチップは同じ基準で、画面の `dueStripe` / `dueChip` が `due_class` から決める。見出しの件数（画面の「超過 N ・ 今日 N ・ ほか N」と赤・琥珀・灰、CLI の「超過 / 今日 / その他」）も同じ区切りで数える。`soon` は「ほか」に入る。JSON のキーは `over` / `near` / `rest` のままで、`near` は「今日」の件数。
 
@@ -263,12 +276,13 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | 変えたいこと | 触る場所 |
 |---|---|
 | 期限の表示文字・色の境目（3 日以内は `SoonDays`） | `internal/taskapi/api.go` の `view` |
-| 次の期限（見出しの下の 1 行） | `internal/taskapi/api.go` の `nextDue`、画面は `app.js` の `renderNextDue` |
-| チケット番号の札・親の札 | `web/todo/static/js/app.js` の `splitTicket` / `stripTicket` / `addParentTag`、見た目は `style.css` の `.tk-tag` |
+| 次の期限（見出しの下の 1 行） | `internal/taskapi/api.go` の `nextDue`、画面は `list.js` の `render`（`#next-due`）|
+| チケット番号の札・親の札 | `web/todo/static/js/list.js` の `splitTicket` / `stripTicket` / `parentTag`、見た目は `style.css` の `.tk-tag` |
 | 理由を聞く条件 | `internal/task/task.go` の `NeedsReason` / `AskReason`、待ちの閾値は `AskThresholdDays` |
-| 削除で理由を聞くまでの時間 | `web/todo/static/js/app.js` の `ASK_DROP_AFTER_MS` |
+| 削除で理由を聞くまでの時間 | `web/todo/static/js/list.js` の `ASK_DROP_AFTER_MS` |
 | 画面の見た目 | `web/shared/static/css/tokens.css`（変数）、`web/todo/static/css/style.css` |
-| 画面の挙動（ドラッグ・開閉・スコープ） | `web/todo/static/js/app.js` |
+| 画面の挙動（ドラッグ・メニュー・開いた行・読み直し） | `web/todo/static/js/app.js` |
+| 一覧の区画・行・札・件数の描画 | `web/todo/static/js/list.js` |
 | 追加画面（`/add` と追加ダイアログの中身） | `web/todo/static/js/add.js`、`web/todo/static/css/add.css` |
 | 画面の切り替え・追加ダイアログ | `web/shared/static/js/router.js`、`web/shared/static/js/modal.js` |
 | 補足の追加・検証 | `internal/task/store.go` の `Annotate`、`internal/taskapi/api.go` の `annotateTask`、`cmd/todo/main.go` の `annotateCmd` |
@@ -278,7 +292,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | CLI の出力 | `cmd/todo/main.go`（サーバへの呼び出しは `internal/taskclient`） |
 | 話題の検査・設定・上限 | `internal/task/topic.go`（`NormalizeTopic` / `SetTopic` / `MaxTopicLen`）、undo は `internal/task/undo.go` の `KindTopicSet` |
 | 話題の候補（`topics`） | `internal/taskapi/api.go` の `topicsInUse` |
-| 話題の入力欄・区切り表示 | `web/todo/static/js/app.js` の `topicField` / `groupByTopic` / `renderGrouped`、見た目は `style.css` の `.topic-*` / `.group-*` |
+| 話題の入力欄・区切り表示 | `web/todo/static/js/app.js` の `topicField`、`list.js` の `groupByTopic` / `groupedRows`、見た目は `style.css` の `.topic-*` / `.group-*` |
 | 保存の形 | `internal/task/store.go`。`persist` が状態、`appendEvent` がログ |
 | 旧台帳の読み取り | `internal/legacy/legacy.go` |
 | ポート・待ち受け・データ置き場 | `cmd/server/main.go` の `Config`（env で上書き）と `launchd/` のテンプレート |

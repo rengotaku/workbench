@@ -162,6 +162,12 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 		vendor := strings.Index(body, `src="/shared/vendor/htm-preact.umd.js"`)
 		require.GreaterOrEqual(t, vendor, 0, s.path)
 		assert.Less(t, vendor, strings.Index(body, `src="/shared/js/common.js"`), s.path)
+		// The todo list's Preact components (list.js) load before app.js, which
+		// draws through them (ADR todo-0025).
+		list := strings.Index(body, `src="/static/js/list.js"`)
+		require.GreaterOrEqual(t, list, 0, s.path)
+		assert.Less(t, vendor, list, s.path)
+		assert.Less(t, list, strings.Index(body, `src="/static/js/app.js"`), s.path)
 		// Every screen shows the one workbench icon.
 		assert.Contains(t, body, `<link rel="icon" href="/shared/icon.svg"`, s.path)
 		// No screen loads anything from a CDN (fonts included).

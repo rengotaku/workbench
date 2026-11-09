@@ -11,103 +11,7 @@
   var MARKUP = [
     '<div class="wrap">',
     '  <div class="panes">',
-    '  <div class="app">',
-    '    <div class="app-head">',
-    '      <div class="head-left">',
-    '        <h1 class="app-name">着手順</h1>',
-    '        <span class="app-date"></span>',
-    '      </div>',
-    '      <div class="head-right">',
-    '        <div class="group-set">',
-    '          <button type="button" class="group-toggle" id="group-toggle" aria-pressed="false" title="着手順を話題ごとの見出しで区切って見せる。順序は変わらない">話題で分ける</button>',
-    '          <span class="group-note" id="group-note" hidden>分けている間は並べ替えできない</span>',
-    '        </div>',
-    '        <div class="scope-set" role="group" aria-label="スコープ">',
-    '          <button type="button" data-scope="week" aria-pressed="true" title="今週の日曜まで">1週間</button>',
-    '          <button type="button" data-scope="2weeks" aria-pressed="false" title="来週の日曜まで">2週間</button>',
-    '          <button type="button" data-scope="all" aria-pressed="false">すべて</button>',
-    '          <button type="button" data-scope="custom" aria-pressed="false">指定</button>',
-    '        </div>',
-    '        <label class="scope-until" id="scope-until-wrap" hidden>～<input type="date" id="scope-until" aria-label="スコープの締め日"></label>',
-    '        <div class="counts-col">',
-    '          <div class="counts">',
-    '            <span class="count over" title="期限超過"><i aria-hidden="true"></i>超過 <b id="c-over">0</b><span class="sr">件 期限超過</span></span>',
-    '            <span class="count near" title="期限が今日"><i aria-hidden="true"></i>今日 <b id="c-near">0</b><span class="sr">件 期限が今日</span></span>',
-    '            <span class="count rest" title="期限がまだ先・期限なし"><i aria-hidden="true"></i>ほか <b id="c-rest">0</b><span class="sr">件 期限がまだ先・期限なし</span></span>',
-    '          </div>',
-    '          <p class="next-due" id="next-due" hidden></p>',
-    '        </div>',
-    '      </div>',
-    '    </div>',
-    '',
-    '    <section class="review-band" id="review-band" hidden>',
-    '      <div class="review-head">長期の見直し<span class="n" id="review-count">0</span></div>',
-    '      <ul class="review-list" id="review-list"></ul>',
-    '    </section>',
-    '',
-    '    <section class="focus-band" id="focus-band">',
-    '      <div class="focus-head">フォーカス<span class="n" id="focus-count">0</span></div>',
-    '      <ul class="list focus-list" id="focus-list"></ul>',
-    '      <p class="focus-empty" id="focus-empty" hidden>ここへドラッグするとフォーカスになる</p>',
-    '    </section>',
-    '',
-    '    <section class="sec">',
-    '      <ul class="list" id="queue"></ul>',
-    '      <div class="add" id="add-slot">',
-    '        <span></span>',
-    '        <span class="plus" aria-hidden="true">＋</span>',
-    '        <button type="button" class="as-button" id="add-trigger">タスクを追加</button>',
-    '        <kbd aria-hidden="true">N</kbd>',
-    '      </div>',
-    '    </section>',
-    '',
-    '    <section class="sec" id="long-band" hidden>',
-    '      <button type="button" class="fold-head" id="long-fold" aria-expanded="false" aria-controls="long-list">',
-    '        <span class="caret" aria-hidden="true">▶</span>長期<span class="n" id="long-count">0</span><span class="fold-note" id="long-note"></span>',
-    '      </button>',
-    '      <ul class="list long-list" id="long-list" hidden></ul>',
-    '    </section>',
-    '',
-    '    <section class="sec" id="out-sec" hidden>',
-    '      <button type="button" class="fold-head" id="out-fold" aria-expanded="false" aria-controls="outlist">',
-    '        <span class="caret" aria-hidden="true">▶</span>スコープ外<span class="n" id="out-count">0</span><span class="fold-note" id="out-from"></span>',
-    '      </button>',
-    '      <ul class="list" id="outlist" hidden></ul>',
-    '    </section>',
-    '',
-    '    <section class="sec" id="waiting-sec" hidden>',
-    '      <button type="button" class="fold-head" id="wait-fold" aria-expanded="false" aria-controls="waitlist" title="ボールを渡してからの経過日数で並ぶ">',
-    '        <span class="caret" aria-hidden="true">▶</span>待ち<span class="n" id="wait-count">0</span><span class="fold-note" id="wait-max"></span>',
-    '      </button>',
-    '      <ul class="list" id="waitlist" hidden></ul>',
-    '    </section>',
-    '',
-    '    <section class="sec" id="someday-sec" hidden>',
-    '      <button type="button" class="fold-head" id="someday-fold" aria-expanded="false" aria-controls="somedaylist">',
-    '        <span class="caret" aria-hidden="true">▶</span>いつか<span class="n" id="someday-count">0</span>',
-    '      </button>',
-    '      <ul class="list" id="somedaylist" hidden></ul>',
-    '    </section>',
-    '',
-    '    <section class="sec" id="done-sec" hidden>',
-    '      <button type="button" class="fold-head" id="done-fold" aria-expanded="false" aria-controls="donelist">',
-    '        <span class="caret" aria-hidden="true">▶</span>今週完了<span class="n" id="done-count">0</span>',
-    '      </button>',
-    '      <ul class="list" id="donelist" hidden></ul>',
-    '    </section>',
-    '',
-    '    <section class="sec" id="drop-sec" hidden>',
-    '      <button type="button" class="fold-head" id="drop-fold" aria-expanded="false" aria-controls="droplist">',
-    '        <span class="caret" aria-hidden="true">▶</span>今週やめた<span class="n" id="drop-count">0</span>',
-    '      </button>',
-    '      <ul class="list" id="droplist" hidden></ul>',
-    '    </section>',
-    '',
-    '    <div class="add-row">',
-    '      <code>todo "タスク名" --due YYYY-MM-DD</code>',
-    '      <span>→ 端末からも同じ口に入る</span>',
-    '    </div>',
-    '  </div>',
+    '  <div class="app"></div>',
     '  <aside class="detail" id="detail" aria-live="polite"></aside>',
     '  <datalist id="todo-topics"></datalist>',
     '  </div>',
@@ -128,24 +32,19 @@
   var hooks = {}; // show / hide, set once the screen is built
   var built = false;
 
-  // dateLabel turns the board's today (YYYY-MM-DD, the server's date, which
-  // the due colours are judged against) into the heading's 1/2 (曜). The
-  // weekday comes from the date itself, not the browser's time zone.
-  function dateLabel(today) {
-    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today || '');
-    if (!m) return '';
-    var day = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay();
-    return (+m[2]) + '/' + (+m[3]) + ' (' + '日月火水木金土'.charAt(day) + ')';
-  }
-
   function mount(root) {
     root.innerHTML = MARKUP;
-    var dateEl = root.querySelector('.app-date');
+    var appEl = root.querySelector('.app');
 
     var shared = window.todoShared;
     var composing = shared.composing;
     var request = shared.request;
     var wirePaste = shared.wirePaste;
+    // The list's drawing and its date helpers are list.js's (loaded before this).
+    var list = window.workbench.todoList;
+    var monthDay = list.monthDay;
+    var shiftDay = list.shiftDay;
+    var linkRange = list.linkRange;
 
     var SCOPE_KEY = 'todo-order.scope';
     var DONE_KEY = 'todo-order.done-open';
@@ -156,10 +55,10 @@
     var LONG_KEY = 'todo-order.long-open';
     var GROUP_KEY = 'todo-order.group-by-topic';
     var POLL_MS = 4000;
-    // A task this old asks for a reason before the trash icon takes it out.
-    var ASK_DROP_AFTER_MS = 60 * 60 * 1000;
     var state = {
       scope: 'week',
+      scopeKey: 'week', // which scope button is pressed; 'custom' has its own date field
+      menuId: null, // the task whose due menu is open
       // Only the band and the in-scope queue are always open. What lies past
       // the scope and what waits on someone else are opened when wanted.
       outOpen: false,
@@ -176,11 +75,25 @@
       dropOpen: false, // so is the list of what was given up on
       somedayOpen: false, // and so is the shelf: closed by default, like done
       statusDrafts: {}, // unsent status text per task id; survives redraws
-      busy: false, // a drag or a date field is in progress; do not redraw under it
+      reviewing: {}, // long-run task ids whose 見直した is in flight
       shownId: null, // the task the detail box is showing; the pointer moves it
       revealId: null, // the task a link named; its section is unfolded on first load
       landedId: null, // the task just resumed; its row is tinted for a moment
     };
+    // busy: a drag, a menu or a field is in progress; do not redraw under it.
+    // list.js keeps the open row's name and panel while it holds. When it is
+    // released, draw once more (after the focus has settled, so moving between
+    // two fields does not count) so what was held back catches up with the board.
+    var busy = false;
+    Object.defineProperty(state, 'busy', {
+      enumerable: true,
+      get: function () { return busy; },
+      set: function (v) {
+        var released = busy && !v;
+        busy = !!v;
+        if (released) window.setTimeout(function () { if (!busy) render(); }, 0);
+      },
+    });
     var landedTimer = null;
     var LANDED_MS = 3000;
 
@@ -189,61 +102,26 @@
     // in use.
     var trailCache = {};
 
-    var TRASH_SVG = '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">'
-      + '<path d="M2.5 4.5h11M6 4.5V2.8h4v1.7M4.2 4.5l.7 8.7h6.2l.7-8.7M6.6 6.8v4.6M9.4 6.8v4.6"'
-      + ' fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
-
+    // The frame's own elements. What is inside .app is drawn by list.js (the
+    // header, the bands, every section), and a draw may make a new element, so
+    // those are looked up when used instead of kept.
     var el = {
-      queue: document.getElementById('queue'),
-      waitSec: document.getElementById('waiting-sec'),
-      waitList: document.getElementById('waitlist'),
-      waitFold: document.getElementById('wait-fold'),
-      waitCount: document.getElementById('wait-count'),
-      waitMax: document.getElementById('wait-max'),
-      outSec: document.getElementById('out-sec'),
-      outList: document.getElementById('outlist'),
-      outFold: document.getElementById('out-fold'),
-      outCount: document.getElementById('out-count'),
-      outFrom: document.getElementById('out-from'),
-      somedaySec: document.getElementById('someday-sec'),
-      somedayList: document.getElementById('somedaylist'),
-      somedayFold: document.getElementById('someday-fold'),
-      somedayCount: document.getElementById('someday-count'),
-      doneSec: document.getElementById('done-sec'),
-      doneList: document.getElementById('donelist'),
-      dropSec: document.getElementById('drop-sec'),
-      dropList: document.getElementById('droplist'),
-      over: document.getElementById('c-over'),
-      near: document.getElementById('c-near'),
-      rest: document.getElementById('c-rest'),
-      nextDue: document.getElementById('next-due'),
-      longBand: document.getElementById('long-band'),
-      longFold: document.getElementById('long-fold'),
-      longList: document.getElementById('long-list'),
-      longCount: document.getElementById('long-count'),
-      longNote: document.getElementById('long-note'),
-      reviewBand: document.getElementById('review-band'),
-      reviewList: document.getElementById('review-list'),
-      reviewCount: document.getElementById('review-count'),
-      focusBand: document.getElementById('focus-band'),
-      focusList: document.getElementById('focus-list'),
-      focusCount: document.getElementById('focus-count'),
-      focusEmpty: document.getElementById('focus-empty'),
-      addTrigger: document.getElementById('add-trigger'),
       detail: document.getElementById('detail'),
-      doneFold: document.getElementById('done-fold'),
-      doneCount: document.getElementById('done-count'),
-      dropFold: document.getElementById('drop-fold'),
-      dropCount: document.getElementById('drop-count'),
-      groupToggle: document.getElementById('group-toggle'),
-      groupNote: document.getElementById('group-note'),
       topicList: document.getElementById('todo-topics'),
-      untilWrap: document.getElementById('scope-until-wrap'),
-      until: document.getElementById('scope-until'),
       err: document.getElementById('err'),
     };
+    var LIVE = {
+      queue: 'queue',
+      focusList: 'focus-list',
+      outList: 'outlist',
+      longList: 'long-list',
+      focusBand: 'focus-band',
+      until: 'scope-until',
+    };
+    Object.keys(LIVE).forEach(function (k) {
+      Object.defineProperty(el, k, { get: function () { return document.getElementById(LIVE[k]); } });
+    });
 
-    var scopeButtons = Array.prototype.slice.call(document.querySelectorAll('.scope-set button'));
 
     // ---- server ----
 
@@ -290,15 +168,21 @@
       if (has(board.long)) state.longOpen = true;
     }
 
+    // loadSeq numbers the reads, so a slow reply for an old moment (or an old
+    // scope) cannot draw over a newer one: only the latest read is taken up.
+    // The timeline's seq does the same.
+    var loadSeq = 0;
     function load() {
+      var mine = ++loadSeq;
       return request('GET', '/api/tasks?scope=' + encodeURIComponent(state.scope))
         .then(function (board) {
+          if (mine !== loadSeq) return;
           state.board = board;
           reveal(board);
           render();
           showError(null);
         })
-        .catch(showError);
+        .catch(function (err) { if (mine === loadSeq) showError(err); });
     }
 
     // reloadShowing draws the list again and then shows the error. load() clears
@@ -363,136 +247,20 @@
 
     // ---- rendering ----
 
+    // render draws the list from state.board. The drawing is list.js's (Preact):
+    // it keeps the rows that did not change, so an open row, a field being typed
+    // in and the focus survive a draw. Before the first reply it draws the empty
+    // frame. The detail box and the topic suggestions are outside .app and stay
+    // here.
     function render() {
+      // A drag previews by moving the dragged row's own element. Put it back
+      // where the last draw left it, so the next draw finds the DOM it expects.
+      if (dragRestore) { dragRestore(); dragRestore = null; }
+      list.render(appEl, { board: state.board, state: state, ctx: ctx });
       var b = state.board;
       if (!b) return;
-
-      // The date follows the board, so it moves when the day does.
-      dateEl.textContent = dateLabel(b.today);
-
-      el.over.textContent = b.counts.over;
-      el.near.textContent = b.counts.near;
-      el.rest.textContent = b.counts.rest;
-
-      // The colour is the whole legend, so each swatch says what it means. The
-      // counts split the queue the same way as the row stripes.
-      renderNextDue(b.next_due);
-      setTitle('.count.over', '赤: 期限を過ぎている — ' + b.counts.over + '件');
-      setTitle('.count.near', '黄: 期限が今日 — ' + b.counts.near + '件');
-      setTitle('.count.rest', '灰: 期限がまだ先、または期限なし — ' + b.counts.rest + '件');
-
-      renderLong(b.long || []);
-
-      // Focused tasks are the top of the queue (ADR todo-0012) and are shown in
-      // the band only, so each task appears once. The band stays when empty: it
-      // is where a row is dropped to focus it.
-      var focus = b.focus || [];
-      el.focusCount.textContent = focus.length;
-      el.focusEmpty.hidden = focus.length > 0;
-      el.focusList.textContent = '';
-      focus.forEach(function (t) { el.focusList.appendChild(queueRow(t)); });
-
-      // The queue splits in two by scope. The in-scope part keeps queue order;
-      // スコープ外 is shown nearest due first (queue order among the same day),
-      // since none of it is to be started yet and the date is what tells them
-      // apart. A drop is still placed against the whole queue (onDragEnd), so
-      // the split is only how the rows are shown.
-      var queue = unfocusedQueue();
-      var outRows = byDue(queue.filter(function (t) { return !t.in_scope; }));
-      el.queue.textContent = '';
-      var inScope = queue.filter(function (t) { return t.in_scope; });
-      if (state.groupByTopic) {
-        renderGrouped(inScope);
-      } else {
-        inScope.forEach(function (t) { el.queue.appendChild(queueRow(t)); });
-      }
-      el.groupToggle.setAttribute('aria-pressed', String(state.groupByTopic));
-      el.groupNote.hidden = !state.groupByTopic;
       fillTopicList(b.topics || []);
-      el.outSec.hidden = outRows.length === 0;
-      el.outCount.textContent = outRows.length;
-      el.outFrom.textContent = '期限 ' + monthDay(shiftDay(b.today, b.scope_days + 1)) + ' 以降';
-      setFold(el.outFold, el.outList, state.outOpen);
-      el.outList.textContent = '';
-      outRows.forEach(function (t) { el.outList.appendChild(queueRow(t)); });
-
-      var waiting = (b.waiting || []).slice().sort(function (a, c) {
-        return (c.stalled_for || 0) - (a.stalled_for || 0);
-      });
-      el.waitSec.hidden = waiting.length === 0;
-      el.waitCount.textContent = waiting.length;
-      // Folded, the longest wait is what would otherwise go unseen.
-      el.waitMax.textContent = waiting.length ? '最長 ' + (waiting[0].stalled_for || 0) + '日' : '';
-      setFold(el.waitFold, el.waitList, state.waitOpen);
-      el.waitList.textContent = '';
-      waiting.forEach(function (t) { el.waitList.appendChild(waitRow(t)); });
-
-      // Server-sorted already: soonest until first, no-until last. Arrived rows
-      // sit ahead of the rest of that order because an earlier until means
-      // arrived, not because the client re-sorts anything.
-      var someday = b.someday || [];
-      el.somedaySec.hidden = someday.length === 0;
-      var reached = someday.filter(function (t) { return t.until_reached; }).length;
-      el.somedayCount.textContent = someday.length + (reached > 0 ? '（到来 ' + reached + '）' : '');
-      setFold(el.somedayFold, el.somedayList, state.somedayOpen);
-      el.somedayList.textContent = '';
-      someday.forEach(function (t) { el.somedayList.appendChild(somedayRow(t)); });
-
       refreshDetail();
-
-      var done = b.done || [];
-      el.doneSec.hidden = done.length === 0;
-      el.doneCount.textContent = done.length;
-      el.doneFold.setAttribute('aria-expanded', String(state.doneOpen));
-      el.doneFold.querySelector('.caret').textContent = state.doneOpen ? '▼' : '▶';
-      el.doneList.hidden = !state.doneOpen;
-      el.doneList.textContent = '';
-      done.forEach(function (t) { el.doneList.appendChild(doneRow(t)); });
-
-      var dropped = b.dropped || [];
-      el.dropSec.hidden = dropped.length === 0;
-      el.dropCount.textContent = dropped.length;
-      el.dropFold.setAttribute('aria-expanded', String(state.dropOpen));
-      el.dropFold.querySelector('.caret').textContent = state.dropOpen ? '\u25bc' : '\u25b6';
-      el.dropList.hidden = !state.dropOpen;
-      el.dropList.textContent = '';
-      dropped.forEach(function (d) { el.dropList.appendChild(dropRow(d)); });
-    }
-
-    // groupByTopic splits rows (already in queue order) into topics. Topics
-    // come in the order of their top row; rows without one go last. Each group
-    // keeps the queue order, so no row moves relative to its group-mates.
-    function groupByTopic(rows) {
-      var order = [];
-      var by = Object.create(null); // a topic may be spelled like an Object method
-      rows.forEach(function (t) {
-        var k = t.topic || '';
-        if (!by[k]) { by[k] = []; if (k !== '') order.push(k); }
-        by[k].push(t);
-      });
-      var groups = order.map(function (k) { return { topic: k, rows: by[k] }; });
-      if (by['']) groups.push({ topic: '', rows: by[''] });
-      return groups;
-    }
-
-    // renderGrouped draws the in-scope queue under a small heading per topic.
-    // The rows cannot be dragged here: a drop inside a group has no meaning for
-    // a queue that is still one list (ADR todo-0024).
-    function renderGrouped(rows) {
-      groupByTopic(rows).forEach(function (g) {
-        var head = document.createElement('li');
-        head.className = 'topic-head' + (g.topic === '' ? ' none' : '');
-        var name = document.createElement('span');
-        name.className = 'th-name';
-        name.textContent = g.topic === '' ? '話題なし' : g.topic;
-        var n = document.createElement('span');
-        n.className = 'th-n';
-        n.textContent = g.rows.length;
-        head.appendChild(name);
-        head.appendChild(n);
-        el.queue.appendChild(head);
-        g.rows.forEach(function (t) { el.queue.appendChild(queueRow(t, true)); });
-      });
     }
 
     // fillTopicList refreshes the suggestions every topic field offers.
@@ -521,111 +289,6 @@
       if (state.shownId === null) showDetail(all[0]);
     }
 
-    // renderNextDue names the nearest due date after today (the server picks it,
-    // ADR todo-0023). Without one the line is left out. The name loses its
-    // ticket key and is cut short by CSS; the title has all of it.
-    function renderNextDue(nd) {
-      el.nextDue.hidden = !nd;
-      if (!nd) return;
-      el.nextDue.textContent = '次の期限 ' + monthDay(nd.due) + '\u3000' + stripTicket(nd.name);
-      el.nextDue.title = nd.name;
-    }
-
-    function setTitle(sel, text) {
-      var node = document.querySelector(sel);
-      if (node) node.title = text;
-    }
-
-    // The due date is when to start, and the order already says what comes
-    // first. Colour is only for a start date that has arrived while the row sits
-    // where it is: red once it has passed, amber on the day. A date still ahead
-    // and no date at all stay uncoloured, so the few that need moving stand out.
-    // dueChip is the chip's colour class; dueStripe is the row's.
-    // 1-3 days out ("soon", ADR todo-0023) is amber too, but only on the stripe
-    // and the chip: the row keeps no tint. A date 4 or more days ahead fades the row's text.
-    function dueChip(t) {
-      if (t.due_class === 'over') return 'over';
-      if (t.due_class === 'today' || t.due_class === 'soon') return 'near';
-      return '';
-    }
-    // renderLong draws the long-run fold (ADR todo-0022): closed by default, with
-    // the others below the queue. With no long-run task it is not shown at all.
-    // What needs attention comes up in the review band instead, by condition.
-    function renderLong(long) {
-      el.longBand.hidden = long.length === 0;
-      el.longCount.textContent = long.length;
-      el.longNote.textContent = long.length ? '次に見る日が来たら上に出る' : '';
-      setFold(el.longFold, el.longList, state.longOpen);
-      el.longList.textContent = '';
-      long.forEach(function (t) { el.longList.appendChild(longRow(t)); });
-      renderReview(long.filter(function (t) { return t.needs_review; }));
-    }
-
-    // reasonLabel is the words for one reason a long-run task needs a review.
-    // The server decides the reasons; this only says them.
-    function reasonLabel(t, reason) {
-      switch (reason) {
-        case 'no_next': return '次の一手なし';
-        case 'review_due':
-          return t.review_on ? '見直し日 ' + monthDay(t.review_on) + ' を過ぎた' : '見直し日が未設定';
-        case 'stalled': return '止まって ' + (t.idle_days || 0) + '日';
-        default: return reason;
-      }
-    }
-
-    function reasonTags(t) {
-      return (t.review_reasons || []).map(function (r) {
-        var tag = document.createElement('span');
-        tag.className = 'reason-tag';
-        tag.textContent = reasonLabel(t, r);
-        return tag;
-      });
-    }
-
-    // renderReview is the band above the focus band: one line for each
-    // long-run task that needs a review, and nothing at all when none does.
-    function renderReview(tasks) {
-      el.reviewBand.hidden = tasks.length === 0;
-      el.reviewCount.textContent = tasks.length;
-      el.reviewList.textContent = '';
-      tasks.forEach(function (t) {
-        var li = document.createElement('li');
-        li.className = 'review-line';
-        var mark = document.createElement('span');
-        mark.className = 'rv-mark';
-        mark.setAttribute('aria-hidden', 'true');
-        mark.textContent = '!';
-        li.appendChild(mark);
-
-        var name = document.createElement('button');
-        name.type = 'button';
-        name.className = 'rv-name';
-        name.textContent = t.name;
-        name.title = t.id + ' ' + t.name + ' を長期の枠で開く';
-        name.addEventListener('click', function () { openLongTask(t.id); });
-        li.appendChild(name);
-
-        reasonTags(t).forEach(function (tag) { li.appendChild(tag); });
-
-        var done = document.createElement('button');
-        done.type = 'button';
-        done.className = 'rv-done';
-        done.textContent = '見直した';
-        done.title = '次に見る日を 1 週間先にして、見直した印を付ける';
-        done.addEventListener('click', function () {
-          done.disabled = true;
-          request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/review', {})
-            .then(function (data) {
-              var on = data.task && data.task.review_on;
-              return load().then(function () { flash('見直した。次に見る日は ' + monthDay(on)); });
-            })
-            .catch(function (err) { done.disabled = false; reloadShowing(err); });
-        });
-        li.appendChild(done);
-        el.reviewList.appendChild(li);
-      });
-    }
-
     // openLongTask opens the long-run fold and the task's row in it.
     function openLongTask(id) {
       state.longOpen = true;
@@ -633,10 +296,23 @@
       render();
       var node = el.longList.querySelector('[data-id="' + id + '"]');
       if (!node) return;
-      // render() dropped the button that was pressed, so move the focus to the
-      // row: the next Tab then goes on from there, as showRow does.
+      // Move the focus to the row: the next Tab then goes on from there, as
+      // showRow does.
       node.focus({ preventScroll: true });
       if (node.scrollIntoView) node.scrollIntoView({ block: 'center' });
+    }
+
+    // reviewDone marks a long-run task looked at: its next look is a week on.
+    function reviewDone(t) {
+      state.reviewing[t.id] = true; // list.js draws the button disabled from this
+      render();
+      request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/review', {})
+        .then(function (data) {
+          var on = data.task && data.task.review_on;
+          delete state.reviewing[t.id];
+          return load().then(function () { flash('見直した。次に見る日は ' + monthDay(on)); });
+        })
+        .catch(function (err) { delete state.reviewing[t.id]; render(); reloadShowing(err); });
     }
 
     // boardTasks lists every task the board carries, whatever its section.
@@ -667,230 +343,6 @@
 
     // MAX_DEPTH is how many levels a tree may have, as in the server (ADR todo-0020).
     var MAX_DEPTH = 3;
-
-    // setFold shows a section's fold heading and list as open or closed.
-    function setFold(head, list, open) {
-      head.setAttribute('aria-expanded', String(open));
-      head.querySelector('.caret').textContent = open ? '▼' : '▶';
-      list.hidden = !open;
-    }
-
-    // shiftDay moves a YYYY-MM-DD date (the board's today) by n days. The
-    // scope's edges are counted from the server's today, the same date
-    // in_scope was judged against: due > today + scope_days is out.
-    function shiftDay(ymd, n) {
-      var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd || '');
-      if (!m) return '';
-      var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + n));
-      return d.toISOString().slice(0, 10);
-    }
-
-    // daysBetween counts calendar days from one YYYY-MM-DD date to another.
-    function daysBetween(from, to) {
-      var a = Date.parse(from + 'T00:00:00Z');
-      var b = Date.parse(to + 'T00:00:00Z');
-      return Math.round((b - a) / 86400000);
-    }
-
-    // span names a count of days in the unit that suits its size: days up to
-    // 6, weeks up to 27, months (30 days, at least 1) up to 364, then years,
-    // rounded down. It follows taskapi.Span, which makes the due labels.
-    function span(days) {
-      if (days >= 365) return Math.floor(days / 365) + '年';
-      if (days >= 28) return Math.max(1, Math.floor(days / 30)) + 'か月';
-      if (days >= 7) return Math.floor(days / 7) + '週間';
-      return days + '日';
-    }
-
-    function monthDay(ymd) {
-      var m = /^\d{4}-(\d{2})-(\d{2})$/.exec(ymd || '');
-      return m ? (+m[1]) + '/' + (+m[2]) : '';
-    }
-
-    function dueStripe(t) {
-      if (t.due_class === 'over') return 'overdue';
-      if (t.due_class === 'today') return 'in-window';
-      if (t.due_class === 'soon') return 'soon';
-      if (t.due_class === 'near' || t.due_class === 'plain') return 'ahead';
-      return '';
-    }
-
-    // TICKET_KEY is the ticket number a name may start with, and the spaces
-    // after it. The name in the data keeps it; only the row's name drops it.
-    var TICKET_KEY = /^([A-Z]+-\d+)\s*/;
-
-    function stripTicket(name) {
-      var m = TICKET_KEY.exec(name || '');
-      return m && name.length > m[0].length ? name.slice(m[0].length) : (name || '');
-    }
-
-    // dueTitle is the chip's hover: only what the label does not already say.
-    // That is the date, plus the exact days where the label has rounded them
-    // to weeks or more. The colours are named in the legend under the list.
-    function dueTitle(t) {
-      if (!t.due) return '';
-      var n = daysBetween((state.board || {}).today, t.due);
-      var date = dateLabel(t.due);
-      if (n >= 1) return date + '・あと' + n + '日';
-      if (n <= -7) return date + '・' + -n + '日超過';
-      return date;
-    }
-
-    // row builds the shared 5-column shape: every section lines up on the same
-    // left baseline, so the grip column is present even where it is unused.
-    function row(opts) {
-      var li = document.createElement('li');
-      li.className = 'task' + (opts.extraClass ? ' ' + opts.extraClass : '');
-      li.dataset.id = opts.task.id;
-      if (state.landedId === opts.task.id) li.classList.add('landed');
-
-      // The row itself opens the detail — there is no separate control. Rows
-      // that have a panel are focusable so the keyboard can reach them.
-      if (opts.hasPanel) {
-        li.classList.add('openable');
-        li.tabIndex = 0;
-        li.setAttribute('aria-expanded', String(isOpen(opts.task.id)));
-        if (isOpen(opts.task.id)) li.classList.add('row-open');
-      }
-
-      var grip = document.createElement('span');
-      grip.className = 'grip' + (opts.draggable ? '' : ' empty');
-      grip.setAttribute('aria-hidden', 'true');
-      grip.textContent = opts.draggable ? '⠿' : '';
-      li.appendChild(grip);
-
-      // Queue, focus and out-of-scope rows have nothing for this column, so
-      // they leave it out; the others keep it so their left edge lines up.
-      if (opts.noNum) {
-        li.classList.add('no-num');
-      } else {
-        var num = document.createElement('span');
-        num.className = 'num' + (opts.markClass ? ' ' + opts.markClass : '');
-        num.textContent = opts.mark;
-        if (opts.markClass) num.setAttribute('aria-hidden', 'true');
-        li.appendChild(num);
-      }
-
-      var check = document.createElement('input');
-      check.type = 'checkbox';
-      check.className = 'check';
-      check.checked = !!opts.checked;
-      check.setAttribute('aria-label', opts.checked ? '完了を取り消す' : '完了にする');
-      li.appendChild(check);
-
-      var body = document.createElement('div');
-      body.className = 'body';
-
-      var name = document.createElement('div');
-      name.className = 'name';
-      var txt = document.createElement('span');
-      txt.className = 'txt';
-
-      if (opts.hasPanel && isOpen(opts.task.id)) {
-        // An open row is the editable one. The name is the same text in the same
-        // place, so there is no second copy of it inside the panel. Ticket keys
-        // stop being links while editing: a link inside an editable line fights
-        // the caret.
-        txt.classList.add('live');
-        txt.contentEditable = 'true';
-        txt.spellcheck = false;
-        txt.textContent = opts.task.name;
-        wireLiveField(txt, opts.task, 'name', { single: true });
-      } else {
-        txt.title = opts.task.name;
-        var split = opts.ticketBadge ? splitTicket(opts.task) : null;
-        writeName(txt, split ? split.task : opts.task);
-        // The badge sits at the head of the name text, so a wrapped line runs
-        // under it instead of leaving a column of its own.
-        if (split) txt.insertBefore(split.badge, txt.firstChild);
-      }
-      name.appendChild(txt);
-      var idle = idleTag(opts.task);
-      if (idle) name.appendChild(idle);
-
-      body.appendChild(name);
-
-      if (opts.hasPanel && isOpen(opts.task.id)) {
-        body.appendChild(panelFor(opts.task));
-      }
-      li.appendChild(body);
-
-      // The due chip doubles as the way to set a due date: clicking it swaps in
-      // a date field. Keeping it in the chip avoids adding a column to a row
-      // that is meant to stay one line.
-      var due;
-      if (opts.editableDue) {
-        due = document.createElement('button');
-        due.type = 'button';
-        due.className = 'due due-edit' + (opts.reviewChip ? ' review-chip' : '');
-        if (opts.dueTitle) due.title = opts.dueTitle;
-        due.setAttribute('aria-haspopup', 'menu');
-        due.setAttribute('aria-expanded', 'false');
-        due.dataset.due = opts.reviewChip ? (opts.task.review_on || '') : (opts.task.due || '');
-      } else {
-        due = document.createElement('span');
-        due.className = 'due';
-        if (opts.dueTitle) due.title = opts.dueTitle;
-      }
-      if (opts.dueClass) due.classList.add(opts.dueClass);
-      // "期限なし" only shows on the hovered row (CSS), so the list is not a
-      // column of them; the review chip of a long-run row always shows.
-      if (opts.editableDue && !opts.reviewChip && !opts.task.due) due.classList.add('due-none');
-      due.textContent = opts.dueLabel;
-      li.appendChild(due);
-
-      // Moving over a row hands it to the detail box. The box is read-only, so
-      // this cannot interrupt anything being typed; editing stays in the row.
-      li.addEventListener('mouseenter', function () { showDetail(opts.task); });
-
-      // The delete slot sits next to the due chip and only appears on hover, so
-      // the row stays quiet while reading. The column is always there (even for
-      // rows that cannot be deleted) to keep the right edge from shifting.
-      li.appendChild(opts.removable === false ? emptyDelSlot() : removeIcon(opts.task));
-
-      return li;
-    }
-
-    function emptyDelSlot() {
-      var span = document.createElement('span');
-      span.className = 'del-slot';
-      span.setAttribute('aria-hidden', 'true');
-      return span;
-    }
-
-    // removeIcon deletes on one click. There is no confirmation: the delete is
-    // recorded as an event with the whole task in it, so the notice that follows
-    // offers 元に戻す and `Cmd/Ctrl+Z` works too. Asking first would cost a click
-    // on every real deletion to guard against a rare stray one.
-    //
-    // A task that has been in the list for an hour or more asks why instead
-    // (ADR todo-0016): by then it was kept on purpose, and once it is gone there
-    // is no row left on the screen to write the reason on.
-    function removeIcon(t) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'del del-slot';
-      btn.title = needsDropReason(t) ? '理由を書いて削除する' : '削除する';
-      btn.setAttribute('aria-label', t.name + ' を削除する');
-      btn.innerHTML = TRASH_SVG;
-
-      btn.addEventListener('click', function (ev) {
-        // The row opens on click; deleting must not also open or close it.
-        ev.stopPropagation();
-        if (needsDropReason(t)) {
-          openDropAsk(btn, t);
-          return;
-        }
-        btn.disabled = true;
-        removeTask(t, '').catch(function (err) { btn.disabled = false; showError(err); });
-      });
-      return btn;
-    }
-
-    function needsDropReason(t) {
-      var made = Date.parse(t.created_at);
-      return !isNaN(made) && Date.now() - made >= ASK_DROP_AFTER_MS;
-    }
 
     function removeTask(t, reason) {
       return request('DELETE', '/api/tasks/' + encodeURIComponent(t.id), reason ? { reason: reason } : null)
@@ -992,200 +444,23 @@
       state.busy = false;
     }
 
-    // unfocusedQueue is the queue below the band. Focused tasks lead the queue
-    // and are shown in the band instead, so the list starts after them.
-    function unfocusedQueue() {
-      return ((state.board && state.board.queue) || []).filter(function (t) { return !t.focused; });
-    }
-
-    // queueRow draws a queue task, in the band or in the list below it: the same
-    // row either way, so a focused task opens where it is.
-    function queueRow(t, fixed) {
-      var cls = dueStripe(t);
-      var li = row({
-        task: t,
-        draggable: !fixed,
-        // The position is not shown. The order is what the list is for, and the
-        // row above/below already says it; a number only adds a value that goes
-        // stale the moment anything moves. It is still kept server-side, and
-        // `todo order` uses it.
-        mark: '',
-        markClass: '',
-        noNum: true,
-        ticketBadge: true,
-        dueLabel: t.due_label,
-        dueClass: dueChip(t),
-        hasPanel: true,
-        editableDue: true,
-        dueTitle: dueTitle(t),
-        extraClass: cls,
+    // addChild opens the add dialog with the parent filled in.
+    function addChild(t) {
+      window.workbench.openAddDialog('/add?parent=' + encodeURIComponent(t.id), 'タスクを追加', function (changed) {
+        if (changed) load();
       });
-      li.draggable = !fixed;
-      return tagTree(li, t);
     }
 
-    // splitTicket cuts a leading ticket number off a name and makes the badge
-    // for it. It returns the badge and a copy of the task with the rest of the
-    // name; the task's own name is untouched. When the task's link starts on
-    // the ticket key, the badge is that link and the rest keeps what is left of
-    // it. A link that only partly covers the key is left alone: no badge.
-    function splitTicket(t) {
-      var m = TICKET_KEY.exec(t.name || '');
-      if (!m || t.name.length === m[0].length) return null;
-      var key = m[1];
-      var copy = Object.assign({}, t, { name: t.name.slice(m[0].length) });
-      var badge;
-      var r = linkRange(t);
-      if (t.url && r && r.start < key.length && !(r.start === 0 && r.end >= key.length)) return null;
-      if (t.url && r && r.start === 0) {
-        badge = document.createElement('a');
-        badge.className = 'ticket tk-tag';
-        badge.href = t.url;
-        badge.target = '_blank';
-        badge.rel = 'noopener noreferrer';
-        badge.title = t.url;
-        badge.draggable = false;
-        if (r.end > m[0].length) {
-          copy.link_text = t.name.slice(m[0].length, r.end);
-        } else {
-          copy.url = '';
-          copy.link_text = '';
-        }
-      } else {
-        badge = document.createElement('span');
-        badge.className = 'tk-tag';
-      }
-      badge.textContent = key;
-      return { badge: badge, task: copy };
-    }
-
-    // PARENT_TAG_CHARS is how much of the parent's name the tag shows.
-    var PARENT_TAG_CHARS = 6;
-
-    // addParentTag names the task a row was cut out of, with the first words of
-    // its name; the full path to it is in the tooltip. A parent the board does
-    // not know (removed) shows its ID.
-    function addParentTag(li, t) {
-      if (!t.parent) return;
-      var shown = t.parent;
-      var path = t.parent;
-      if (t.parent_name) {
-        // The ticket key says nothing the row below does not already, so the
-        // tag spends its characters on the words after it.
-        var chars = Array.from(parentTagText(t.parent_name, t.name));
-        shown = chars.slice(0, PARENT_TAG_CHARS).join('') + (chars.length > PARENT_TAG_CHARS ? '…' : '');
-        path = (t.parent_path || []).map(function (p) {
-          return (p.long ? '長期 ' : '') + p.id + ' ' + p.name;
-        }).join(' ＞ ');
-      }
-      var tag = document.createElement('span');
-      tag.className = 'parent-tag';
-      tag.textContent = '↑' + shown;
-      tag.title = path + ' の子';
-      var host = tagHost(li);
-      host.insertBefore(tag, host.firstChild);
-    }
-
-    // tagHost is where a row's parent and kids tags go: inside the name text
-    // (inline, so wrapped lines run under them) for queue-style rows, or beside
-    // it while the name is being edited, so the editable text stays plain.
-    function tagHost(li) {
-      var txt = li.querySelector('.name .txt');
-      if (txt && li.classList.contains('no-num') && !txt.classList.contains('live')) return txt;
-      return li.querySelector('.name');
-    }
-
-    // parentTagText is what the parent tag spells out. After the ticket key,
-    // the part of the parent's name that the child's name starts with too is
-    // skipped (siblings of one project all begin the same way), cutting only
-    // after a space or a closing bracket so no word is split. When nothing is
-    // left, the name without its ticket key is used.
-    function parentTagText(parentName, childName) {
-      var p = Array.from(stripTicket(parentName));
-      var c = Array.from(stripTicket(childName));
-      var n = 0;
-      while (n < p.length && n < c.length && p[n] === c[n]) n++;
-      for (var k = n; k > 0; k--) {
-        if (!/[\s\u3000）)]/.test(p[k - 1])) continue;
-        var rest = p.slice(k).join('').replace(/^[\s\u3000]+/, '');
-        return rest || p.join('');
-      }
-      return p.join('');
-    }
-
-    // addKidsTag counts the children of a row that has any: done / all of them.
-    // Long-run rows say it under the name instead, with the next step.
-    function addKidsTag(li, t) {
-      var total = (t.kids_done || 0) + (t.kids_open || 0);
-      if (!total) return;
-      var tag = document.createElement('span');
-      tag.className = 'kids-tag';
-      tag.textContent = '子 ' + (t.kids_done || 0) + '/' + total;
-      tag.title = '子 ' + total + ' 件のうち完了 ' + (t.kids_done || 0) + ' 件';
-      var host = tagHost(li);
-      var first = host.querySelector('.parent-tag');
-      host.insertBefore(tag, first ? first.nextSibling : host.firstChild);
-    }
-
-    // tagTree puts the parent tag and the kids tag on a row.
-    function tagTree(li, t) {
-      addParentTag(li, t);
-      addKidsTag(li, t);
-      return li;
-    }
-
-    // longRow is a long-run task: not draggable (it is out of the queue), with
-    // the next step and the child counts under the name.
-    function longRow(t) {
-      var li = row({
-        task: t,
-        mark: '▶',
-        markClass: 'mark-long',
-        // The chip slot holds the next review day, not the due date.
-        // The weekday goes to the hover: with it the label outgrows the chip.
-        dueLabel: t.review_on ? '見る ' + monthDay(t.review_on) : '見る 未設定',
-        dueClass: t.needs_review && (t.review_reasons || []).indexOf('review_due') >= 0 ? 'near' : '',
-        hasPanel: true,
-        editableDue: true,
-        reviewChip: true,
-        dueTitle: (t.review_on ? dateLabel(t.review_on) + '・' : '') + '次に見る日。押して決める（見直すと 1 週間先になる）',
-        extraClass: 'long',
-      });
-      var nameLine = li.querySelector('.name');
-      reasonTags(t).forEach(function (tag) { nameLine.appendChild(tag); });
-      var next = document.createElement('div');
-      next.className = 'long-next' + (t.next ? '' : ' warn');
-      var label = document.createElement('span');
-      label.className = 'ln-label';
-      label.textContent = '次の一手';
-      next.appendChild(label);
-      var what = document.createElement('span');
-      what.className = 'ln-task';
-      what.textContent = t.next ? t.next.id + ' ' + t.next.name : '未完の子が無い。次にやることを切り出す';
-      next.appendChild(what);
-      if (!t.next) next.appendChild(addChildButton(t, 'ln-add'));
-      var kids = document.createElement('span');
-      kids.className = 'ln-kids';
-      kids.textContent = '子 完了 ' + (t.kids_done || 0) + ' · 未完 ' + (t.kids_open || 0);
-      next.appendChild(kids);
-      var name = li.querySelector('.name');
-      name.parentNode.insertBefore(next, name.nextSibling);
-      return li;
-    }
-
-    // addChildButton opens the add dialog with the parent filled in. A task
-    // already on the last level offers none.
-    function addChildButton(t, cls) {
+    // addChildButton is the panel's button for it. A task already on the last
+    // level offers none.
+    function addChildButton(t) {
       var b = document.createElement('button');
       b.type = 'button';
-      if (cls) b.className = cls;
       b.textContent = '子を追加';
       b.title = t.id + ' の子としてタスクを追加する';
       b.addEventListener('click', function (ev) {
         ev.stopPropagation(); // the row underneath must not open or close
-        window.workbench.openAddDialog('/add?parent=' + encodeURIComponent(t.id), 'タスクを追加', function (changed) {
-          if (changed) load();
-        });
+        addChild(t);
       });
       return b;
     }
@@ -1274,103 +549,6 @@
           .catch(function (err) { b.disabled = false; showError(err); });
       });
       return b;
-    }
-
-    function waitRow(t) {
-      var days = t.stalled_for || 0;
-      var level = days >= 10 ? '赤: 10日以上' : (days >= 5 ? '黄: 5日以上' : '灰: 5日未満');
-      return tagTree(row({
-        task: t,
-        // No mark: ◷ sat in the same column as the focus ◎ and read alike.
-        // The section heading already says these are waiting.
-        mark: '',
-        markClass: '',
-        dueLabel: days + '日',
-        dueClass: days >= 10 ? 'over' : (days >= 5 ? 'near' : ''),
-        dueTitle: level + '経過\n' + (t.handed_on || '?') + ' に ' + (t.handed_to || '?')
-          + ' へ渡してから ' + days + '日。14日で理由を聞かれる',
-        hasPanel: true,
-        extraClass: 'waiting',
-      }), t);
-    }
-
-    // somedayRow shows a shelved task. Arriving is not overdue — nothing was
-    // promised — so it borrows the same amber stripe waiting uses for "worth a
-    // look" rather than the red one, and the tooltip says why in words. The
-    // chip is not editable here: Until is not Due, and there is no editor for
-    // it in the row (only `todo someday --until` and the resume button).
-    function somedayRow(t) {
-      return tagTree(row({
-        task: t,
-        mark: '◇',
-        markClass: 'mark-someday',
-        dueLabel: t.until ? t.until + ' まで' : '',
-        dueClass: t.until_reached ? 'near' : '',
-        dueTitle: t.until_reached
-          ? ('見る番が来た（' + t.until + ' までにしていた）')
-          : (t.until ? (t.until + ' まで見なくていい') : ''),
-        hasPanel: true,
-        extraClass: 'someday',
-      }), t);
-    }
-
-    function doneRow(t) {
-      var label = '';
-      if (t.completed_at) {
-        var d = new Date(t.completed_at);
-        label = (d.getMonth() + 1) + '/' + d.getDate();
-      }
-      return row({
-        task: t,
-        mark: '', // the strike-through and the ticked box already say it is done
-        markClass: 'mark-done',
-        checked: true,
-        dueLabel: label,
-        dueTitle: label + ' に完了。直近の月曜以降の分だけ残る\nチェックを外すと着手順の末尾へ戻る',
-        hasPanel: false,
-        extraClass: 'done',
-      });
-    }
-
-    // dropRow shows a task that is gone. It cannot reuse row(): there is no task
-    // left to tick, open, or drag — only the name it had and why it was dropped.
-    function dropRow(d) {
-      var li = document.createElement('li');
-      li.className = 'task drop';
-
-      ['grip empty', 'num', 'check empty'].forEach(function (cls) {
-        var span = document.createElement('span');
-        span.className = cls;
-        span.setAttribute('aria-hidden', 'true');
-        li.appendChild(span);
-      });
-
-      var body = document.createElement('div');
-      body.className = 'body';
-
-      var name = document.createElement('div');
-      name.className = 'name';
-      var txt = document.createElement('span');
-      txt.className = 'txt';
-      txt.title = d.name;
-      writeName(txt, d);
-      name.appendChild(txt);
-      body.appendChild(name);
-
-      var why = document.createElement('div');
-      why.className = 'drop-why' + (d.reason ? '' : ' none');
-      why.textContent = d.reason || '理由なし';
-      body.appendChild(why);
-      li.appendChild(body);
-
-      var when = document.createElement('span');
-      when.className = 'due';
-      var at = new Date(d.at);
-      when.textContent = (at.getMonth() + 1) + '/' + at.getDate();
-      when.title = when.textContent + ' にやめた。直近の月曜以降の分だけ残る';
-      li.appendChild(when);
-
-      return li;
     }
 
     // showDetail fills the box beside the list. It reads; every change is still
@@ -1464,25 +642,6 @@
       var label = annotationLabel(a);
       tag.className = label ? 'ann-tag k-' + String(a.kind).replace(/[^a-z]/g, '') : 'ann-tag-none';
       tag.textContent = label;
-      return tag;
-    }
-
-    // idleTag says how long a task has been left without a person touching it.
-    // The server counts the days and picks the stage (ADR todo-0021); the title
-    // says which date the count started from.
-    function idleTag(t) {
-      if (!t.idle_days) return null;
-      var from = {
-        due: '期限（' + monthDay(t.due) + '）',
-        annotation: '人の補足',
-        review: '見直し',
-        created: '作成',
-      }[t.idle_from] || '';
-      var tag = document.createElement('span');
-      tag.className = 'idle-tag s' + t.idle_stage;
-      tag.textContent = '止まって ' + t.idle_days + '日';
-      tag.title = from + 'から ' + t.idle_days + '日'
-        + (t.idle_from === 'annotation' ? '' : '。人が補足を書くと、そこから数え直す');
       return tag;
     }
 
@@ -1813,12 +972,11 @@
       });
     }
 
-    // panelFor renders what I wrote above what happened. The trail is fetched
-    // per task, so opening one row does not pull every task's history.
-    function panelFor(t) {
-      var panel = document.createElement('div');
-      panel.className = 'panel';
-
+    // panelFor fills the open row's panel with what I wrote above what happened.
+    // The panel element is the host list.js leaves to this code: Preact never
+    // touches what is inside it. The trail is fetched per task, so opening one
+    // row does not pull every task's history.
+    function panelFor(t, panel) {
       // The detail is edited where it is read: no label, no box, no save button.
       var detail = document.createElement('div');
       detail.className = 'live detail';
@@ -1936,7 +1094,6 @@
           trailLink.title = err.message;
         });
 
-      return panel;
     }
 
     function isOpen(id) { return state.openId === id; }
@@ -1975,17 +1132,15 @@
       markLanded(id);
     }
 
-    // markLanded tints the row for a moment. The id lives in state so a redraw
-    // in the meantime (the poll) keeps the tint.
+    // markLanded tints the row for a moment. The id lives in state and the row
+    // is drawn from it, so a redraw in the meantime (the poll) keeps the tint.
     function markLanded(id) {
       state.landedId = id;
-      var node = document.querySelector('.task[data-id="' + id + '"]');
-      if (node) node.classList.add('landed');
+      render();
       window.clearTimeout(landedTimer);
       landedTimer = window.setTimeout(function () {
         state.landedId = null;
-        var n = document.querySelector('.task.landed');
-        if (n) n.classList.remove('landed');
+        render();
       }, LANDED_MS);
     }
 
@@ -2056,17 +1211,6 @@
       if (done) {
         window.setTimeout(function () { slot.className = 'save-state saved'; }, 1600);
       }
-    }
-
-    // linkRange finds the part of a name that should carry the link: the words
-    // that were the link where it was copied from. A task with no link, or whose
-    // name no longer contains those words, has no range.
-    function linkRange(t) {
-      if (!t.url) return null;
-      var label = t.link_text || t.name;
-      var at = t.name.indexOf(label);
-      if (at === -1 || !label) return null;
-      return { start: at, end: at + label.length };
     }
 
     // writeName puts a task's name into el, with the link range as a link and the
@@ -2216,7 +1360,7 @@
         who.addEventListener('keydown', function (e) {
           if (composing(e)) return;
           if (e.key === 'Enter') { e.preventDefault(); submit(); }
-          if (e.key === 'Escape') { render(); }
+          if (e.key === 'Escape') { span.textContent = ''; span.appendChild(ask); }
         });
 
         span.appendChild(who);
@@ -2292,11 +1436,11 @@
         if (done) return;
         done = true;
         state.busy = false;
-        if (!save || !input.value.trim()) { render(); return; }
+        if (!save || !input.value.trim()) { input.replaceWith(anchor); return; }
         request('POST', '/api/events/' + encodeURIComponent(e.id) + '/why',
           { reason: input.value.trim() })
           .then(function () { return load().then(function () { flash('理由を記録した'); }); })
-          .catch(function (err) { showError(err); render(); });
+          .catch(function (err) { showError(err); if (input.isConnected) input.replaceWith(anchor); });
       }
 
       input.addEventListener('keydown', function (ev) {
@@ -2412,23 +1556,21 @@
       render();
     });
 
-    document.addEventListener('change', function (ev) {
-      if (!active) return;
-      var box = ev.target;
-      if (!box.classList || !box.classList.contains('check')) return;
-      var li = box.closest('.task');
+    // onCheck ticks a task done, or puts a done one back when it is unticked: a
+    // mis-click has a way out. The box belongs to its row; it is only held shut
+    // while the request is out.
+    function onCheck(box, t) {
       var was = box.checked;
-      // Unticking a completed row puts it back: a mis-click has a way out.
       var path = was ? '/done' : '/reopen';
       box.disabled = true;
-      request('POST', '/api/tasks/' + encodeURIComponent(li.dataset.id) + path)
-        .then(function () { closeRow(li.dataset.id); return load(); })
+      request('POST', '/api/tasks/' + encodeURIComponent(t.id) + path)
+        .then(function () { closeRow(t.id); return load(); })
         .catch(function (err) {
           box.checked = !was;
           box.disabled = false;
           showError(err);
         });
-    });
+    }
 
     // ---- due menu ----
     //
@@ -2633,9 +1775,10 @@
       menu.style.left = (left + window.scrollX) + 'px';
       menu.style.top = (r.bottom + 4 + window.scrollY) + 'px';
 
-      chip.setAttribute('aria-expanded', 'true');
-      state.busy = true; // hold the poll: a redraw would replace the chip under the menu
+      state.busy = true; // hold the poll while the menu is open
       dueMenu = { chip: chip, node: menu };
+      state.menuId = chip.closest('.task').dataset.id; // the chip's aria-expanded, drawn by list.js
+      render();
       var first = menu.querySelector('.dm-item');
       if (first) first.focus();
     }
@@ -2643,9 +1786,10 @@
     function closeDueMenu() {
       if (!dueMenu) return;
       dueMenu.node.remove();
-      dueMenu.chip.setAttribute('aria-expanded', 'false');
       dueMenu = null;
+      state.menuId = null;
       state.busy = false;
+      render();
     }
 
     window.addEventListener('resize', closeDueMenu);
@@ -2659,7 +1803,6 @@
         if (changed) load();
       });
     }
-    el.addTrigger.addEventListener('click', openAdd);
 
     // N, the same key as on the timeline. Not while typing (a name, a due date)
     // or while a dialog is already open.
@@ -2674,67 +1817,46 @@
       openAdd();
     });
 
-    el.doneFold.addEventListener('click', function () {
-      state.doneOpen = !state.doneOpen;
-      try { localStorage.setItem(DONE_KEY, state.doneOpen ? '1' : '0'); } catch (e) { /* private window */ }
-      render();
-    });
+    // The folds, the topic grouping and the scope are buttons in the header and
+    // the section heads (list.js); they land here.
+    var FOLDS = {
+      done: ['doneOpen', DONE_KEY],
+      drop: ['dropOpen', DROP_KEY],
+      out: ['outOpen', OUT_KEY],
+      wait: ['waitOpen', WAIT_KEY],
+      someday: ['somedayOpen', SOMEDAY_KEY],
+      long: ['longOpen', LONG_KEY],
+    };
 
-    el.dropFold.addEventListener('click', function () {
-      state.dropOpen = !state.dropOpen;
-      try { localStorage.setItem(DROP_KEY, state.dropOpen ? '1' : '0'); } catch (e) { /* private window */ }
+    function toggleFold(name) {
+      var f = FOLDS[name];
+      state[f[0]] = !state[f[0]];
+      try { localStorage.setItem(f[1], state[f[0]] ? '1' : '0'); } catch (e) { /* private window */ }
       render();
-    });
+    }
 
-    el.outFold.addEventListener('click', function () {
-      state.outOpen = !state.outOpen;
-      try { localStorage.setItem(OUT_KEY, state.outOpen ? '1' : '0'); } catch (e) { /* private window */ }
-      render();
-    });
-
-    el.groupToggle.addEventListener('click', function () {
+    function toggleGroup() {
       state.groupByTopic = !state.groupByTopic;
       try { localStorage.setItem(GROUP_KEY, state.groupByTopic ? '1' : '0'); } catch (e) { /* private window */ }
       render();
-    });
+    }
 
-    el.longFold.addEventListener('click', function () {
-      state.longOpen = !state.longOpen;
-      try { localStorage.setItem(LONG_KEY, state.longOpen ? '1' : '0'); } catch (e) { /* private window */ }
+    function pickScope(v) {
+      state.scopeKey = v;
+      if (v === 'custom') {
+        state.scope = String(daysUntil(el.until.value));
+      } else {
+        state.scope = v;
+        try { localStorage.setItem(SCOPE_KEY, v); } catch (e) { /* private window */ }
+      }
       render();
-    });
+      load();
+    }
 
-    el.waitFold.addEventListener('click', function () {
-      state.waitOpen = !state.waitOpen;
-      try { localStorage.setItem(WAIT_KEY, state.waitOpen ? '1' : '0'); } catch (e) { /* private window */ }
-      render();
-    });
-
-    el.somedayFold.addEventListener('click', function () {
-      state.somedayOpen = !state.somedayOpen;
-      try { localStorage.setItem(SOMEDAY_KEY, state.somedayOpen ? '1' : '0'); } catch (e) { /* private window */ }
-      render();
-    });
-
-    scopeButtons.forEach(function (b) {
-      b.addEventListener('click', function () {
-        scopeButtons.forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
-        var v = b.dataset.scope;
-        el.untilWrap.hidden = v !== 'custom';
-        if (v === 'custom') {
-          state.scope = String(daysUntil(el.until.value));
-        } else {
-          state.scope = v;
-          try { localStorage.setItem(SCOPE_KEY, v); } catch (e) { /* private window */ }
-        }
-        load();
-      });
-    });
-
-    el.until.addEventListener('change', function () {
+    function pickUntil() {
       state.scope = String(daysUntil(el.until.value));
       load();
-    });
+    }
 
     function daysUntil(value) {
       if (!value) return 7;
@@ -2751,6 +1873,7 @@
     // queue) and the list below it. Dropping across them changes focus; dropping
     // within one reorders (ADR todo-0012).
     var dragged = null;
+    var dragRestore = null; // puts the dragged row's element back where Preact left it
     var dropped = false; // a drag ended by Escape or outside both lists saves nothing
 
     function onDragStart(ev) {
@@ -2759,18 +1882,27 @@
       state.busy = true;
       dragged = li;
       dropped = false;
+      // The preview below moves the row's own element, under Preact. render()
+      // puts it back first, so the draw that follows (the reply, or the cancel)
+      // finds the DOM it expects and moves the row to where it now belongs.
+      var home = li.parentNode;
+      var before = li.nextSibling;
+      dragRestore = function () {
+        if (li.parentNode !== home || li.nextSibling !== before) home.insertBefore(li, before);
+      };
       li.classList.add('dragging');
       el.focusBand.classList.add('drop-ready');
       ev.dataTransfer.effectAllowed = 'move';
       ev.dataTransfer.setData('text/plain', li.dataset.id);
     }
 
-    function onDragOver(list) {
+    function onDragOver(listId) {
       return function (ev) {
         if (!dragged) return;
+        var list = document.getElementById(listId);
         // Grouped: nothing can land in the queue. No preventDefault, so the
         // browser shows the drop as not allowed and the drag ends as a cancel.
-        if (state.groupByTopic && list === el.queue) return;
+        if (state.groupByTopic && listId === 'queue') return;
         ev.preventDefault();
         var over = ev.target.closest('.task');
         if (over && over !== dragged && over.parentNode === list) {
@@ -2792,26 +1924,6 @@
       ev.preventDefault();
       dropped = true;
     }
-
-    // byDue orders スコープ外 rows nearest due first. Every one of them has a
-    // due date (a row without one is in scope), and YYYY-MM-DD compares as a
-    // string. The sort is stable, so rows due the same day keep queue order.
-    function byDue(rows) {
-      return rows.slice().sort(function (a, b) {
-        return a.due < b.due ? -1 : a.due > b.due ? 1 : 0;
-      });
-    }
-
-    // A list's drop area is its whole section, so an empty list (every task
-    // focused, or every one past the scope) still takes a row, and a closed
-    // スコープ外 takes one on its heading.
-    [[el.focusBand, el.focusList], [el.queue.closest('.sec') || el.queue, el.queue], [el.outSec, el.outList]]
-      .forEach(function (pair) {
-        pair[0].addEventListener('dragstart', onDragStart);
-        pair[0].addEventListener('dragover', onDragOver(pair[1]));
-        pair[0].addEventListener('drop', onDrop);
-        pair[0].addEventListener('dragend', onDragEnd);
-      });
 
     // scopeDue is the due date a row takes when it is dragged across the
     // scope's edge, so that it stays where it was put: the last day in scope
@@ -2936,12 +2048,38 @@
       saved = { '7': 'week', '14': '2weeks' }[saved] || saved;
       if (saved) {
         state.scope = saved;
-        scopeButtons.forEach(function (b) {
-          b.setAttribute('aria-pressed', String(b.dataset.scope === saved));
-        });
+        state.scopeKey = saved;
       }
     } catch (e) { /* storage unavailable; the default scope still applies */ }
 
+    // What list.js calls back into: the parts of the list that stay here.
+    var ctx = {
+      state: state,
+      showDetail: showDetail,
+      // The open row's name field and its panel are filled and wired here.
+      mountName: function (txt, t) {
+        txt.textContent = t.name;
+        wireLiveField(txt, t, 'name', { single: true });
+      },
+      mountPanel: function (host, t) { panelFor(t, host); },
+      // A field that goes while it has the focus gets no blur: release the poll.
+      releaseBusy: function () { state.busy = false; },
+      addChild: addChild,
+      removeTask: removeTask,
+      openDropAsk: openDropAsk,
+      showError: showError,
+      reviewDone: reviewDone,
+      openLongTask: openLongTask,
+      toggleFold: toggleFold,
+      toggleGroup: toggleGroup,
+      pickScope: pickScope,
+      pickUntil: pickUntil,
+      openAdd: openAdd,
+      onCheck: onCheck,
+      drag: { start: onDragStart, over: onDragOver, drop: onDrop, end: onDragEnd },
+    };
+
+    render(); // the empty frame, until the first reply
     load().then(watch);
 
     // ---- shown and hidden by the router ----
