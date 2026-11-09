@@ -17,6 +17,7 @@ API は `/api/tasks…` `/api/undo` `/api/revision` `/api/import` `/api/ask` `/a
 make build     # bin/ に 3 本（todo, note, server）
 make test      # go test ./...
 make ci        # lint + テスト（カバレッジ）
+make e2e       # ブラウザ（headless Chrome）で画面を動かす E2E テスト
 make run       # サーバを起動（既定 127.0.0.1:8085。PORT=N で変更）
 make status    # 起動確認
 make stop      # 停止
@@ -304,6 +305,7 @@ make run            # 起動（既定 127.0.0.1:8085。PORT=N で変更）
 make status         # 起動確認
 make stop           # 停止
 make ci             # lint + テスト（カバレッジ）
+make e2e            # 画面の E2E テスト（CHROME_PATH で Chrome を指定できる）
 make install-agent  # ビルド → 配置（load はしない）
 ```
 
