@@ -33,6 +33,8 @@
     {{if ne .View "note-add"}}<div class="view view-note-add" data-view="note-add" hidden></div>{{end}}
     {{if ne .View "timeline"}}<div class="view view-timeline" data-view="timeline" hidden></div>{{end}}
   </div>
+  {{- /* Preact and htm come first: the screens draw with them (ADR todo-0025). */}}
+  <script src="/shared/vendor/htm-preact.umd.js" defer></script>
   <script src="/shared/js/common.js" defer></script>
   <script src="/shared/js/paste.js" defer></script>
   <script src="/shared/js/router.js" defer></script>
