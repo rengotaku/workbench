@@ -423,3 +423,55 @@ func TestTodoDragSurvivesADrawInTheMiddle(t *testing.T) {
 	}
 	p.until("drawn in the saved order", queueNames+`.join() === 'two,three,one,waiter'`)
 }
+
+// A drop's save is still out when the next drag starts. The first reply must
+// not clear the second drag's state: the second drop is still saved.
+func TestTodoDragStartedWhileTheLastDropIsSaving(t *testing.T) {
+	a := startApp(t)
+	one := a.addTask(t, "one")
+	two := a.addTask(t, "two")
+	three := a.addTask(t, "three")
+	four := a.addTask(t, "four")
+	p := newPage(t, a, "/")
+	p.until("rows", `document.querySelectorAll('#queue .task').length === 4`)
+
+	// Hold the first reorder request until released.
+	p.eval(`(() => {
+		const orig = window.fetch;
+		window.fetch = function (url, opts) {
+			if (String(url).includes('/order') && !window.__held) {
+				window.__held = true;
+				return new Promise(res => { window.__release = () => res(orig.apply(window, [url, opts])); });
+			}
+			return orig.apply(this, arguments);
+		};
+		return true;
+	})()`, nil)
+
+	p.dragRow(`#queue `+row(one), `#queue `+row(two), true)
+	p.until("first save held", `window.__held === true`)
+
+	// The second drag starts and moves while the first save is out.
+	p.startDrag(`#queue ` + row(three))
+	p.dragOver(`#queue ` + row(four))
+	// (the first row is back home until its reply draws the new order)
+	p.until("second preview", queueNames+`.join() === 'one,two,four,three'`)
+
+	p.eval(`window.__release(); true`, nil)
+	// The first reply draws; the second drag is still on, its preview kept.
+	p.until("second drag survived the reply", queueNames+`.join() === 'two,one,four,three' && document.querySelector('`+row(three)+`').classList.contains('dragging')`)
+
+	p.finishDrag(`#queue ` + row(three))
+	deadline := time.Now().Add(8 * time.Second)
+	want := []string{"two", "one", "four", "three"}
+	for {
+		got := a.queueOrder(t)
+		if reflect.DeepEqual(got, want) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("saved order = %v, want %v (the second drop was lost)", strings.Join(got, ","), strings.Join(want, ","))
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}

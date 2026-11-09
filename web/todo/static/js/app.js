@@ -803,8 +803,7 @@
       }
       req
         .then(function () {
-          state.drag = null;
-          state.busy = false;
+          settleDrag(d);
           // Reordering within a section keeps the row open; moving it across one
           // changes its state, as the buttons do.
           if (crossed || due) closeRow(id);
@@ -814,10 +813,18 @@
           });
         })
         .catch(function (err) {
-          state.drag = null;
-          state.busy = false;
+          settleDrag(d);
           reloadShowing(err);
         });
+    }
+
+    // settleDrag lets go of a dropped drag once its save has answered. A later
+    // drag may have started while the save was out; it owns state.drag and
+    // state.busy by then, so they are left alone.
+    function settleDrag(d) {
+      if (state.drag !== d) return;
+      state.drag = null;
+      state.busy = false;
     }
 
     // ---- boot ----
