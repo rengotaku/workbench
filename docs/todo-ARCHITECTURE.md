@@ -132,14 +132,17 @@ todo 一覧は 3 つのファイルで描く（ADR todo-0025、#121・#122）。
 |---|---|
 | `web/todo/static/js/list.js` | Preact の部品。`.app` の中（見出し・件数・長期の見直しの帯・フォーカスの帯・各区画・行・札）を `render(container, view)` で描く。状態は持たず、`app.js` から盤面（`board`）と `state` を受け取る。行は task の ID を key にするので、描き直しで変わっていない行の DOM が残る（開いた行・入力中の欄・フォーカス・CSS アニメーション） |
 | `web/todo/static/js/detail.js` | Preact の部品。開いた行の名前の欄（`NameField`）・詳細パネル（`Panel`）と、一覧の横の詳細欄（`renderSide`）。状態は持たず、保存の呼び出しと読み直しは `ctx` 経由で `app.js` に頼む。持つのは欄ごとの「最後に保存した文字」と保存中の印だけ |
-| `web/todo/static/js/app.js` | 状態（`state`）・API 呼び出し・ポーリング・ドラッグ・期限メニュー・削除の理由欄。`render()` が `list.render` を呼ぶ。開閉（`state.openId`）と着地の印（`state.landedId`）もここ |
+| `web/todo/static/js/menus.js` | Preact の部品。期限のメニュー（`DueMenu`）・長期の見直し日のメニュー（`ReviewMenu`）・削除の理由欄（`DropAsk`）・通知と元に戻す（`Flash`）。`app.js` の `state.menu` / `state.dropAsk` / `state.flash` から描く。開閉・API 呼び出し・読み直しは `ctx` 経由で `app.js` に頼む。位置は押した札・ボタンを測って決める |
+| `web/todo/static/js/app.js` | 状態（`state`）・API 呼び出し・ポーリング・ドラッグ。`render()` が `list.render` と `menus.render` を呼ぶ。開閉（`state.openId`）と着地の印（`state.landedId`）もここ |
 
 - 開いた行の詳細は、欄を「書き換えない要素」（uncontrolled）にして保つ。文字は要素が持ち、Preact は子を触らない。行・パネル・欄は同じ部品のまま残るので、ポーリングの応答で描き直されても、入力中の欄は同じ要素・同じ文字・同じフォーカスのままになる（#115）。次の 2 つで担保する
   - パネルと名前は、`state.busy`（欄にフォーカスがある間・ドラッグ中・メニューが開いている間）は盤面が進んでも前の task を表示したままにする（`useHeld`）。離れた後の最初の描画で追いつく
   - 外から変わった値は、欄が編集中（フォーカスがある・保存中・未保存の文字がある）でなければ欄に流し込む。編集中なら流し込まず、保存が済んでから追いつく
 - 保存の仕方は欄ごとに変えない: 名前と詳細は入力が止まって 0.9 秒で保存し、欄を離れたときにも保存して読み直す。話題も同じ。状況は Enter か「追記」で追記する。関連 URL は 1 件の変更ごとにリスト全体を PATCH し、タスクごとに 1 つずつ直列に送る。「保存中…／保存した」は `Panel` の保存印に、タスク ID を宛先にして各欄が書く。欄が取り外されるときにフォーカスが中にあれば `state.busy` を戻す（blur が来ない場合に備える）
 - 関連 URL の行は、todo 追加画面やメモ画面と共有する `linkEditor`（`shared.js`）が自分の DOM を作る。`LinksBlock` はそれを置く要素を 1 つだけ持ち、中身には Preact も他の素の JS も触らない
-- Preact が描く要素を素の JS から直接書き換えない。期限メニューと削除の理由欄は `.app` の外（画面のルート要素の直下）に置く。メニューが開いている行の印（`aria-expanded`）と戻した行の色（`landed`）は、`state.menuId` / `state.landedId` から描く。ドラッグのプレビューは行の要素を直接動かすので、`render()` が先にそれを元の場所へ戻してから描く
+- Preact が描く要素を素の JS から直接書き換えない。期限メニューと削除の理由欄は `.app` の外（画面のルート要素の直下の `.menus`）に、通知は `.flash-slot`（`display: contents`）に、`menus.js` が描く。メニューが開いている行の印（`aria-expanded`）・戻した行の色（`landed`）・ドラッグ中の行の薄い表示（`dragging`）・帯の「落とせる」印（`drop-ready`）は、`state.menu` / `state.landedId` / `state.drag` から描く
+- 削除の理由欄の入力は書き換えない要素にしてあり、描き直しをまたいで同じ要素が残る（打ち込み中の文字とフォーカスが消えない）。メニューと理由欄は位置が決まってからフォーカスを取る（決まる前に取るとウィンドウがその要素までスクロールする）
+- ドラッグのプレビューは、ブラウザが掴んでいる行の要素を直接動かす（行をまたぐと Preact は別の要素を作るため、掴んだ要素が文書から外れて `dragend` が来なくなるおそれがあるので、動かす見せ方を残した）。落とす位置は動かした要素から読み戻さず、`state.drag.dest`（`{listId, anchorId, after}`）に持つ。`render()` は描く前に要素を元の場所へ戻し、描いた後に `dest` へ動かし直すので、ドラッグ中に描き直されても落とす位置は変わらない
 - `load()` は連番（`loadSeq`）を持ち、遅れて届いた古い一覧の応答は捨てる（タイムラインの `seq` と同じ）
 
 ## 話題
@@ -286,7 +289,8 @@ todo 一覧は 3 つのファイルで描く（ADR todo-0025、#121・#122）。
 | 理由を聞く条件 | `internal/task/task.go` の `NeedsReason` / `AskReason`、待ちの閾値は `AskThresholdDays` |
 | 削除で理由を聞くまでの時間 | `web/todo/static/js/list.js` の `ASK_DROP_AFTER_MS` |
 | 画面の見た目 | `web/shared/static/css/tokens.css`（変数）、`web/todo/static/css/style.css` |
-| 画面の挙動（ドラッグ・メニュー・開いた行・読み直し） | `web/todo/static/js/app.js` |
+| 画面の挙動（ドラッグ・開いた行・読み直し） | `web/todo/static/js/app.js` |
+| 期限・見直し日のメニュー、削除の理由欄、通知と元に戻す | `web/todo/static/js/menus.js`（開閉は `app.js` の `openMenu` / `closeMenu` / `openDropAsk`、見た目は `style.css` の `.due-menu` / `.drop-ask` / `.err`） |
 | 一覧の区画・行・札・件数の描画 | `web/todo/static/js/list.js` |
 | 追加画面（`/add` と追加ダイアログの中身） | `web/todo/static/js/add.js`、`web/todo/static/css/add.css` |
 | 画面の切り替え・追加ダイアログ | `web/shared/static/js/router.js`、`web/shared/static/js/modal.js` |

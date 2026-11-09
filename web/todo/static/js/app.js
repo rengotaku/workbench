@@ -21,8 +21,9 @@
     '    <span class="l-near"><i></i>期限が今日・3日以内</span>',
     '    <span class="l-rest"><i></i>期限がまだ先・期限なし</span>',
     '  </div>',
-    '  <p class="err" id="err" hidden></p>',
+    '  <div class="flash-slot"></div>',
     '</div>',
+    '<div class="menus"></div>',
   ].join('\n');
 
   // active is true while the todo screen is on show. Listeners on document and
@@ -42,6 +43,7 @@
     // The list's drawing and its date helpers are list.js's (loaded before this).
     var list = window.workbench.todoList;
     var detail = window.workbench.todoDetail;
+    var menus = window.workbench.todoMenus;
     var monthDay = list.monthDay;
     var shiftDay = list.shiftDay;
 
@@ -57,7 +59,15 @@
     var state = {
       scope: 'week',
       scopeKey: 'week', // which scope button is pressed; 'custom' has its own date field
-      menuId: null, // the task whose due menu is open
+      // What is drawn over the list (menus.js draws all three from these):
+      menu: null, // the due or review menu open on a chip: { seq, kind, taskId, chip, current, inLong }
+      dropAsk: null, // the reason field open on a trash icon: { seq, task, btn }
+      flash: null, // the notice or the error: { text, notice, undoable, go }
+      // The drag in progress: { id, listId, dest, active, dropped }. dest is
+      // where the row is to land, { listId, anchorId, after }, set as the
+      // pointer moves; the drop is read from it, not from where the row's
+      // element happens to be.
+      drag: null,
       // Only the band and the in-scope queue are always open. What lies past
       // the scope and what waits on someone else are opened when wanted.
       outOpen: false,
@@ -102,14 +112,11 @@
     var el = {
       detail: document.getElementById('detail'),
       topicList: document.getElementById('todo-topics'),
-      err: document.getElementById('err'),
+      menus: root.querySelector('.menus'),
+      flash: root.querySelector('.flash-slot'),
     };
     var LIVE = {
-      queue: 'queue',
-      focusList: 'focus-list',
-      outList: 'outlist',
       longList: 'long-list',
-      focusBand: 'focus-band',
       until: 'scope-until',
     };
     Object.keys(LIVE).forEach(function (k) {
@@ -186,43 +193,21 @@
     }
 
     function showError(err) {
-      if (!err) { el.err.hidden = true; return; }
-      el.err.classList.remove('notice');
-      el.err.textContent = err.message || String(err);
-      el.err.hidden = false;
+      state.flash = err ? { text: err.message || String(err), notice: false, undoable: false } : null;
+      renderOverlays();
     }
 
     // flash says what just happened without looking like a failure, and offers
-    // to take it back. Undo is where a mis-click gets fixed, so it belongs next
-    // to the message about the click. go, when given, is one more button placed
-    // before undo: { label, run }.
+    // to take it back (menus.js draws it). go, when given, is one more button
+    // placed before undo: { label, run }.
     function flash(text, undoable, go) {
-      el.err.classList.add('notice');
-      el.err.textContent = text;
-      if (go) {
-        var goLink = document.createElement('button');
-        goLink.type = 'button';
-        goLink.className = 'undo-link';
-        goLink.textContent = go.label;
-        goLink.addEventListener('click', go.run);
-        el.err.appendChild(document.createTextNode('  '));
-        el.err.appendChild(goLink);
-      }
-      if (undoable !== false) {
-        var link = document.createElement('button');
-        link.type = 'button';
-        link.className = 'undo-link';
-        link.textContent = '元に戻す';
-        link.addEventListener('click', undo);
-        el.err.appendChild(document.createTextNode('  '));
-        el.err.appendChild(link);
-      }
-      el.err.hidden = false;
+      state.flash = { text: text, notice: true, undoable: undoable !== false, go: go || null };
+      renderOverlays();
       // A newer notice gets its own 6 seconds; the older one's timer would
       // otherwise hide it early.
       window.clearTimeout(flashTimer);
       flashTimer = window.setTimeout(function () {
-        if (el.err.classList.contains('notice')) el.err.hidden = true;
+        if (state.flash && state.flash.notice) { state.flash = null; renderOverlays(); }
       }, 6000);
     }
     var flashTimer = null;
@@ -248,13 +233,22 @@
     // here.
     function render() {
       // A drag previews by moving the dragged row's own element. Put it back
-      // where the last draw left it, so the next draw finds the DOM it expects.
-      if (dragRestore) { dragRestore(); dragRestore = null; }
+      // where the last draw left it, so the draw finds the DOM it expects, and
+      // move it to where the pointer put it once the draw is done.
+      restorePreview();
       list.render(appEl, { board: state.board, state: state, ctx: ctx });
+      applyPreview();
+      renderOverlays();
       var b = state.board;
       if (!b) return;
       fillTopicList(b.topics || []);
       refreshDetail();
+    }
+
+    // renderOverlays draws the menus, the reason field and the notice (menus.js).
+    // They are outside the list, so a notice does not redraw the rows.
+    function renderOverlays() {
+      menus.render(el.menus, el.flash, { state: state, ctx: ctx });
     }
 
     // fillTopicList refreshes the suggestions every topic field offers.
@@ -318,96 +312,24 @@
     }
 
     // openDropAsk hangs a reason field off the trash icon, the way the due menu
-    // hangs off its chip. Enter deletes once something is written; Escape or a
-    // click elsewhere leaves the task where it is.
+    // hangs off its chip (menus.js draws it).
     function openDropAsk(btn, t) {
-      closeDueMenu();
+      closeMenu();
       closeDropAsk();
-
-      var box = document.createElement('div');
-      box.className = 'drop-ask';
-      box.setAttribute('role', 'dialog');
-      box.setAttribute('aria-label', t.name + ' をやめる理由');
-
-      var label = document.createElement('div');
-      label.className = 'dm-label';
-      label.textContent = 'やめる理由（作ってから1時間以上たっている）';
-      box.appendChild(label);
-
-      var input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'drop-ask-input';
-      input.placeholder = 'なぜやめるか';
-      input.setAttribute('aria-label', 'やめる理由');
-      box.appendChild(input);
-
-      var go = document.createElement('button');
-      go.type = 'button';
-      go.className = 'drop-ask-go';
-      go.textContent = '削除する';
-      box.appendChild(go);
-
-      // While the DELETE is out the field stays: closing it would let the
-      // trash be pressed again and send a second DELETE behind an undo.
-      var sending = false;
-      function mine() { return dropAsk && dropAsk.node === box; }
-      function update() { go.disabled = sending || !input.value.trim(); }
-      function submit() {
-        var reason = input.value.trim();
-        if (!reason || sending) { input.focus(); return; }
-        sending = true;
-        input.disabled = true;
-        update();
-        removeTask(t, reason)
-          .then(function () { if (mine()) closeDropAsk(); })
-          .catch(function (err) {
-            sending = false;
-            if (mine()) { input.disabled = false; update(); input.focus(); }
-            showError(err);
-          });
-      }
-
-      input.addEventListener('input', update);
-      input.addEventListener('keydown', function (ev) {
-        if (composing(ev)) return;
-        if (ev.key === 'Enter') { ev.preventDefault(); submit(); }
-      });
-      // On the box, not the input, so Escape also works from the button.
-      box.addEventListener('keydown', function (ev) {
-        if (composing(ev) || ev.key !== 'Escape' || sending) return;
-        ev.preventDefault();
-        ev.stopPropagation();
-        closeDropAsk();
-        btn.focus();
-      });
-      go.addEventListener('click', submit);
-      update();
-
-      function outside(ev) {
-        if (!sending && !box.contains(ev.target)) closeDropAsk();
-      }
-
-      root.appendChild(box);
-      var r = btn.getBoundingClientRect();
-      var left = Math.max(8, Math.min(r.right - box.offsetWidth, window.innerWidth - box.offsetWidth - 8));
-      box.style.left = (left + window.scrollX) + 'px';
-      box.style.top = (r.bottom + 4 + window.scrollY) + 'px';
-
+      state.dropAsk = { seq: ++overlaySeq, task: t, btn: btn };
       // Hold the poll for the same reason as the due menu: a redraw would
       // replace the row, and the icon, under the field.
       state.busy = true;
-      document.addEventListener('mousedown', outside, true);
-      dropAsk = { node: box, outside: outside };
-      input.focus();
+      renderOverlays();
     }
 
     function closeDropAsk() {
-      if (!dropAsk) return;
-      document.removeEventListener('mousedown', dropAsk.outside, true);
-      dropAsk.node.remove();
-      dropAsk = null;
+      if (!state.dropAsk) return;
+      state.dropAsk = null;
       state.busy = false;
+      renderOverlays();
     }
+    var overlaySeq = 0; // a new menu or field is a new element, even on the same task
 
     // addChild opens the add dialog with the parent filled in.
     function addChild(t) {
@@ -488,15 +410,15 @@
 
       var chip = ev.target.closest('.due-edit');
       if (chip) {
-        var same = dueMenu && dueMenu.chip === chip;
-        closeDueMenu();
-        if (!same) openDueMenu(chip);
+        var same = state.menu && state.menu.chip === chip;
+        closeMenu();
+        if (!same) openMenu(chip);
         return;
       }
       // A click outside an open menu only closes it: it should not also open
       // or close the row underneath.
-      if (dueMenu) {
-        closeDueMenu();
+      if (state.menu) {
+        closeMenu();
         return;
       }
 
@@ -536,8 +458,8 @@
         undo();
         return;
       }
-      if (ev.key === 'Escape' && dueMenu) {
-        closeDueMenu();
+      if (ev.key === 'Escape' && state.menu) {
+        closeMenu();
         return;
       }
       if (ev.key === 'Escape') {
@@ -575,222 +497,30 @@
     // The due chip opens one menu for everything that moves a task later: a
     // date, a week or a month on, no date, or off the queue to someday. They
     // used to live in three places (the chip, an emptied date field, the panel).
+    // menus.js draws it from state.menu; a long-run row's chip opens the review
+    // menu instead.
 
-    var dueMenu = null; // { chip, node }
-    var dropAsk = null; // { node, outside }
-
-    function ymd(d) {
-      return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
-    }
-
-    function shortDate(d) { return (d.getMonth() + 1) + '/' + d.getDate(); }
-
-    // shiftBase is where "+1週間" counts from: the due date if it is still ahead,
-    // otherwise today. Counting from an overdue date could land a week on and
-    // still be overdue.
-    function shiftBase(due) {
-      var now = new Date();
-      var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      if (!due) return today;
-      var d = new Date(due + 'T00:00:00');
-      return isNaN(d) || d < today ? today : d;
-    }
-
-    function addDays(d, n) { var x = new Date(d); x.setDate(x.getDate() + n); return x; }
-    // A month on follows Go's AddDate, which the server uses for someday: 1/31
-    // goes to 3/3, not 2/28. Keeping one rule means the two never disagree.
-    function addMonths(d, n) { var x = new Date(d); x.setMonth(x.getMonth() + n); return x; }
-
-    function dueMenuItem(label, hint, cls, run) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'dm-item' + (cls ? ' ' + cls : '');
-      b.setAttribute('role', 'menuitem');
-      var l = document.createElement('span');
-      l.textContent = label;
-      b.appendChild(l);
-      if (hint) {
-        var h = document.createElement('span');
-        h.className = 'dm-hint';
-        h.textContent = hint;
-        b.appendChild(h);
-      }
-      b.addEventListener('click', function () {
-        b.disabled = true;
-        run();
-      });
-      return b;
-    }
-
-    function dueMenuLabel(text) {
-      var d = document.createElement('div');
-      d.className = 'dm-label';
-      d.textContent = text;
-      return d;
-    }
-
-    function openDueMenu(chip) {
-      if (chip.classList.contains('review-chip')) { openReviewMenu(chip); return; }
-      var id = chip.closest('.task').dataset.id;
-      var current = chip.dataset.due || '';
-      var path = '/api/tasks/' + encodeURIComponent(id);
-
-      function setDue(value, said) {
-        closeDueMenu();
-        request('PATCH', path, { due: value })
-          .then(function () { return load().then(function () { flash(said); }); })
-          .catch(reloadShowing);
-      }
-
-      var menu = document.createElement('div');
-      menu.className = 'due-menu';
-      menu.setAttribute('role', 'menu');
-      menu.setAttribute('aria-label', '期限');
-
-      var sec = document.createElement('div');
-      sec.className = 'dm-sec';
-      sec.appendChild(dueMenuLabel('期限'));
-      var input = document.createElement('input');
-      input.type = 'date';
-      input.className = 'due-input';
-      input.value = current;
-      input.setAttribute('aria-label', '期限の日付');
-      input.addEventListener('change', function () {
-        if (!input.value || input.value === current) return;
-        setDue(input.value, '期限を ' + shortDate(new Date(input.value + 'T00:00:00')) + ' にした');
-      });
-      sec.appendChild(input);
-      menu.appendChild(sec);
-
-      var base = shiftBase(current);
-      sec = document.createElement('div');
-      sec.className = 'dm-sec';
-      sec.appendChild(dueMenuLabel('後ろにずらす（' + shortDate(base) + ' から）'));
-      [['+1週間', addDays(base, 7)], ['+2週間', addDays(base, 14)], ['+1ヶ月', addMonths(base, 1)]]
-        .forEach(function (o) {
-          sec.appendChild(dueMenuItem(o[0], shortDate(o[1]), '', function () {
-            setDue(ymd(o[1]), '期限を ' + shortDate(o[1]) + ' にずらした');
-          }));
-        });
-      menu.appendChild(sec);
-
-      sec = document.createElement('div');
-      sec.className = 'dm-sec';
-      if (current) {
-        sec.appendChild(dueMenuItem('期限なし', '', 'dm-clear', function () {
-          setDue('', '期限を外した');
-        }));
-      }
-      // A long-run task is not shelved: it is already out of the queue.
-      if (!chip.closest('.long-list')) {
-        sec.appendChild(dueMenuItem('いつかにする', shortDate(addMonths(shiftBase(''), 1)) + ' に見直す', 'dm-someday',
-          function () {
-            closeDueMenu();
-            request('POST', path + '/someday', {})
-              .then(function () { closeRow(id); return load().then(function () { flash('いつかへ棚上げした'); }); })
-              .catch(reloadShowing);
-          }));
-      }
-      if (sec.childNodes.length) menu.appendChild(sec);
-
-      showMenu(chip, menu, input);
-    }
-
-    // openReviewMenu is the due menu for a long-run row's review day: a date, or
-    // a step ahead of today. It posts to /review, which also marks it as looked at.
-    function openReviewMenu(chip) {
-      var id = chip.closest('.task').dataset.id;
-      var current = chip.dataset.due || '';
-
-      function setReview(value) {
-        closeDueMenu();
-        request('POST', '/api/tasks/' + encodeURIComponent(id) + '/review', { review_on: value })
-          .then(function () { return load().then(function () { flash('次に見る日を ' + monthDay(value) + ' にした'); }); })
-          .catch(reloadShowing);
-      }
-
-      var menu = document.createElement('div');
-      menu.className = 'due-menu';
-      menu.setAttribute('role', 'menu');
-      menu.setAttribute('aria-label', '次に見る日');
-
-      var sec = document.createElement('div');
-      sec.className = 'dm-sec';
-      sec.appendChild(dueMenuLabel('次に見る日'));
-      var input = document.createElement('input');
-      input.type = 'date';
-      input.className = 'due-input';
-      input.value = current;
-      input.setAttribute('aria-label', '次に見る日の日付');
-      input.addEventListener('change', function () {
-        if (input.value) setReview(input.value);
-      });
-      sec.appendChild(input);
-      menu.appendChild(sec);
-
-      var base = new Date(((state.board && state.board.today) || ymd(new Date())) + 'T00:00:00');
-      sec = document.createElement('div');
-      sec.className = 'dm-sec';
-      sec.appendChild(dueMenuLabel('今日（' + shortDate(base) + '）から'));
-      [['+1週間', addDays(base, 7)], ['+2週間', addDays(base, 14)], ['+1ヶ月', addMonths(base, 1)]]
-        .forEach(function (o) {
-          sec.appendChild(dueMenuItem(o[0], shortDate(o[1]), '', function () { setReview(ymd(o[1])); }));
-        });
-      menu.appendChild(sec);
-
-      showMenu(chip, menu, input);
-    }
-
-    // showMenu keys, places and registers a menu hung off a chip.
-    function showMenu(chip, menu, input) {
-      menu.addEventListener('keydown', function (e) {
-        if (composing(e)) return;
-        var items = Array.prototype.slice.call(menu.querySelectorAll('input, button:not([disabled])'));
-        var at = items.indexOf(document.activeElement);
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopPropagation();
-          closeDueMenu();
-          chip.focus();
-        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-          // Inside the date field the arrows step the date; leave them alone.
-          if (document.activeElement === input) return;
-          e.preventDefault();
-          e.stopPropagation();
-          var step = e.key === 'ArrowDown' ? 1 : -1;
-          items[(at + step + items.length) % items.length].focus();
-        } else if (e.key === 'Enter' || e.key === ' ') {
-          e.stopPropagation(); // the button's own click runs; the row must not toggle
-        }
-      });
-
-      // The menu hangs off the screen, not the row: the row redraws on every
-      // load and would take the menu with it. Inside the screen's root so its
-      // styles (scoped to .view-todo) reach it.
-      root.appendChild(menu);
-      var r = chip.getBoundingClientRect();
-      var left = Math.max(8, Math.min(r.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8));
-      menu.style.left = (left + window.scrollX) + 'px';
-      menu.style.top = (r.bottom + 4 + window.scrollY) + 'px';
-
+    function openMenu(chip) {
+      state.menu = {
+        seq: ++overlaySeq,
+        kind: chip.classList.contains('review-chip') ? 'review' : 'due',
+        taskId: chip.closest('.task').dataset.id,
+        chip: chip,
+        current: chip.dataset.due || '',
+        inLong: !!chip.closest('.long-list'),
+      };
       state.busy = true; // hold the poll while the menu is open
-      dueMenu = { chip: chip, node: menu };
-      state.menuId = chip.closest('.task').dataset.id; // the chip's aria-expanded, drawn by list.js
-      render();
-      var first = menu.querySelector('.dm-item');
-      if (first) first.focus();
+      render(); // the chip's aria-expanded is drawn by list.js
     }
 
-    function closeDueMenu() {
-      if (!dueMenu) return;
-      dueMenu.node.remove();
-      dueMenu = null;
-      state.menuId = null;
+    function closeMenu() {
+      if (!state.menu) return;
+      state.menu = null;
       state.busy = false;
       render();
     }
 
-    window.addEventListener('resize', closeDueMenu);
+    window.addEventListener('resize', closeMenu);
     window.addEventListener('resize', closeDropAsk);
 
     // "タスクを追加" and N open the add page (/add) in a dialog over the list:
@@ -867,91 +597,146 @@
 
     // ---- drag to reorder, and to focus ----
 
-    // Rows move between two lists: the band (focused tasks, the top of the
-    // queue) and the list below it. Dropping across them changes focus; dropping
-    // within one reorders (ADR todo-0012).
-    var dragged = null;
-    var dragRestore = null; // puts the dragged row's element back where Preact left it
-    var dropped = false; // a drag ended by Escape or outside both lists saves nothing
+    // Rows move between three lists: the band (focused tasks, the top of the
+    // queue), the queue, and スコープ外. Dropping across the band's edge changes
+    // focus; dropping within one list reorders (ADR todo-0012).
+    //
+    // The browser drags the row's own element, so the preview moves that
+    // element (movePreview). Where the row is to land is kept in
+    // state.drag.dest, not read back from the moved element, so a draw in the
+    // middle of a drag (a reply, the landed tint) cannot change what the drop
+    // saves: render() puts the element back before it draws and moves it to
+    // dest after (restorePreview / applyPreview).
+
+    var preview = null; // { li, home, before }: where the dragged element was before it moved
+
+    function byId(id) { return document.getElementById(id); }
+
+    function taskNode(id) {
+      return document.querySelector('.task[data-id="' + id + '"]');
+    }
+
+    function restorePreview() {
+      if (!preview) return;
+      var p = preview;
+      preview = null;
+      if (p.li.parentNode !== p.home || p.li.nextSibling !== p.before) p.home.insertBefore(p.li, p.before);
+    }
+
+    // applyPreview moves the dragged row's element to state.drag.dest. A list
+    // or an anchor row that is no longer there leaves the row where it is.
+    function applyPreview() {
+      var d = state.drag;
+      if (!d || !d.dest) return;
+      var li = taskNode(d.id);
+      var target = byId(d.dest.listId);
+      if (!li || !target) return;
+      var anchor = null;
+      if (d.dest.anchorId) {
+        anchor = Array.prototype.filter.call(target.children, function (c) { return c.dataset.id === d.dest.anchorId; })[0];
+        if (!anchor) return;
+        if (anchor === li) return;
+      }
+      if (!preview) preview = { li: li, home: li.parentNode, before: li.nextSibling };
+      target.insertBefore(li, anchor ? (d.dest.after ? anchor.nextSibling : anchor) : null);
+    }
 
     function onDragStart(ev) {
       var li = ev.target.closest('.task');
       if (!li) return;
       state.busy = true;
-      dragged = li;
-      dropped = false;
-      // The preview below moves the row's own element, under Preact. render()
-      // puts it back first, so the draw that follows (the reply, or the cancel)
-      // finds the DOM it expects and moves the row to where it now belongs.
-      var home = li.parentNode;
-      var before = li.nextSibling;
-      dragRestore = function () {
-        if (li.parentNode !== home || li.nextSibling !== before) home.insertBefore(li, before);
-      };
-      li.classList.add('dragging');
-      el.focusBand.classList.add('drop-ready');
+      state.drag = { id: li.dataset.id, listId: li.parentNode.id, dest: null, active: true, dropped: false };
+      // list.js draws the row dimmed and the band ready from state.drag.
+      render();
       ev.dataTransfer.effectAllowed = 'move';
       ev.dataTransfer.setData('text/plain', li.dataset.id);
     }
 
     function onDragOver(listId) {
       return function (ev) {
-        if (!dragged) return;
-        var list = document.getElementById(listId);
+        var d = state.drag;
+        if (!d || !d.active) return;
         // Grouped: nothing can land in the queue. No preventDefault, so the
         // browser shows the drop as not allowed and the drag ends as a cancel.
         if (state.groupByTopic && listId === 'queue') return;
         ev.preventDefault();
+        var target = byId(listId);
+        var li = taskNode(d.id);
         var over = ev.target.closest('.task');
-        if (over && over !== dragged && over.parentNode === list) {
+        var at = d.dest ? d.dest.listId : d.listId; // the list the row is in now
+        if (over && over !== li && over.parentNode === target) {
           var box = over.getBoundingClientRect();
-          var after = (ev.clientY - box.top) > box.height / 2;
-          list.insertBefore(dragged, after ? over.nextSibling : over);
+          d.dest = { listId: listId, anchorId: over.dataset.id, after: (ev.clientY - box.top) > box.height / 2 };
+          applyPreview();
           return;
         }
         // Over the area but not over a row (the band's heading or empty-band
         // hint, the space below the last row, the add button): the row goes to
         // the end of that list. This is also how a row reaches an empty list.
-        if (!over && dragged.parentNode !== list) {
-          list.appendChild(dragged);
+        if (!over && at !== listId) {
+          d.dest = { listId: listId, anchorId: null, after: false };
+          applyPreview();
         }
       };
     }
 
     function onDrop(ev) {
       ev.preventDefault();
-      dropped = true;
+      if (state.drag) state.drag.dropped = true;
     }
 
     // scopeDue is the due date a row takes when it is dragged across the
     // scope's edge, so that it stays where it was put: the last day in scope
     // when it comes into the queue, the first day past it when it goes out.
     // Null when the drop does not cross the edge.
-    function scopeDue(task, list) {
+    function scopeDue(task, listId) {
       var b = state.board;
-      if (list === el.outList && task.in_scope) return shiftDay(b.today, b.scope_days + 1);
-      if (list === el.queue && !task.in_scope) return shiftDay(b.today, b.scope_days);
+      if (listId === 'outlist' && task.in_scope) return shiftDay(b.today, b.scope_days + 1);
+      if (listId === 'queue' && !task.in_scope) return shiftDay(b.today, b.scope_days);
       return null;
     }
 
+    // dropNeighbours reads the rows around the landing place in the list it
+    // lands in, without the dragged row: the id above and the id below, either
+    // may be null. The element is put back first, so the list read is the one
+    // Preact drew.
+    function dropNeighbours(d) {
+      var rows = Array.prototype.filter.call(byId(d.dest.listId).children, function (c) {
+        return c.dataset.id && c.dataset.id !== d.id;
+      }).map(function (c) { return c.dataset.id; });
+      var at = d.dest.anchorId ? rows.indexOf(d.dest.anchorId) : -1;
+      if (d.dest.anchorId && at === -1) return null;
+      if (!d.dest.anchorId) return { prev: rows.length ? rows[rows.length - 1] : null, next: null };
+      return d.dest.after
+        ? { prev: rows[at], next: rows[at + 1] || null }
+        : { prev: rows[at - 1] || null, next: rows[at] };
+    }
+
     function onDragEnd() {
-      if (!dragged) return;
-      var li = dragged;
-      li.classList.remove('dragging');
-      el.focusBand.classList.remove('drop-ready');
-      dragged = null;
-      if (!dropped) {
-        // Cancelled: the rows were only moved for the preview. Put them back.
+      var d = state.drag;
+      if (!d || !d.active) return;
+      d.active = false;
+      if (!d.dropped) {
+        // Cancelled: the rows were only moved for the preview. render() puts
+        // them back.
+        state.drag = null;
         state.busy = false;
         render();
         return;
       }
 
-      var id = li.dataset.id;
-      var list = li.parentNode;
-      var inBand = list === el.focusList;
+      var id = d.id;
+      if (!d.dest) {
+        // Dropped without the row having moved (onto itself): it lands where it
+        // is, and is still sent, as it always was.
+        var here = taskNode(id);
+        var after = here && here.nextElementSibling;
+        d.dest = { listId: d.listId, anchorId: after && after.dataset.id ? after.dataset.id : null, after: false };
+      }
+      var listId = d.dest.listId;
+      var inBand = listId === 'focus-list';
       var task = (state.board.queue || []).filter(function (t) { return t.id === id; })[0];
-      if (!task) { state.busy = false; load(); return; }
+      if (!task) { state.drag = null; state.busy = false; render(); load(); return; }
       // focused is omitted from the JSON when false, so compare a boolean:
       // undefined !== false would send every reorder to /focus as a no-op.
       var crossed = inBand !== Boolean(task.focused);
@@ -961,29 +746,37 @@
       // screen, so counting rows on screen would land somewhere else.
       var rest = (state.board.queue || []).filter(function (t) { return t.id !== id; });
       var ids = rest.map(function (t) { return t.id; });
-      var prev = li.previousElementSibling;
-      var next = li.nextElementSibling;
+      restorePreview();
+      var near = dropNeighbours(d);
+      if (!near) { state.drag = null; state.busy = false; render(); load(); return; }
+      var queueRows = Array.prototype.filter.call(byId('queue').children, function (c) {
+        return c.dataset.id && c.dataset.id !== id;
+      });
       var to;
-      if (prev && prev.dataset.id) {
-        to = ids.indexOf(prev.dataset.id) + 1;
-      } else if (list === el.outList && next && next.dataset.id) {
+      if (near.prev) {
+        to = ids.indexOf(near.prev) + 1;
+      } else if (listId === 'outlist' && near.next) {
         // The top of スコープ外 goes just before its first row. In-scope rows
         // can sit between out-of-scope ones in the queue, so "after the last
         // in-scope row" could be behind it.
-        to = ids.indexOf(next.dataset.id);
-      } else if (list === el.outList && el.queue.lastElementChild) {
-        to = ids.indexOf(el.queue.lastElementChild.dataset.id) + 1;
+        to = ids.indexOf(near.next);
+      } else if (listId === 'outlist' && queueRows.length) {
+        to = ids.indexOf(queueRows[queueRows.length - 1].dataset.id) + 1;
       } else {
         to = inBand ? 0 : rest.filter(function (t) { return t.focused; }).length;
       }
-      var due = scopeDue(task, list);
+      var due = scopeDue(task, listId);
       // スコープ外 is shown by due date, so a row moved within it would only
       // jump back. Nothing is sent; the drop just puts it back.
-      if (!crossed && !due && list === el.outList) {
+      if (!crossed && !due && listId === 'outlist') {
+        state.drag = null;
         state.busy = false;
         render();
         return;
       }
+      // The row stays where it was put until the reply draws the list. The
+      // draw here only takes the dimming off.
+      render();
 
       // Crossing between the band and the list is a change of focus; the
       // server clamps the place to the block the task now belongs to. Within
@@ -1010,7 +803,7 @@
       }
       req
         .then(function () {
-          state.busy = false;
+          settleDrag(d);
           // Reordering within a section keeps the row open; moving it across one
           // changes its state, as the buttons do.
           if (crossed || due) closeRow(id);
@@ -1020,9 +813,18 @@
           });
         })
         .catch(function (err) {
-          state.busy = false;
+          settleDrag(d);
           reloadShowing(err);
         });
+    }
+
+    // settleDrag lets go of a dropped drag once its save has answered. A later
+    // drag may have started while the save was out; it owns state.drag and
+    // state.busy by then, so they are left alone.
+    function settleDrag(d) {
+      if (state.drag !== d) return;
+      state.drag = null;
+      state.busy = false;
     }
 
     // ---- boot ----
@@ -1065,6 +867,9 @@
       addChild: addChild,
       removeTask: removeTask,
       openDropAsk: openDropAsk,
+      closeDropAsk: closeDropAsk,
+      closeMenu: closeMenu,
+      undo: undo,
       showError: showError,
       reviewDone: reviewDone,
       openLongTask: openLongTask,
@@ -1099,7 +904,7 @@
       load();
     };
     hooks.hide = function () {
-      closeDueMenu();
+      closeMenu();
       closeDropAsk();
     };
 

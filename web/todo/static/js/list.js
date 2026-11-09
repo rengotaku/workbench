@@ -6,8 +6,9 @@
 // （開いた行・入力中の欄・フォーカス・CSS アニメーション）。
 //
 // 開いた行の名前の欄と詳細パネルは detail.js の部品（NameField・Panel）が描く。
-// 素の JS が持ち続けるのは、行の外の DOM を触るメニュー・ポップオーバー・フラッシュ・ドラッグ
-// （後続の issue で移す）。Preact が描く要素を素の JS から直接書き換えない。
+// メニュー・削除の理由欄・通知は menus.js が描く。ドラッグ中の行の薄い表示と、フォーカスの帯の
+// 「落とせる」印は state.drag から描く。Preact が描く要素を素の JS から直接書き換えない
+// （ドラッグ中の行の要素を動かす見せ方だけが例外で、app.js が描画の前後で戻す）。
 (function () {
   'use strict';
 
@@ -327,7 +328,8 @@
     // The open row's name and panel (detail.js, loaded after this file).
     var D = window.workbench.todoDetail;
 
-    var cls = 'task' + (o.extraClass ? ' ' + o.extraClass : '') + (st.landedId === t.id ? ' landed' : '');
+    var cls = 'task' + (o.extraClass ? ' ' + o.extraClass : '') + (st.landedId === t.id ? ' landed' : '')
+      + (st.drag && st.drag.active && st.drag.id === t.id ? ' dragging' : '');
     if (o.hasPanel) cls += ' openable' + (open ? ' row-open' : '');
     if (o.noNum) cls += ' no-num';
 
@@ -360,7 +362,7 @@
         // column of them; the review chip of a long-run row always shows.
         + (!o.reviewChip && !t.due ? ' due-none' : '');
       due = html`<button type="button" class=${dcls} title=${o.dueTitle || undefined}
-        aria-haspopup="menu" aria-expanded=${String(st.menuId === t.id)}
+        aria-haspopup="menu" aria-expanded=${String(!!st.menu && st.menu.taskId === t.id)}
         data-due=${o.reviewChip ? (t.review_on || '') : (t.due || '')}>${o.dueLabel}</button>`;
     } else {
       due = html`<span class=${'due' + (o.dueClass ? ' ' + o.dueClass : '')} title=${o.dueTitle || undefined}>${o.dueLabel}</span>`;
@@ -575,7 +577,7 @@
 
   // render draws the whole list screen into container (the .app element).
   //   view.board  the board the API sent (null before the first reply)
-  //   view.state  app.js's state: scope, folds, openId, landedId, menuId, ...
+  //   view.state  app.js's state: scope, folds, openId, landedId, menu, drag, ...
   //   view.ctx    what the rows call back into app.js
   function render(container, view) {
     var b = view.board || EMPTY_BOARD;
@@ -647,7 +649,7 @@
         <ul class="review-list" id="review-list">${review.map(function (t) { return reviewLine(t, ctx); })}</ul>
       </section>`,
 
-      html`<section class="focus-band" id="focus-band" ...${dragProps(ctx, 'focus-list')}>
+      html`<section class=${'focus-band' + (st.drag && st.drag.active ? ' drop-ready' : '')} id="focus-band" ...${dragProps(ctx, 'focus-list')}>
         <div class="focus-head">フォーカス<span class="n" id="focus-count">${focus.length}</span></div>
         <ul class="list focus-list" id="focus-list">${focus.map(function (t) { return queueRow(t, false, v); })}</ul>
         <p class="focus-empty" id="focus-empty" hidden=${focus.length > 0}>ここへドラッグするとフォーカスになる</p>
