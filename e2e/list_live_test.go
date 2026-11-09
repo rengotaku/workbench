@@ -185,3 +185,45 @@ func TestTodoListFieldRemovedWhileFocusedReleasesThePoll(t *testing.T) {
 	a.addTask(t, "fifth")
 	p.untilWithin(12*time.Second, "the poll to bring fifth", queueNames+`.includes('fifth')`)
 }
+
+// What a reply changed while a field held the open row is taken up once the
+// field is left, with no further change on the server: the panel must not stay
+// a copy of the old task (editing it would send the old related URLs back).
+func TestTodoListHeldPanelCatchesUpWhenTheFieldIsLeft(t *testing.T) {
+	a := startApp(t)
+	_, second, p := openSecond(t, a)
+	p.until("status field", `document.getElementById('status-`+second+`')`)
+
+	g := p.holdList(fetch.RequestStageRequest)
+	a.addTask(t, "fourth")
+	g.waitHeld(t, 10*time.Second)
+	p.run(chromedp.SendKeys("#status-"+second, "draft", chromedp.ByQuery))
+	a.patch(t, second, map[string]any{"links": []map[string]any{{"url": "https://example.com/added", "label": "added"}}})
+	g.release()
+	p.until("list redrawn", queueHas(4, "fourth"))
+	if n := p.num(`document.querySelectorAll('.task.row-open .link-row').length`); n != 0 {
+		t.Fatalf("link rows while the field is held = %v, want the panel kept as it was", n)
+	}
+
+	p.eval(`document.activeElement.blur()`, nil)
+	p.until("the added URL shown", `document.querySelectorAll('.task.row-open .link-row').length === 1`)
+}
+
+// 見直した is drawn disabled while its request is out and enabled again after
+// the reload. A long-run task with no next step stays in the band (no_next).
+func TestTodoListReviewButtonIsEnabledAgainAfterReload(t *testing.T) {
+	a := startApp(t)
+	id := a.addTask(t, "longone")
+	a.post(t, "/api/tasks/"+id+"/long", map[string]any{"on": true})
+	p := newPage(t, a, "/")
+	btn := `#review-list .rv-done`
+	p.until("in the review band", `document.querySelector('`+btn+`')`)
+	p.click(btn)
+	p.until("reviewed", `document.getElementById('err').textContent.includes('見直した')`)
+	if got := p.str(`String(!!document.querySelector('` + btn + `') && document.querySelector('` + btn + `').disabled)`); got != "false" {
+		t.Errorf("見直した present and disabled = %s after the reload, want present and enabled", got)
+	}
+	if n := p.num(`document.querySelectorAll('` + btn + `').length`); n != 1 {
+		t.Errorf("review band buttons = %v, want the task to stay (no next step)", n)
+	}
+}

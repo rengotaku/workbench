@@ -3,6 +3,9 @@
 package e2e
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -117,6 +120,28 @@ func (p *page) untilWithin(d time.Duration, what, js string) {
 func (p *page) reload() {
 	p.t.Helper()
 	p.eval(`document.dispatchEvent(new Event('visibilitychange'))`, nil)
+}
+
+// patch changes a task through the API (a change made elsewhere).
+func (a *app) patch(t *testing.T, id string, body any) {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequest(http.MethodPatch, a.base+"/api/tasks/"+id, bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH %s: %v", id, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		t.Fatalf("PATCH %s = %d", id, res.StatusCode)
+	}
 }
 
 // done completes a task through the API (a change made elsewhere).

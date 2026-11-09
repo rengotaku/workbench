@@ -579,8 +579,8 @@
       <button type="button" class="rv-name" title=${t.id + ' ' + t.name + ' を長期の枠で開く'}
         onClick=${function () { ctx.openLongTask(t.id); }}>${t.name}</button>
       ${reasonTags(t)}
-      <button type="button" class="rv-done" title="次に見る日を 1 週間先にして、見直した印を付ける"
-        onClick=${function (ev) { ctx.reviewDone(t, ev.currentTarget); }}>見直した</button>
+      <button type="button" class="rv-done" disabled=${!!ctx.state.reviewing[t.id]} title="次に見る日を 1 週間先にして、見直した印を付ける"
+        onClick=${function (ev) { ctx.reviewDone(t); }}>見直した</button>
     </li>`;
   }
 

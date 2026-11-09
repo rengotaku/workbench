@@ -75,11 +75,25 @@
       dropOpen: false, // so is the list of what was given up on
       somedayOpen: false, // and so is the shelf: closed by default, like done
       statusDrafts: {}, // unsent status text per task id; survives redraws
-      busy: false, // a drag or a date field is in progress; do not redraw under it
+      reviewing: {}, // long-run task ids whose 見直した is in flight
       shownId: null, // the task the detail box is showing; the pointer moves it
       revealId: null, // the task a link named; its section is unfolded on first load
       landedId: null, // the task just resumed; its row is tinted for a moment
     };
+    // busy: a drag, a menu or a field is in progress; do not redraw under it.
+    // list.js keeps the open row's name and panel while it holds. When it is
+    // released, draw once more (after the focus has settled, so moving between
+    // two fields does not count) so what was held back catches up with the board.
+    var busy = false;
+    Object.defineProperty(state, 'busy', {
+      enumerable: true,
+      get: function () { return busy; },
+      set: function (v) {
+        var released = busy && !v;
+        busy = !!v;
+        if (released) window.setTimeout(function () { if (!busy) render(); }, 0);
+      },
+    });
     var landedTimer = null;
     var LANDED_MS = 3000;
 
@@ -289,14 +303,16 @@
     }
 
     // reviewDone marks a long-run task looked at: its next look is a week on.
-    function reviewDone(t, btn) {
-      btn.disabled = true;
+    function reviewDone(t) {
+      state.reviewing[t.id] = true; // list.js draws the button disabled from this
+      render();
       request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/review', {})
         .then(function (data) {
           var on = data.task && data.task.review_on;
+          delete state.reviewing[t.id];
           return load().then(function () { flash('見直した。次に見る日は ' + monthDay(on)); });
         })
-        .catch(function (err) { btn.disabled = false; reloadShowing(err); });
+        .catch(function (err) { delete state.reviewing[t.id]; render(); reloadShowing(err); });
     }
 
     // boardTasks lists every task the board carries, whatever its section.
