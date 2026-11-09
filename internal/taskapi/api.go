@@ -452,7 +452,6 @@ func fromLabel(d time.Time) string {
 // Span names a count of days in the unit that suits its size, the way a chat
 // says "3 weeks ago" instead of "23 days ago": days up to 6, then weeks up to
 // 27, months (30 days, at least 1) up to 364, then years. It rounds down.
-// The screen's span() in app.js follows the same steps.
 func Span(days int) string {
 	switch {
 	case days >= 365:
