@@ -168,6 +168,12 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 		require.GreaterOrEqual(t, list, 0, s.path)
 		assert.Less(t, vendor, list, s.path)
 		assert.Less(t, list, strings.Index(body, `src="/static/js/app.js"`), s.path)
+		// The open row's detail components (detail.js) come after list.js, which
+		// uses them when it draws a row, and before app.js, which hands them its state.
+		detail := strings.Index(body, `src="/static/js/detail.js"`)
+		require.GreaterOrEqual(t, detail, 0, s.path)
+		assert.Less(t, list, detail, s.path)
+		assert.Less(t, detail, strings.Index(body, `src="/static/js/app.js"`), s.path)
 		// Every screen shows the one workbench icon.
 		assert.Contains(t, body, `<link rel="icon" href="/shared/icon.svg"`, s.path)
 		// No screen loads anything from a CDN (fonts included).

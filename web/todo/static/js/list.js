@@ -5,19 +5,14 @@
 // 行は task の ID を key にするので、描き直しをまたいで同じ行の DOM が残る
 // （開いた行・入力中の欄・フォーカス・CSS アニメーション）。
 //
-// 素の JS が持ち続ける部分（後続の issue で移す）は、Preact が子を管理しない「宿」
-// （Host）として行の中に置く。宿の中身は app.js の mountName / mountPanel が満たす。
-//   - 開いた行の名前の欄（contenteditable）と、その下の詳細パネル
-//   - メニュー・ポップオーバー・フラッシュ・ドラッグ（行の外の DOM を触る）
-// Preact が描く要素を素の JS から直接書き換えない。宿だけが例外で、宿の子は Preact が触らない。
+// 開いた行の名前の欄と詳細パネルは detail.js の部品（NameField・Panel）が描く。
+// 素の JS が持ち続けるのは、行の外の DOM を触るメニュー・ポップオーバー・フラッシュ・ドラッグ
+// （後続の issue で移す）。Preact が描く要素を素の JS から直接書き換えない。
 (function () {
   'use strict';
 
   var P = window.htmPreact;
   var html = P.html;
-  var h = P.h;
-  var Component = P.Component;
-  var useRef = P.useRef;
 
   // 作ってから 1 時間以上たったタスクは、ごみ箱の前に理由を聞く（ADR todo-0016）。
   var ASK_DROP_AFTER_MS = 60 * 60 * 1000;
@@ -298,40 +293,6 @@
     });
   }
 
-  // ---- 素の JS に渡す宿 ----
-
-  // Host is an element whose children Preact never touches: it renders the
-  // empty element once and does not update it. mount(el) fills it and wires
-  // its handlers (app.js). When the host goes while the focus is inside it, no
-  // blur comes, so the poll's hold (state.busy) is released here.
-  class Host extends Component {
-    shouldComponentUpdate() { return false; }
-    componentDidMount() { this.props.mount(this.base); }
-    componentWillUnmount() {
-      if (this.base && this.base.contains(document.activeElement)) this.props.release();
-    }
-    render(p) { return h(p.tag, p.attrs); }
-  }
-
-  // Fresh draws a Host that is built again when the board has moved on (rev),
-  // so an open row follows a change made elsewhere (the CLI, another tab). It
-  // waits while something holds the poll (state.busy: every field of the row
-  // sets it on focus, and a drag or a menu while they last): the field stays
-  // the same node with the same text, and the newer board is taken up by the
-  // first draw after that.
-  function Fresh(p) {
-    var seen = useRef(null);
-    if (seen.current === null) seen.current = { rev: p.rev, n: 0 };
-    if (seen.current.rev !== p.rev && !p.ctx.state.busy) {
-      seen.current = { rev: p.rev, n: seen.current.n + 1 };
-    }
-    return html`<${Host} key=${seen.current.n} tag=${p.tag} attrs=${p.attrs}
-      mount=${p.mount} release=${p.ctx.releaseBusy} />`;
-  }
-
-  var NAME_ATTRS = { 'class': 'txt live', contenteditable: 'true', spellcheck: false };
-  var PANEL_ATTRS = { 'class': 'panel' };
-
   // ---- 行 ----
 
   function RemoveIcon(p) {
@@ -363,6 +324,8 @@
     var ctx = p.ctx;
     var st = ctx.state;
     var open = !!o.hasPanel && st.openId === t.id;
+    // The open row's name and panel (detail.js, loaded after this file).
+    var D = window.workbench.todoDetail;
 
     var cls = 'task' + (o.extraClass ? ' ' + o.extraClass : '') + (st.landedId === t.id ? ' landed' : '');
     if (o.hasPanel) cls += ' openable' + (open ? ' row-open' : '');
@@ -379,8 +342,7 @@
       // place, so there is no second copy of it inside the panel. Ticket keys
       // stop being links while editing: a link inside an editable line fights
       // the caret.
-      txt = html`<${Fresh} key="name" rev=${p.rev} ctx=${ctx} tag="span" attrs=${NAME_ATTRS}
-        mount=${function (el) { ctx.mountName(el, t); }} />`;
+      txt = html`<${D.NameField} key="name" t=${t} rev=${p.rev} ctx=${ctx} />`;
     } else {
       var split = o.ticketBadge ? splitTicket(t) : null;
       // The badge sits at the head of the name text, so a wrapped line runs
@@ -418,8 +380,7 @@
       <div class="body">
         <div class="name">${tagsInside ? null : tags}${txt}${idleTag(t)}${o.long ? reasonTags(t) : null}</div>
         ${o.long ? longNext(t, ctx) : null}
-        ${open ? html`<${Fresh} key="panel" rev=${p.rev} ctx=${ctx} tag="div" attrs=${PANEL_ATTRS}
-          mount=${function (el) { ctx.mountPanel(el, t); }} />` : null}
+        ${open ? html`<${D.Panel} key="panel" t=${t} rev=${p.rev} ctx=${ctx} />` : null}
       </div>
       ${due}
       ${html`<${RemoveIcon} t=${t} ctx=${ctx} />`}
@@ -750,5 +711,6 @@
     monthDay: monthDay,
     shiftDay: shiftDay,
     linkRange: linkRange,
+    nameParts: nameParts,
   };
 })();
