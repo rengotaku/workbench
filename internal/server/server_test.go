@@ -157,6 +157,11 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 		// The router (router.js) finds the screen by its root's data-view.
 		assert.Contains(t, body, "/shared/js/router.js", s.path)
 		assert.Contains(t, body, `data-view="`+s.view+`"`, s.path)
+		// Preact and htm load before every screen's script, which draws with
+		// them (ADR todo-0025).
+		vendor := strings.Index(body, `src="/shared/vendor/htm-preact.umd.js"`)
+		require.GreaterOrEqual(t, vendor, 0, s.path)
+		assert.Less(t, vendor, strings.Index(body, `src="/shared/js/common.js"`), s.path)
 		// Every screen shows the one workbench icon.
 		assert.Contains(t, body, `<link rel="icon" href="/shared/icon.svg"`, s.path)
 		// No screen loads anything from a CDN (fonts included).
@@ -167,7 +172,7 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 
 func TestSharedStaticServedBehindGuard(t *testing.T) {
 	h := newServer(t)
-	for _, p := range []string{"/shared/css/tokens.css", "/shared/css/base.css", "/shared/js/common.js", "/shared/js/paste.js", "/shared/js/router.js", "/shared/js/modal.js", "/shared/icon.svg"} {
+	for _, p := range []string{"/shared/css/tokens.css", "/shared/css/base.css", "/shared/js/common.js", "/shared/js/paste.js", "/shared/js/router.js", "/shared/js/modal.js", "/shared/vendor/htm-preact.umd.js", "/shared/icon.svg"} {
 		assert.Equal(t, http.StatusOK, do(h, http.MethodGet, p, "").Code, p)
 
 		req := httptest.NewRequest(http.MethodGet, p, nil)

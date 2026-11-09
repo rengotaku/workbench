@@ -17,7 +17,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 - **書き手はサーバだけ**。CLI もブラウザも REST を叩く。CLI はサーバが落ちていればエラーで止まり、ファイルを直接書かない
 - サーバはループバック固定で認証を持たない。LAN へは出さない
-- 画面は素の JS で、ビルド工程は無い。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の HTML を描く。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
+- 画面は JS で描き、ビルド工程は無い。描画は Preact と htm（同梱の `web/shared/static/vendor/htm-preact.umd.js`）へ画面ごとに移している途中で、移していない画面は素の JS で DOM を組み立てる（ADR todo-0025、#119）。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の HTML を描く。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
 
 ## ディレクトリ
 
@@ -33,7 +33,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | `internal/taskclient/` | CLI からサーバを叩く HTTP クライアント |
 | `internal/legacy/` | 旧台帳（テキストの TODO ファイルと順序 YAML）の読み取りと移行計画の組み立て |
 | `internal/taskweb/` | 画面（`/`・`/add`）の外枠と `/static` の配信、`/api` のマウント（`Mount`）。中身は `app.js` / `add.js` がルーターの画面として描く |
-| `web/shared/` | todo と note 共通のレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・`common.js`（API 呼び出し、追加ダイアログへの通知 `tell` / `leave`）・`router.js`（画面の切り替えとダイアログへの貸し出し `lend`）・`modal.js`（追加ダイアログ）。`/shared` で配信 |
+| `web/shared/` | todo と note 共通のレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・`common.js`（API 呼び出し、追加ダイアログへの通知 `tell` / `leave`）・`router.js`（画面の切り替えとダイアログへの貸し出し `lend`）・`modal.js`（追加ダイアログ）・`vendor/`（同梱の Preact と htm。版と入れ替え手順は `vendor/README.md`）。`/shared` で配信 |
 | `web/todo/` | テンプレート・CSS・JS。`embed` でバイナリに焼き込む |
 | `launchd/`, `scripts/` | 常駐させるための plist テンプレートと配置スクリプト |
 
