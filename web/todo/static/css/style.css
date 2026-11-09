@@ -1001,6 +1001,8 @@
   .legend .l-near i { background: var(--near); }
   .legend .l-rest i { background: var(--line); }
 
+  /* The slot the notice is drawn into adds no box: the notice is a child of .wrap. */
+  .flash-slot { display: contents; }
   .err {
     margin: 0;
     padding: 10px 14px;

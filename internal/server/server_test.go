@@ -174,6 +174,12 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 		require.GreaterOrEqual(t, detail, 0, s.path)
 		assert.Less(t, list, detail, s.path)
 		assert.Less(t, detail, strings.Index(body, `src="/static/js/app.js"`), s.path)
+		// The menus, the reason field and the notice (menus.js) come after
+		// detail.js and before app.js, which hands them its state.
+		menus := strings.Index(body, `src="/static/js/menus.js"`)
+		require.GreaterOrEqual(t, menus, 0, s.path)
+		assert.Less(t, detail, menus, s.path)
+		assert.Less(t, menus, strings.Index(body, `src="/static/js/app.js"`), s.path)
 		// Every screen shows the one workbench icon.
 		assert.Contains(t, body, `<link rel="icon" href="/shared/icon.svg"`, s.path)
 		// No screen loads anything from a CDN (fonts included).
