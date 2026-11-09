@@ -1,4 +1,4 @@
-.PHONY: install build run stop status install-agent lint test test-cov check ci clean help
+.PHONY: install build run stop status install-agent lint test test-cov e2e check ci clean help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -55,6 +55,10 @@ test:
 test-cov:
 	go test -coverprofile=$(COVERAGE_FILE) ./internal/...
 	go tool cover -func=$(COVERAGE_FILE)
+
+## e2e: Run the browser E2E tests (headless Chrome; set CHROME_PATH to pick the binary)
+e2e:
+	go test -tags e2e ./e2e/... -count=1
 
 ## check: Run lint + test
 check: lint test

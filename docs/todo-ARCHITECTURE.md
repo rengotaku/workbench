@@ -35,6 +35,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | `internal/taskweb/` | 画面（`/`・`/add`）の外枠と `/static` の配信、`/api` のマウント（`Mount`）。中身は `app.js` / `add.js` がルーターの画面として描く |
 | `web/shared/` | todo と note 共通のレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・`common.js`（API 呼び出し、追加ダイアログへの通知 `tell` / `leave`）・`router.js`（画面の切り替えとダイアログへの貸し出し `lend`）・`modal.js`（追加ダイアログ）・`vendor/`（同梱の Preact と htm。版と入れ替え手順は `vendor/README.md`）。`/shared` で配信 |
 | `web/todo/` | テンプレート・CSS・JS。`embed` でバイナリに焼き込む |
+| `e2e/` | 画面の E2E テスト（`//go:build e2e`）。実サーバを作って起動し、headless Chrome を chromedp で動かす |
 | `launchd/`, `scripts/` | 常駐させるための plist テンプレートと配置スクリプト |
 
 ## データ
@@ -285,3 +286,11 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 ## 検証
 
 `make ci` = lint（golangci-lint、govet は enable-all）+ テスト（カバレッジ）。CI は `internal/` のカバレッジが 80% を下回ると落ちる。
+
+### E2E テスト
+
+画面の動き（画面を移っても開いた行・スクロール位置・書きかけが残る、隠れた画面がキーに反応しない、追加ダイアログの開閉、遅れて届いた古い応答を捨てる）は `e2e/` の Go テストが確かめる。`//go:build e2e` を付けてあるので、`go test ./...` と `make ci` には入らない。
+
+- 実行は `make e2e`。`bin/workbench-e2e` にサーバを作り、テストごとに空のデータ置き場と空きポートで起動し、API で初期データを入れる。ブラウザは chromedp で動かし、Chrome の場所は環境変数 `CHROME_PATH`（未設定なら chromedp が探す）で指定する。CI（`CI` が設定されているとき）は `--no-sandbox` を付ける
+- テストは見えるもの（DOM の文字・URL・表示/非表示）だけを見る。内部の関数名や変数には触れない。画面の書き方を変えても通ることが目的
+- 画面の動きを変えたら、対応するテストが落ちることを確かめてから直す
