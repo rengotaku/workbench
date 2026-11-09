@@ -206,7 +206,7 @@
     var props = useRef(p);
     props.current = p;
     var own = useRef(null);
-    if (own.current === null) own.current = { last: p.value || '', applied: p.value || '', timer: null, inflight: 0 };
+    if (own.current === null) own.current = { last: p.value || '', applied: p.value || '', timer: null, inflight: 0, sent: null };
     var s = own.current;
 
     function single() { return props.current.field === 'name'; }
@@ -247,6 +247,7 @@
         body[field] = value;
         markSave(id, '保存中…');
         s.inflight++;
+        s.sent = value;
         request('PATCH', '/api/tasks/' + encodeURIComponent(id), body)
           .then(function () {
             s.inflight--;
@@ -256,7 +257,7 @@
             // URL rows): redrawing would drop what is typed there.
             if (reload && !ctx.state.busy) ctx.load();
           })
-          .catch(function (err) { s.inflight = Math.max(0, s.inflight - 1); ctx.showError(err); node.textContent = s.last; });
+          .catch(function (err) { s.inflight = Math.max(0, s.inflight - 1); s.sent = null; ctx.showError(err); node.textContent = s.last; });
       }
 
       if (isName) {
@@ -287,7 +288,14 @@
         if (e.key === 'Enter' && isName) { e.preventDefault(); node.blur(); }
         if (e.key === 'Escape') { e.stopPropagation(); node.blur(); }
       });
-      return function () { window.clearTimeout(s.timer); };
+      // The part can go (a reply moved the row to another section) before the
+      // pause in typing is over, and no blur is sent for a removed element: what
+      // was typed is saved for the task it belongs to, through the same path.
+      return function () {
+        window.clearTimeout(s.timer);
+        var value = read(node);
+        if (value !== s.last && value !== s.sent) save(false);
+      };
     }, []);
     useReleaseOnUnmount(ref, p.ctx);
 
@@ -403,7 +411,12 @@
         if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
         if (e.key === 'Escape') { e.stopPropagation(); input.blur(); }
       });
-      return function () { window.clearTimeout(s.timer); };
+      // Saved on the way out for the same reason as LiveText: no blur comes for
+      // a removed element, so a pending pause in typing would drop the text.
+      return function () {
+        window.clearTimeout(s.timer);
+        if (input.value.trim() !== s.last) save(false);
+      };
     }, []);
     useReleaseOnUnmount(ref, p.ctx);
 
@@ -498,7 +511,9 @@
     var ref = useRef(null);
     var props = useRef(p);
     props.current = p;
-    var own = useRef({ ed: null, applied: '' });
+    // applied: the list the server last confirmed (read from the board or saved
+    // from here); seen: the last board list looked at.
+    var own = useRef({ ed: null, applied: '', seen: '' });
     var id = p.t.id;
 
     function norm(links) {
@@ -537,6 +552,7 @@
         request('PATCH', '/api/tasks/' + encodeURIComponent(id), { links: links })
           .then(function () {
             q.last = now;
+            own.current.applied = now;
             markSave(id, '保存した', true);
           })
           .catch(function (err) { ctx.showError(err); })
@@ -551,6 +567,7 @@
       own.current.q = q;
       q.last = norm(props.current.t.links);
       own.current.applied = q.last;
+      own.current.seen = q.last;
       ed.set(props.current.t.links || []);
       // Typing in a row holds the poll, as the name and detail do.
       host.addEventListener('focusin', function () { ctx.state.busy = true; });
@@ -576,16 +593,19 @@
       var q = o.q;
       if (!o.ed || !q) return;
       var want = norm(p.t.links);
-      if (want === o.applied) return;
+      // The board has to have moved: the old list is still what it holds until
+      // the reply that carries a save made here comes in.
+      if (want === o.seen) return;
       if (q.busy || ref.current.contains(document.activeElement)) return;
       q.last = want;
       var cur = o.ed.read(true);
       if (!cur) return;
       var now = JSON.stringify(cur);
-      if (now === want) { o.applied = want; return; }
+      if (now === want) { o.applied = want; o.seen = want; return; }
       if (now !== o.applied) return;
       o.ed.set(p.t.links || []);
       o.applied = want;
+      o.seen = want;
     });
 
     return html`<div class="link-editor" ref=${ref}></div>`;
@@ -770,7 +790,10 @@
         .then(function () {
           return ctx.load().then(function () { ctx.flash(value ? value + ' の子にした' : '親を外した'); });
         })
-        .catch(ctx.reloadShowing);
+        .catch(ctx.reloadShowing)
+        // The picker stays in the row: it shows the task's own parent again,
+        // whether the change landed or was refused.
+        .then(function () { setPicked(null); });
     }
     return html`<label class="parent-pick">親<select value=${picked !== null ? picked : (t.parent || '')}
       disabled=${picked !== null} onChange=${onChange}>

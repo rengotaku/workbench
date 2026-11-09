@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/fetch"
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
 )
@@ -323,4 +324,121 @@ func TestTodoDetailExternalChangeDoesNotOverwriteTypedText(t *testing.T) {
 
 	p.eval(`document.activeElement.blur()`, nil)
 	a.untilTask(t, second, "the typed detail saved", func(m map[string]any) bool { return str(m, "detail") == "typed" })
+}
+
+// The parent picker stays in the open row: after a change it shows the task's
+// own parent and is enabled again, so it can be changed once more without
+// reopening the row; a refused change leaves it enabled on the real parent.
+func TestTodoDetailParentPickerWorksAgainAndAfterAFailure(t *testing.T) {
+	a := startApp(t)
+	first, second, p := openSecond(t, a)
+	sel := `.task.row-open .parent-pick select`
+	set := func(v string) {
+		p.eval(`(() => { const s = document.querySelector('`+sel+`'); s.value = '`+v+`'; s.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`, nil)
+	}
+	settled := func(v string) string {
+		return `document.querySelector('` + sel + `') && !document.querySelector('` + sel + `').disabled && document.querySelector('` + sel + `').value === '` + v + `'`
+	}
+
+	set(first)
+	a.untilTask(t, second, "the parent", func(m map[string]any) bool { return str(m, "parent") == first })
+	p.until("picker enabled on the parent", settled(first))
+	set("")
+	a.untilTask(t, second, "the parent cleared", func(m map[string]any) bool { return str(m, "parent") == "" })
+	p.until("picker enabled on none", settled(""))
+
+	// Writes to a task fail from here on (the request never reaches the server).
+	chromedp.ListenTarget(p.ctx, func(ev any) {
+		e, ok := ev.(*fetch.EventRequestPaused)
+		if !ok {
+			return
+		}
+		go func() {
+			if e.Request.Method == http.MethodPatch {
+				_ = chromedp.Run(p.ctx, fetch.FailRequest(e.RequestID, network.ErrorReasonFailed))
+				return
+			}
+			_ = chromedp.Run(p.ctx, fetch.ContinueRequest(e.RequestID))
+		}()
+	})
+	p.run(fetch.Enable().WithPatterns([]*fetch.RequestPattern{{URLPattern: "*/api/tasks/*", RequestStage: fetch.RequestStageRequest}}))
+	set(first)
+	p.until("the refusal shown", `!document.getElementById('err').hidden`)
+	p.until("picker enabled on the real parent", settled(""))
+	if got := str(a.task(t, second), "parent"); got != "" {
+		t.Errorf("parent after a refused change = %q, want none", got)
+	}
+}
+
+// A related URL added from the page, and another added elsewhere before the
+// next read: the rows show both, and the next edit from the page keeps the
+// one added elsewhere.
+func TestTodoDetailLinksTakeUpAnExternalChangeAfterASave(t *testing.T) {
+	a := startApp(t)
+	_, second, p := openSecond(t, a)
+	linkCount := func(m map[string]any) int {
+		links, _ := m["links"].([]any)
+		return len(links)
+	}
+
+	p.click(`.task.row-open .link-add`)
+	p.run(chromedp.SendKeys(`.task.row-open .link-row:last-child .link-input`, "https://example.com/one one", chromedp.ByQuery))
+	p.key(kb.Enter)
+	a.untilTask(t, second, "the first URL", func(m map[string]any) bool { return linkCount(m) == 1 })
+
+	a.patch(t, second, map[string]any{"links": []map[string]any{
+		{"url": "https://example.com/one", "label": "one"},
+		{"url": "https://example.com/elsewhere", "label": "elsewhere"},
+	}})
+	p.reload()
+	p.until("both URLs shown", `document.querySelectorAll('.task.row-open .link-row').length === 2`)
+
+	p.click(`.task.row-open .link-add`)
+	p.run(chromedp.SendKeys(`.task.row-open .link-row:last-child .link-input`, "https://example.com/three three", chromedp.ByQuery))
+	p.key(kb.Enter)
+	a.untilTask(t, second, "three URLs", func(m map[string]any) bool { return linkCount(m) == 3 })
+	links, _ := a.task(t, second)["links"].([]any)
+	second2, _ := links[1].(map[string]any)
+	if got := fmt.Sprint(second2["url"]); got != "https://example.com/elsewhere" {
+		t.Errorf("second URL = %q, want the one added elsewhere kept", got)
+	}
+}
+
+// A reply that moves the row to another section while a field has text not
+// saved yet (the pause in typing is not over) must not drop it: the text is
+// saved for the task it belongs to as the field goes.
+func TestTodoDetailTypedTextIsSavedWhenTheRowGoes(t *testing.T) {
+	cases := []struct {
+		check     func(m map[string]any) bool
+		name, sel string
+	}{
+		{func(m map[string]any) bool { return strings.Contains(str(m, "name"), "typed") }, "name", `.task.row-open .txt.live`},
+		{func(m map[string]any) bool { return str(m, "detail") == "typed" }, "detail", `.task.row-open .live.detail`},
+		{func(m map[string]any) bool { return str(m, "topic") == "typed" }, "topic", `.task.row-open .topic-input`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a := startApp(t)
+			_, second, p := openSecond(t, a)
+			p.until("the field", `document.querySelector('`+c.sel+`')`)
+
+			g := p.holdList(fetch.RequestStageRequest)
+			a.addTask(t, "fourth")
+			g.waitHeld(t, 10*time.Second)
+			p.run(chromedp.SendKeys(c.sel, "typed", chromedp.ByQuery))
+			// Some browsers send no blur when the focused element is removed:
+			// swallow it here so this one behaves that way too.
+			p.eval(`(() => {
+				for (const type of ['blur', 'focusout']) {
+					window.addEventListener(type, ev => ev.stopImmediatePropagation(), true);
+				}
+				return true;
+			})()`, nil)
+			// Its task goes to 待ち (a closed section) before the pause is over.
+			a.post(t, "/api/tasks/"+second+"/wait", map[string]any{"to": "bob"})
+			g.release()
+			p.until("the row gone from the queue", `document.querySelectorAll('#queue .task.row-open').length === 0 && `+queueNames+`.includes('fourth')`)
+			a.untilTask(t, second, "the typed "+c.name, c.check)
+		})
+	}
 }
