@@ -43,6 +43,23 @@ func TestTimelineLateReplyDoesNotOverwriteNewerFilter(t *testing.T) {
 	})
 	p.run(fetch.Enable().WithPatterns([]*fetch.RequestPattern{{URLPattern: "*/api/notes/timeline*"}}))
 
+	// Mark when the page has handled the alpha reply: the page's own handlers
+	// chain on res.json(), so they all run as microtasks before this timer.
+	// The check below waits for the mark instead of guessing a delay.
+	p.eval(`(() => {
+		const orig = window.fetch;
+		window.fetch = function (url, opts) {
+			const p = orig.apply(this, arguments);
+			if (!String(url).includes('topic=alpha')) return p;
+			return p.then(res => {
+				const json = res.json.bind(res);
+				res.json = () => json().finally(() => setTimeout(() => { window.__alphaHandled = true; }, 0));
+				return res;
+			});
+		};
+		return true;
+	})()`, nil)
+
 	p.click(`#filters a.chip[data-topic="alpha"]`)
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -61,12 +78,12 @@ func TestTimelineLateReplyDoesNotOverwriteNewerFilter(t *testing.T) {
 	p.click(`#filters a.chip[data-topic="beta"]`)
 	p.until("beta drawn", `document.querySelectorAll('#tl-days .memo').length === 1 && document.querySelector('#tl-days .memo').textContent.includes('beta-memo')`)
 
-	// Let the old reply through, and give the page time to handle it.
+	// Let the old reply through and wait until the page has handled it.
 	mu.Lock()
 	id := held
 	mu.Unlock()
 	p.run(fetch.ContinueRequest(id))
-	time.Sleep(700 * time.Millisecond)
+	p.until("the late reply handled", `window.__alphaHandled === true`)
 
 	if got := p.texts(`#tl-days .memo`); len(got) != 1 || !strings.Contains(got[0], "beta-memo") {
 		t.Errorf("memos after the late reply = %v, want only beta-memo", got)
