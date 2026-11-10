@@ -304,6 +304,7 @@
           if (ev.key === 'Enter') { ev.preventDefault(); submit(); }
         }} />
       <button type="button" class="drop-ask-go" disabled=${sending || empty} onClick=${submit}>削除する</button>
+      ${ask.task.state === 'open' ? html`
       <div class="dm-label drop-ask-sep">削除せず、相手に渡して待ちにする</div>
       <input ref=${whoRef} type="text" class="drop-ask-input" placeholder="渡した相手" aria-label="渡した相手"
         disabled=${sending}
@@ -311,7 +312,7 @@
           if (composing(ev)) return;
           if (ev.key === 'Enter') { ev.preventDefault(); wait(); }
         }} />
-      <button type="button" class="drop-ask-wait" disabled=${sending} onClick=${wait}>待ちにする</button>
+      <button type="button" class="drop-ask-wait" disabled=${sending} onClick=${wait}>待ちにする</button>` : null}
     </div>`;
   }
 

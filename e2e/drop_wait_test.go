@@ -52,6 +52,29 @@ func TestTodoDropAskWait(t *testing.T) {
 	}
 }
 
+// A long-run task cannot be handed on (the server refuses it), so its reason
+// field offers only the delete, as the open row's actions do.
+func TestTodoDropAskOffersNoWaitForALongRunTask(t *testing.T) {
+	a := startApp(t)
+	a.addTask(t, "keep")
+	long := a.addTask(t, "long one")
+	a.post(t, "/api/tasks/"+long+"/long", map[string]any{"on": true})
+	p := newPage(t, a, "/")
+	p.until("long row", `!!document.querySelector('.task[data-id="`+long+`"]')`)
+	openDropAskFor(t, p, long)
+
+	var hasWait bool
+	p.eval(`!!document.querySelector('`+whoField+`') || !!document.querySelector('.drop-ask-wait')`, &hasWait)
+	if hasWait {
+		t.Error("the reason field of a long-run task offers 待ちにする")
+	}
+	var hasDelete bool
+	p.eval(`!!document.querySelector('.drop-ask-go')`, &hasDelete)
+	if !hasDelete {
+		t.Error("the reason field of a long-run task has no 削除する")
+	}
+}
+
 // Enter in the name field waits (with no reason the note is empty).
 func TestTodoDropAskEnterInNameWaits(t *testing.T) {
 	a := startApp(t)
