@@ -59,6 +59,13 @@ func startApp(t *testing.T) *app {
 // put files in (notes.json, to seed memos on several days).
 func startAppWith(t *testing.T, noteDir string) *app {
 	t.Helper()
+	return startAppIn(t, noteDir, t.TempDir())
+}
+
+// startAppIn is startAppWith with a task data directory the test has already
+// put tasks in (to seed a handoff date in the past).
+func startAppIn(t *testing.T, noteDir, todoDir string) *app {
+	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("finding a free port: %v", err)
@@ -76,7 +83,7 @@ func startAppWith(t *testing.T, noteDir string) *app {
 	cmd.Env = append(os.Environ(),
 		"PORT="+port,
 		"APP_ENV=",
-		"TODO_DATA_DIR="+t.TempDir(),
+		"TODO_DATA_DIR="+todoDir,
 		"NOTE_DATA_DIR="+noteDir,
 	)
 	cmd.Stdout = &logs

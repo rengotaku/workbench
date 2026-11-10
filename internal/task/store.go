@@ -351,21 +351,30 @@ func (s *Store) Wait(id, to, note string, actor Actor) (Task, error) {
 
 // Resume brings a waiting or someday task back into the queue, at the end of
 // it. Clearing the handoff means a future chase starts its own count; clearing
-// Until means a future shelve starts its own.
+// Until means a future shelve starts its own. Who held it and since when are
+// kept on the event, which is what undo puts back.
 func (s *Store) Resume(id, note string, actor Actor) (Task, error) {
+	t, _, err := s.ResumeWithEvent(id, note, actor)
+	return t, err
+}
+
+// ResumeWithEvent is Resume, also returning the ID of the event it wrote. The
+// page passes it back to UndoEvent, so its 元に戻す cannot reverse some other
+// change that came in between.
+func (s *Store) ResumeWithEvent(id, note string, actor Actor) (Task, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	i, err := s.indexOf(id)
 	if err != nil {
-		return Task{}, err
+		return Task{}, "", err
 	}
 	t := s.st.Tasks[i]
 	if t.State != StateWaiting && t.State != StateSomeday {
-		return Task{}, fmt.Errorf("%s is not waiting or someday", id)
+		return Task{}, "", fmt.Errorf("%s is not waiting or someday", id)
 	}
 
-	from := t.HandedTo
+	from, handedOn := t.HandedTo, t.HandedOn
 	t.State = StateOpen
 	t.HandedTo = ""
 	t.HandedOn = ""
@@ -375,13 +384,14 @@ func (s *Store) Resume(id, note string, actor Actor) (Task, error) {
 	s.st.Tasks[i] = t
 	s.renumber()
 
-	if err := s.record(Event{TaskID: id, Kind: KindResumed, Actor: actor, FromValue: from, ToValue: note}); err != nil {
-		return Task{}, err
+	evID, err := s.recordID(Event{TaskID: id, Kind: KindResumed, Actor: actor, FromValue: from, HandedOn: handedOn, ToValue: note})
+	if err != nil {
+		return Task{}, "", err
 	}
 	if err := s.persist(); err != nil {
-		return Task{}, err
+		return Task{}, "", err
 	}
-	return s.mustGet(id), nil
+	return s.mustGet(id), evID, nil
 }
 
 // Shelve moves an open or waiting task to someday: worth doing, not now.

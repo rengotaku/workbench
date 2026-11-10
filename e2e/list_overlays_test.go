@@ -290,7 +290,7 @@ func TestTodoDropReasonSurvivesAListReply(t *testing.T) {
 	p.until("list reply drawn", `document.querySelectorAll('#queue .task').length === 3 && document.querySelectorAll('.task.landed').length === 1`)
 
 	p.until("same field, same text, still focused", `window.__ask === document.querySelector('.drop-ask-input') && window.__ask.value === 'still typing' && document.activeElement === window.__ask`)
-	p.untilWithin(5*time.Second, "tint gone", `document.querySelectorAll('.task.landed').length === 0`)
+	p.untilWithin(12*time.Second, "tint gone", `document.querySelectorAll('.task.landed').length === 0`)
 	p.until("same field after the tint's draw", `window.__ask === document.querySelector('.drop-ask-input') && window.__ask.value === 'still typing'`)
 }
 
@@ -406,7 +406,7 @@ func TestTodoDragSurvivesADrawInTheMiddle(t *testing.T) {
 		t.Errorf("preview after the mid-drag draw = %v, want %v", names, want)
 	}
 	// And once more, when the tint's timer draws.
-	p.untilWithin(5*time.Second, "tint gone", `document.querySelectorAll('.task.landed').length === 0`)
+	p.untilWithin(12*time.Second, "tint gone", `document.querySelectorAll('.task.landed').length === 0`)
 
 	p.finishDrag(`#queue ` + row(one))
 	deadline := time.Now().Add(8 * time.Second)

@@ -380,7 +380,7 @@
         aria-label=${o.checked ? '完了を取り消す' : '完了にする'}
         onChange=${function (ev) { ctx.onCheck(ev.target, t); }} />
       <div class="body">
-        <div class="name">${tagsInside ? null : tags}${txt}${idleTag(t)}${o.long ? reasonTags(t) : null}</div>
+        <div class="name">${tagsInside ? null : tags}${txt}${idleTag(t)}${st.resumed && st.landedId === t.id ? html`<span class="resumed-tag">待ちから戻した</span>` : null}${o.long ? reasonTags(t) : null}</div>
         ${o.long ? longNext(t, ctx) : null}
         ${open ? html`<${D.Panel} key="panel" t=${t} rev=${p.rev} ctx=${ctx} />` : null}
       </div>
@@ -445,6 +445,26 @@
       dueTitle: (t.review_on ? dateLabel(t.review_on) + '・' : '') + '次に見る日。押して決める（見直すと 1 週間先になる）',
       extraClass: 'long',
     }} />`;
+  }
+
+  // waitOrder is the order the waiting section shows: longest wait first.
+  function waitOrder(rows) {
+    return (rows || []).slice().sort(function (a, c) {
+      return (c.stalled_for || 0) - (a.stalled_for || 0);
+    });
+  }
+
+  // resumedStub is the line left in the waiting list where a task was, after
+  // 着手順へ戻す: it says where the task went and whose it had been, and takes
+  // the move back. 見る scrolls to the task, which may sit in a closed section.
+  // r is state.resumed (app.js).
+  function resumedStub(r, ctx) {
+    var was = r.handedTo ? '（' + r.handedTo + ' へ' + (r.handedOn ? ' ' + monthDay(r.handedOn) + ' に' : '') + '渡していた分）' : '';
+    return html`<li class="resumed-stub" key="resumed-stub" data-stub=${r.id} role="status">
+      <span class="rs-text">${r.id + ' を' + r.where + 'へ移した' + was}</span>
+      ${r.found ? html`<button type="button" class="undo-link rs-see" onClick=${function () { ctx.showRow(r.id); }}>見る</button>` : null}
+      <button type="button" class="undo-link rs-undo" onClick=${ctx.undoResume}>元に戻す</button>
+    </li>`;
   }
 
   function waitRow(t, v) {
@@ -577,7 +597,7 @@
 
   // render draws the whole list screen into container (the .app element).
   //   view.board  the board the API sent (null before the first reply)
-  //   view.state  app.js's state: scope, folds, openId, landedId, menu, drag, ...
+  //   view.state  app.js's state: scope, folds, openId, landedId, resumed, menu, drag, ...
   //   view.ctx    what the rows call back into app.js
   function render(container, view) {
     var b = view.board || EMPTY_BOARD;
@@ -600,9 +620,10 @@
     var inScope = queue.filter(function (t) { return t.in_scope; });
     var long = b.long || [];
     var review = long.filter(function (t) { return t.needs_review; });
-    var waiting = (b.waiting || []).slice().sort(function (a, c) {
-      return (c.stalled_for || 0) - (a.stalled_for || 0);
-    });
+    var waiting = waitOrder(b.waiting);
+    // The stub sits where the resumed task stood, among the rows still waiting.
+    var waitRows = waiting.map(function (t) { return waitRow(t, v); });
+    if (st.resumed) waitRows.splice(Math.min(st.resumed.index, waitRows.length), 0, resumedStub(st.resumed, ctx));
     // Server-sorted already: soonest until first, no-until last. Arrived rows
     // sit ahead of the rest of that order because an earlier until means
     // arrived, not because the client re-sorts anything.
@@ -680,10 +701,10 @@
         onToggle=${function () { ctx.toggleFold('out'); }}>${outRows.map(function (t) { return queueRow(t, false, v); })}<//>`,
 
       // Folded, the longest wait is what would otherwise go unseen.
-      html`<${Fold} secId="waiting-sec" hidden=${waiting.length === 0} foldId="wait-fold" open=${st.waitOpen}
+      html`<${Fold} secId="waiting-sec" hidden=${waiting.length === 0 && !st.resumed} foldId="wait-fold" open=${st.waitOpen}
         listId="waitlist" title="ボールを渡してからの経過日数で並ぶ" label="待ち" countId="wait-count" count=${waiting.length}
         noteId="wait-max" note=${waiting.length ? '最長 ' + (waiting[0].stalled_for || 0) + '日' : ''}
-        onToggle=${function () { ctx.toggleFold('wait'); }}>${waiting.map(function (t) { return waitRow(t, v); })}<//>`,
+        onToggle=${function () { ctx.toggleFold('wait'); }}>${waitRows}<//>`,
 
       html`<${Fold} secId="someday-sec" hidden=${someday.length === 0} foldId="someday-fold" open=${st.somedayOpen}
         listId="somedaylist" label="いつか" countId="someday-count"
@@ -713,5 +734,6 @@
     shiftDay: shiftDay,
     linkRange: linkRange,
     nameParts: nameParts,
+    waitOrder: waitOrder,
   };
 })();

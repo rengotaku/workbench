@@ -361,9 +361,16 @@ const StalledDays = 8
 // undo reverses the last change, whoever made it: one entry point for the page
 // and the CLI, so undoing does not depend on which one did the thing.
 func (a *API) undo(c *gin.Context) {
-	done, err := a.store.Undo(actorOf(c.Query("actor")))
+	var done task.Undone
+	var err error
+	if ev := c.Query("event"); ev != "" {
+		// event names the change the caller means; anything newer is left alone.
+		done, err = a.store.UndoEvent(ev, actorOf(c.Query("actor")))
+	} else {
+		done, err = a.store.Undo(actorOf(c.Query("actor")))
+	}
 	if err != nil {
-		if errors.Is(err, task.ErrNothingToUndo) {
+		if errors.Is(err, task.ErrNothingToUndo) || errors.Is(err, task.ErrUndoMismatch) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
@@ -730,8 +737,13 @@ func (a *API) resumeTask(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	t, err := a.store.Resume(c.Param("id"), req.Note, actorOf(req.Actor))
-	a.respond(c, t, err)
+	t, eventID, err := a.store.ResumeWithEvent(c.Param("id"), req.Note, actorOf(req.Actor))
+	if err != nil {
+		a.fail(c, err)
+		return
+	}
+	// event_id is what POST /api/undo?event= takes to undo this resume only.
+	c.JSON(http.StatusOK, gin.H{"task": t, "event_id": eventID})
 }
 
 type somedayRequest struct {

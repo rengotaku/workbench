@@ -88,6 +88,9 @@
       shownId: null, // the task the detail box is showing; the pointer moves it
       revealId: null, // the task a link named; its section is unfolded on first load
       landedId: null, // the task just resumed; its row is tinted for a moment
+      // The line left in the waiting list after 着手順へ戻す (list.js draws it):
+      // { id, where, handedTo, handedOn, eventId, index, found, revision }.
+      resumed: null,
     };
     // busy: a drag, a menu or a field is in progress; do not redraw under it.
     // list.js keeps the open row's name and panel while it holds. When it is
@@ -105,6 +108,9 @@
     });
     var landedTimer = null;
     var LANDED_MS = 3000;
+    // How long the line left in 待ち and the 待ちから戻した tag stay if nothing
+    // else is done first.
+    var RESUMED_MS = 10000;
 
     // The frame's own elements. What is inside .app is drawn by list.js (the
     // header, the bands, every section), and a draw may make a new element, so
@@ -179,6 +185,10 @@
         .then(function (board) {
           if (mine !== loadSeq) return;
           state.board = board;
+          // Any write since (the page's, the CLI's) is the next operation: the
+          // line left in 待ち would offer to undo a resume that is no longer
+          // the last change. The poll alone leaves the revision as it was.
+          if (state.resumed && board.revision !== state.resumed.revision) clearResumed();
           reveal(board);
           render();
           showError(null);
@@ -363,7 +373,10 @@
     // row seemed to vanish. The notice names the place, and 見る opens the
     // section and scrolls to the row. Nothing moves until 見る is pressed: the
     // waiting list is often worked through top to bottom.
-    function landed(t) {
+    function landed(t, eventId, at) {
+      // A task that was waiting on someone leaves a line behind and takes the
+      // move back there; the notice is not used, it is far from the click.
+      if (eventId && t.state === 'waiting' && t.handed_to) { landedFromWait(t, eventId, at); return; }
       var now = ((state.board && state.board.queue) || []).filter(function (q) { return q.id === t.id; })[0];
       // A task focused when it went to 待ち keeps the mark and returns to the
       // end of the band, whatever its due date.
@@ -373,6 +386,66 @@
           : 'スコープ外（期限 ' + monthDay(now.due) + '）';
       flash('「' + t.name + '」を' + where + 'へ戻した', true, now && { label: '見る', run: function () { showRow(t.id); } });
       if (now) markLanded(t.id);
+    }
+
+    // queueEntry is the task's row on the board's queue, when it is there.
+    function queueEntry(id) {
+      return ((state.board && state.board.queue) || []).filter(function (q) { return q.id === id; })[0];
+    }
+
+    // waitIndex is where a task stands in the waiting section as drawn, so the
+    // line left behind takes its place.
+    function waitIndex(t) {
+      var rows = list.waitOrder(state.board && state.board.waiting);
+      for (var i = 0; i < rows.length; i++) if (rows[i].id === t.id) return i;
+      return 0;
+    }
+
+    // landedFromWait leaves a line where the waiting task stood, tints the row it
+    // became, and lets go of both after RESUMED_MS or at the next write. t is
+    // the task as it was in 待ち (it carries who held it and since when).
+    function landedFromWait(t, eventId, at) {
+      var now = queueEntry(t.id);
+      var where = !now ? '着手順'
+        : now.focused ? 'フォーカスの末尾'
+          : now.in_scope ? '着手順の末尾'
+            : 'スコープ外（期限 ' + monthDay(now.due) + '）';
+      state.resumed = {
+        id: t.id, where: where, handedTo: t.handed_to, handedOn: t.handed_on,
+        eventId: eventId, index: at, found: !!now, revision: state.board ? state.board.revision : 0,
+      };
+      state.landedId = now ? t.id : null;
+      window.clearTimeout(landedTimer);
+      landedTimer = window.setTimeout(clearResumed, RESUMED_MS);
+      render();
+    }
+
+    function clearResumed() {
+      if (!state.resumed) return;
+      window.clearTimeout(landedTimer);
+      state.resumed = null;
+      state.landedId = null;
+      render();
+    }
+
+    // undoResume takes the move back from the line left in 待ち. It names the
+    // resume by its event, so a change made elsewhere since (the terminal) is
+    // never undone in its place: the server refuses and the page says so.
+    function undoResume() {
+      var r = state.resumed;
+      if (!r) return;
+      request('POST', '/api/undo?event=' + encodeURIComponent(r.eventId))
+        .then(function () {
+          state.resumed = null;
+          state.landedId = null;
+          window.clearTimeout(landedTimer);
+          state.openId = null;
+          return load();
+        })
+        .catch(function (err) {
+          clearResumed();
+          return reloadShowing(new Error('元に戻せなかった: ' + (err.message || err)));
+        });
     }
 
     function showRow(id) {
@@ -385,7 +458,7 @@
       if (node.tabIndex >= 0) node.focus({ preventScroll: true });
       var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       node.scrollIntoView({ block: 'center', behavior: still ? 'auto' : 'smooth' });
-      markLanded(id);
+      if (!state.resumed) markLanded(id); // the left-behind line already tints it
     }
 
     // markLanded tints the row for a moment. The id lives in state and the row
@@ -570,6 +643,7 @@
     }
 
     function pickScope(v) {
+      clearResumed(); // where the task went was said for the scope it was in
       state.scopeKey = v;
       if (v === 'custom') {
         state.scope = String(daysUntil(el.until.value));
@@ -582,6 +656,7 @@
     }
 
     function pickUntil() {
+      clearResumed();
       state.scope = String(daysUntil(el.until.value));
       load();
     }
@@ -861,6 +936,9 @@
       flash: flash,
       closeRow: closeRow,
       landed: landed,
+      waitIndex: waitIndex,
+      showRow: showRow,
+      undoResume: undoResume,
       reloadShowing: reloadShowing,
       // A field that goes while it has the focus gets no blur: release the poll.
       releaseBusy: function () { state.busy = false; },

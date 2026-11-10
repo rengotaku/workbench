@@ -976,8 +976,9 @@
         ? ((t.handed_on || '?') + ' に ' + (t.handed_to || '?') + ' へ渡した分を戻す')
         : ((t.until || '?') + ' まで棚上げしていた分を戻す')}
       run=${function () {
+        var at = ctx.waitIndex(t); // where its row is now, for the line left in its place
         return post('/resume', { note: '' })
-          .then(function () { ctx.closeRow(t.id); return ctx.load().then(function () { ctx.landed(t); }); });
+          .then(function (res) { ctx.closeRow(t.id); return ctx.load().then(function () { ctx.landed(t, res.event_id, at); }); });
       }} />` : null;
 
     // somedayButton shelves a task with one click: unlike WaitControl, nobody

@@ -9,6 +9,10 @@ import (
 // ErrNothingToUndo is returned when no reversible change is left.
 var ErrNothingToUndo = errors.New("nothing to undo")
 
+// ErrUndoMismatch is returned by UndoEvent when the change to reverse next is
+// not the one asked for: something else was done since, so nothing was undone.
+var ErrUndoMismatch = errors.New("the last change is not the one to undo")
+
 // Undone describes what an undo put back, so the caller can say it out loud.
 type Undone struct {
 	EventID string `json:"event_id"`
@@ -25,6 +29,19 @@ type Undone struct {
 // is remembered by event ID, which is what makes the second undo step further
 // back instead of toggling the same change forever.
 func (s *Store) Undo(actor Actor) (Undone, error) {
+	return s.undo("", actor)
+}
+
+// UndoEvent is Undo for a caller that means one particular change: it reverses
+// the event with this ID only if it is the one Undo would reverse next, and
+// otherwise changes nothing and returns ErrUndoMismatch. A page that offers
+// 元に戻す next to a change uses it so a change made elsewhere in the meantime
+// (the CLI) is not undone instead.
+func (s *Store) UndoEvent(eventID string, actor Actor) (Undone, error) {
+	return s.undo(eventID, actor)
+}
+
+func (s *Store) undo(want string, actor Actor) (Undone, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -43,8 +60,14 @@ func (s *Store) Undo(actor Actor) (Undone, error) {
 		if done[e.ID] || !undoable(e.Kind) {
 			continue
 		}
+		if want != "" && e.ID != want {
+			return Undone{}, ErrUndoMismatch
+		}
 		summary, err := s.reverse(e, actor)
 		if errors.Is(err, errSkipUndo) {
+			if want != "" {
+				return Undone{}, ErrUndoMismatch
+			}
 			continue // the task is gone, or the event cannot be applied now
 		}
 		if err != nil {
@@ -247,7 +270,11 @@ func (s *Store) reverse(e Event, actor Actor) (string, error) {
 		}
 		t.State = StateWaiting
 		t.HandedTo = e.FromValue
-		if t.HandedOn == "" {
+		switch {
+		case t.HandedOn != "":
+		case e.HandedOn != "":
+			t.HandedOn = e.HandedOn
+		default: // an event from before the date was kept
 			t.HandedOn = now.Format(DateLayout)
 		}
 		s.st.Tasks[i] = t

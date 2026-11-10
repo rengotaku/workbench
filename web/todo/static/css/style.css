@@ -663,8 +663,41 @@
     box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent);
   }
   /* A row just resumed from 待ち or いつか. The notice's colour, so the message
-     and the row read as one; only the colour, so a due stripe stays. */
+     and the row read as one; only the colour, so a due stripe stays. It blinks
+     three times, half a second each, as it appears; with reduced motion the
+     colour alone shows. */
   .task.landed { background-color: var(--accent-soft); }
+  @keyframes resumed-blink {
+    0%, 100% { background-color: var(--accent-soft); }
+    50% { background-color: transparent; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .task.landed, .resumed-stub { animation: resumed-blink .5s ease-in-out 3; }
+  }
+  /* What a row resumed from 待ち carries, and the line it left behind there. */
+  .resumed-tag {
+    margin-left: 8px;
+    padding: 0 6px;
+    font-size: var(--fs-xs);
+    white-space: nowrap;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    vertical-align: 1px;
+  }
+  .resumed-stub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 14px;
+    padding: 9px 22px 9px 19px;
+    margin-inline: -22px;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid var(--line-soft);
+    background-color: var(--accent-soft);
+    color: var(--accent);
+    font-size: var(--fs-lg);
+  }
   .task.dragging { opacity: .4; }
   .task.openable { cursor: pointer; }
   .task.openable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
