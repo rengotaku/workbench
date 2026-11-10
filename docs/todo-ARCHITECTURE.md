@@ -17,7 +17,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 - **書き手はサーバだけ**。CLI もブラウザも REST を叩く。CLI はサーバが落ちていればエラーで止まり、ファイルを直接書かない
 - サーバはループバック固定で認証を持たない。LAN へは出さない
-- 画面は JS で描き、ビルド工程は無い。描画は Preact と htm（同梱の `web/shared/static/vendor/htm-preact.umd.js`）で、4 画面とも Preact で描く（ルーターとダイアログは素の JS。ADR todo-0025、#119）。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の枠を描く。todo 一覧・todo 追加・メモ追加・タイムライン（note の `add.js` / `picker.js` / `timeline.js`）は Preact で描き、一覧の枠の中の見出し・区画・行は `list.js` が、追加画面の中身は `add.js` が描く（「一覧の描画」「追加画面の描画」。メモ追加とタイムラインは note-ARCHITECTURE）。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
+- 画面は JS で描き、ビルド工程は無い。描画は Preact と htm（同梱の `web/shared/static/vendor/htm-preact.umd.js`）で、4 画面（todo 一覧・todo 追加・メモ追加・タイムライン）とも Preact で描く。ルーターとダイアログは素の JS（ADR todo-0025）。4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある。どのファイルがどの画面を描くかは「画面の描画」
 
 ## ディレクトリ
 
@@ -32,8 +32,8 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 | `internal/noteroute/` | メモの行き先を決める API。todo 行きではここがタスクを作る（`AddFromNote`）。詳細は note-ARCHITECTURE |
 | `internal/taskclient/` | CLI からサーバを叩く HTTP クライアント |
 | `internal/legacy/` | 旧台帳（テキストの TODO ファイルと順序 YAML）の読み取りと移行計画の組み立て |
-| `internal/taskweb/` | 画面（`/`・`/add`）の外枠と `/static` の配信、`/api` のマウント（`Mount`）。中身は `app.js`・`list.js` / `add.js` がルーターの画面として描く |
-| `web/shared/` | todo と note 共通のレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・`common.js`（API 呼び出し、追加ダイアログへの通知 `tell` / `leave`）・`router.js`（画面の切り替えとダイアログへの貸し出し `lend`）・`modal.js`（追加ダイアログ）・`vendor/`（同梱の Preact と htm。版と入れ替え手順は `vendor/README.md`）。`/shared` で配信 |
+| `internal/taskweb/` | 画面（`/`・`/add`）の外枠と `/static` の配信、`/api` のマウント（`Mount`）。中身は `web/todo/static/js/` の `app.js` ほかがルーターの画面として描く |
+| `web/shared/` | todo と note 共通のレイアウト（サイトヘッダ）・CSS 変数（`tokens.css`）・JS（`common.js` / `paste.js` / `links.js` / `router.js` / `modal.js`）・`vendor/`（同梱の Preact と htm）。JS の持ち分は「画面の描画」の表。`/shared` で配信 |
 | `web/todo/` | テンプレート・CSS・JS。`embed` でバイナリに焼き込む |
 | `e2e/` | 画面の E2E テスト（`//go:build e2e`）。実サーバを作って起動し、headless Chrome を chromedp で動かす |
 | `launchd/`, `scripts/` | 常駐させるための plist テンプレートと配置スクリプト |
@@ -124,42 +124,54 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 画面幅が 900px 以上のときは、一覧の右に詳細の箱が常に出る（`.panes` の 2 列）。箱は 260px 固定で、一覧が残りを取る（`minmax(0, 1fr) 260px`、間 18px）。全体の上限は 1100px なので、一覧は最大 822px。箱の中の名前・詳細・関連 URL・経緯・状況は折り返し、横にはみ出さない。900px 未満では箱ごと消える。
 
-## 一覧の描画
+## 画面の描画
 
-todo 一覧は 3 つのファイルで描く（ADR todo-0025、#121・#122）。
+todo の 2 画面（一覧・追加）と note の 2 画面（メモ追加・タイムライン）は、同じ 1 ページの中でルーターが出し入れし、描画は Preact と htm（ADR todo-0025）で行う。note の 2 画面は note-ARCHITECTURE に書く。この節は todo の 2 画面と、4 画面が共有する部品を書く。
+
+### 4 画面が共有する部品
 
 | ファイル | 持つもの |
 |---|---|
-| `web/todo/static/js/list.js` | Preact の部品。`.app` の中（見出し・件数・長期の見直しの帯・フォーカスの帯・各区画・行・札）を `render(container, view)` で描く。状態は持たず、`app.js` から盤面（`board`）と `state` を受け取る。行は task の ID を key にするので、描き直しで変わっていない行の DOM が残る（開いた行・入力中の欄・フォーカス・CSS アニメーション） |
-| `web/todo/static/js/detail.js` | Preact の部品。開いた行の名前の欄（`NameField`）・詳細パネル（`Panel`）と、一覧の横の詳細欄（`renderSide`）。状態は持たず、保存の呼び出しと読み直しは `ctx` 経由で `app.js` に頼む。持つのは欄ごとの「最後に保存した文字」と保存中の印だけ |
-| `web/todo/static/js/menus.js` | Preact の部品。期限のメニュー（`DueMenu`）・長期の見直し日のメニュー（`ReviewMenu`）・削除の理由欄（`DropAsk`）・通知と元に戻す（`Flash`）。`app.js` の `state.menu` / `state.dropAsk` / `state.flash` から描く。開閉・API 呼び出し・読み直しは `ctx` 経由で `app.js` に頼む。位置は押した札・ボタンを測って決める |
-| `web/todo/static/js/app.js` | 状態（`state`）・API 呼び出し・ポーリング・ドラッグ。`render()` が `list.render` と `menus.render` を呼ぶ。開閉（`state.openId`）と着地の印（`state.landedId`）もここ |
+| `web/shared/static/vendor/htm-preact.umd.js` | 同梱の Preact・htm・hooks。グローバル `htmPreact` から取り出す。版と入れ替え手順は `vendor/README.md`。どの画面のスクリプトよりも先に読み込む |
+| `web/shared/static/js/common.js` | IME の変換中を見分ける `composing`、API 呼び出し `request`、追加ダイアログへの通知 `tell` / `leave`。DOM は描かない |
+| `web/shared/static/js/paste.js` | リンク付きテキストの貼り付けの解析と挿入（`pastedLink` / `insertText` / `wireLinkPaste` / `splitLinkInput`）。DOM の部品は描かない |
+| `web/shared/static/js/links.js` | 関連 URL の行。`create(opts)`（行の持ち主）と `LinkEditor`（行と「＋ 関連 URL」を描く部品）。グローバルは `window.workbench.links`。todo 追加画面・開いた行の `LinksBlock`・メモ追加画面が使う。`create` は `subject`（メッセージの「名前」を「本文」に替える）・`focusEmpty`（空の行へキャレットを置く）・`onRemoved` を受け、`LinkEditor` は `addClass` / `addId` で追加ボタンの見た目を替えられる。`base.html` で paste.js の後・各画面のスクリプトの前に読み込み、`server_test.go` が順番を確かめる |
+| `web/shared/static/js/router.js` | 画面の切り替え（`register` / `navigate` / `lend`）。画面は `mount(root)`（初回だけ）・`show(url)`（表示のたび）・`hide()` を渡す。素の JS |
+| `web/shared/static/js/modal.js` | 追加ダイアログ（`openAddDialog`）。ルーターが追加画面のルート要素を貸し出す。素の JS |
 
-- 開いた行の詳細は、欄を「書き換えない要素」（uncontrolled）にして保つ。文字は要素が持ち、Preact は子を触らない。行・パネル・欄は同じ部品のまま残るので、ポーリングの応答で描き直されても、入力中の欄は同じ要素・同じ文字・同じフォーカスのままになる（#115）。次の 2 つで担保する
+### todo 一覧
+
+| ファイル | 描く画面・部品 |
+|---|---|
+| `web/todo/static/js/app.js` | 画面の枠（`mount` が `MARKUP` を 1 回だけ書く）と、状態・API 呼び出し・ポーリング・ドラッグ。`render()` が `list.render` と `menus.render` を呼ぶ |
+| `web/todo/static/js/list.js` | `.app` の中。見出し・件数・長期の見直しの帯・フォーカスの帯・各区画・行・札（`render(container, view)`） |
+| `web/todo/static/js/detail.js` | 開いた行の名前の欄（`NameField`）と詳細パネル（`Panel`: 話題・状況・関連 URL・補足・操作・経緯）、一覧の横の詳細欄（`renderSide`） |
+| `web/todo/static/js/menus.js` | 期限のメニュー（`DueMenu`）・長期の見直し日のメニュー（`ReviewMenu`）・削除の理由欄（`DropAsk`）・通知と元に戻す（`Flash`） |
+| `web/todo/static/js/shared.js` | `window.todoShared`。`composing` / `request` と、名前の欄への貼り付け `wirePaste` |
+
+- **描画の入口**: ルーターが一覧を見せるたびに、`show` が `load()` で盤面を読み直し、`render()` が同じ `.app` へ `list.render` で描く。枠（`MARKUP`）は 1 回しか作らず、描き直しで作り直さない。状態が変わる操作（開閉・メニュー・ドラッグ・保存の応答）も `render()` を呼ぶ
+- **状態の持ち方**: 状態は `app.js` の `state` 1 つ。`list.js` / `detail.js` / `menus.js` は状態を持たず、`state` と盤面（`board`）を受け取って描く。例外は `detail.js` の欄ごとの「最後に保存した文字」と保存中の印だけ（部品の中）。区画の開閉・スコープ・話題で分ける設定は localStorage に残す
+- **行は key で保つ**: 行は task の ID を key にするので、描き直しで変わっていない行の DOM が残る（開いた行・入力中の欄・フォーカス・CSS アニメーション）
+- **入力欄は書き換えない要素（uncontrolled）にする**: 文字は要素が持ち、Preact は value も子も書かない。描き直しのたびに値を書き戻すと、ポーリングの応答や別の欄の操作で、打っている文字・フォーカス・キャレットが消える。これを次の 2 つで担保する
   - パネルと名前は、`state.busy`（欄にフォーカスがある間・ドラッグ中・メニューが開いている間）は盤面が進んでも前の task を表示したままにする（`useHeld`）。離れた後の最初の描画で追いつく
   - 外から変わった値は、欄が編集中（フォーカスがある・保存中・未保存の文字がある）でなければ欄に流し込む。編集中なら流し込まず、保存が済んでから追いつく
-- 保存の仕方は欄ごとに変えない: 名前と詳細は入力が止まって 0.9 秒で保存し、欄を離れたときにも保存して読み直す。話題も同じ。状況は Enter か「追記」で追記する。関連 URL は 1 件の変更ごとにリスト全体を PATCH し、タスクごとに 1 つずつ直列に送る。「保存中…／保存した」は `Panel` の保存印に、タスク ID を宛先にして各欄が書く。欄が取り外されるときにフォーカスが中にあれば `state.busy` を戻す（blur が来ない場合に備える）
-- 関連 URL の行は、todo 追加画面と共有する `links.js`（`LinkEditor`）が Preact で描く。`LinksBlock` は行の持ち主（`links.create` が返す controller）を最初の描画で 1 つ作り、`LinkEditor` に渡す。持ち主は `add` / `read` / `set` / `lock` を持ち、名前の欄への貼り付け（`linkEditors[id].add`）と保存（`read(true)`）はそれを通す。外から来た一覧を行へ流し込むとき（`applied` / `seen`）は、編集中でなければ `set` で入れ替える
-- Preact が描く要素を素の JS から直接書き換えない。期限メニューと削除の理由欄は `.app` の外（画面のルート要素の直下の `.menus`）に、通知は `.flash-slot`（`display: contents`）に、`menus.js` が描く。メニューが開いている行の印（`aria-expanded`）・戻した行の色（`landed`）・ドラッグ中の行の薄い表示（`dragging`）・帯の「落とせる」印（`drop-ready`）は、`state.menu` / `state.landedId` / `state.drag` から描く
-- 削除の理由欄の入力は書き換えない要素にしてあり、描き直しをまたいで同じ要素が残る（打ち込み中の文字とフォーカスが消えない）。メニューと理由欄は位置が決まってからフォーカスを取る（決まる前に取るとウィンドウがその要素までスクロールする）
-- ドラッグのプレビューは、ブラウザが掴んでいる行の要素を直接動かす（行をまたぐと Preact は別の要素を作るため、掴んだ要素が文書から外れて `dragend` が来なくなるおそれがあるので、動かす見せ方を残した）。落とす位置は動かした要素から読み戻さず、`state.drag.dest`（`{listId, anchorId, after}`）に持つ。`render()` は描く前に要素を元の場所へ戻し、描いた後に `dest` へ動かし直すので、ドラッグ中に描き直されても落とす位置は変わらない
-- `load()` は連番（`loadSeq`）を持ち、遅れて届いた古い一覧の応答は捨てる（タイムラインの `seq` と同じ）
+- **保存の仕方は欄ごとに変えない**: 名前と詳細と話題は入力が止まって 0.9 秒で保存し、欄を離れたときにも保存して読み直す。状況は Enter か「追記」で追記する。関連 URL は 1 件の変更ごとにリスト全体を PATCH し、タスクごとに 1 つずつ直列に送る。「保存中…／保存した」は `Panel` の保存印に、タスク ID を宛先にして各欄が書く。欄が取り外されるときにフォーカスが中にあれば `state.busy` を戻す（blur が来ない場合に備える）
+- **関連 URL の行**: `LinksBlock` は行の持ち主（`links.create` が返す controller）を最初の描画で 1 つ作り、`LinkEditor` に渡す。持ち主は `add` / `read` / `set` / `lock` を持ち、名前の欄への貼り付け（`linkEditors[id].add`）と保存（`read(true)`）はそれを通す。外から来た一覧を行へ流し込むとき（`applied` / `seen`）は、編集中でなければ `set` で入れ替える
+- **重なって出るもの**: 期限メニューと削除の理由欄は `.app` の外（画面のルート要素の直下の `.menus`）に、通知は `.flash-slot`（`display: contents`）に、`menus.js` が描く。行の中に置くと読み直しのたびに消えるため。何を出すかは `state.menu` / `state.dropAsk` / `state.flash` が決める。メニューが開いている行の印（`aria-expanded`）・戻した行の色（`landed`）・ドラッグ中の行の薄い表示（`dragging`）・帯の「落とせる」印（`drop-ready`）も、`state.menu` / `state.landedId` / `state.drag` から描く。削除の理由欄の入力は書き換えない要素で、描き直しをまたいで同じ要素が残る。メニューと理由欄は位置が決まってからフォーカスを取る（決まる前に取るとウィンドウがその要素までスクロールする）
+- **遅れた応答を捨てる**: `load()` は連番 `loadSeq` を持ち、遅れて届いた古い一覧の応答は捨てる。メニューと理由欄には `overlaySeq` を振り、新しく開いたものは同じタスクでも別の要素にする
+- **素の JS が Preact の描いた要素を動かす唯一の例外は、ドラッグ中のプレビュー**（[#140](https://github.com/rengotaku/workbench/issues/140)）: ブラウザが掴んでいる行の要素を `app.js` の `applyPreview` が直接動かす。行をまたぐと Preact は別の要素を作り、掴んだ要素が文書から外れて `dragend` が来なくなるおそれがあるため。落とす位置は動かした要素から読み戻さず、`state.drag.dest`（`{listId, anchorId, after}`）に持つ。`render()` は描く前に `restorePreview` で要素を元の場所へ戻し、描いた後に `applyPreview` で `dest` へ動かし直すので、ドラッグ中に描き直されても落とす位置は変わらない
+- `document` に付けるキー（`N`・Esc・Cmd/Ctrl+Z）とポーリングは、一覧が表示中（`active`）のときだけ動く
 
-## 追加画面の描画
+### todo 追加画面
 
-todo 追加画面（`/add` と、`N`・「タスクを追加」で開くダイアログ）は `add.js` の `AddScreen` が描く（ADR todo-0025、#124）。関連 URL の行は `links.js`。
+todo 追加画面（`/add` と、`N`・「タスクを追加」で開くダイアログ）は `web/todo/static/js/add.js` の `AddScreen` が描く。見出し・名前・関連 URL・期限の札・詳細・追加ボタン・通知・「いま追加したもの」を持つ。
 
-| ファイル | 持つもの |
-|---|---|
-| `web/todo/static/js/add.js` | `AddScreen`。見出し・名前・関連 URL・期限の札・詳細・追加ボタン・通知・「いま追加したもの」を描く。期限（`due`）・保存中（`busy`）・通知（`toast`）・追加した一覧（`recent`）・期限の札（`chips`）は部品の状態。ルーターの `show` のたびに、`?parent=` と表示回数（`visit`）を渡して描き直す |
-| `web/todo/static/js/links.js` | `create(opts)`（関連 URL の行の持ち主）と `LinkEditor`（行と「＋ 関連 URL」を描く部品）。追加画面・開いた行の `LinksBlock`・メモ追加画面が使う（ページの全画面が読み込む `base.html` で、note の `add.js` より前に置く。`server_test.go` が順番を確かめる）。`create` は `subject`（メッセージの「名前」を「本文」に替える）・`focusEmpty`（空の行へキャレットを置く）・`onRemoved` を受け、`LinkEditor` は `addClass` / `addId` で追加ボタンの見た目を替えられる |
-
-- 名前・詳細・日付の入力・関連 URL の各行の入力は書き換えない要素（uncontrolled）。文字は要素が持ち、Preact は value を書かない。描き直し（札・通知・行の追加と削除）をまたいで、要素・文字・フォーカス・キャレットが残る
-- ルーターが追加画面のルート要素をダイアログへ貸し出して閉じても、`render` は同じルート要素へ描き直すだけなので、部品の状態と入力の文字は残る（`mount` では枠を作らず、`show` で描く）
-- 関連 URL の行は key（行ごとの連番）で保つ。番号（`[N]`）と aria-label は行の並びから描くので、行を外すと残りは描き直しで振り直される。名前が `[k]` 以降を指している間は行 k を外せず、通知で知らせる
-- 行は URL が入って入力欄を離れたときだけリンク（一言、無ければ URL）と「直す」に見え、空や http(s) でない値は入力欄のまま残る。貼り付けの解析（`pastedLinks` など）は描画の外の `paste.js` にある
+- **描画の入口**: ルーターの `mount` は部品を描かずルート要素を覚えるだけで、`show` のたびに `?parent=` と表示回数（`visit`）を渡して同じルート要素へ `AddScreen` を描き直す。ルーターが追加画面のルート要素をダイアログへ貸し出して閉じても、同じルート要素へ描き直すだけなので、部品の状態と入力の文字は残る
+- **状態の持ち方**: 期限（`due`）・保存中（`busy`）・通知（`toast`）・追加した一覧（`recent`）・期限の札（`chips`）は `AddScreen` の部品の状態。関連 URL の行は `links.js` の持ち主（`rows`）が持つ
+- **入力欄は書き換えない要素（uncontrolled）にする**: 名前・詳細・日付・関連 URL の各行の入力は、文字を要素が持ち、Preact は value を書かない。札・通知・行の追加と削除で描き直しても、要素・文字・フォーカス・キャレットが残る
+- 関連 URL の行は key（行ごとの連番）で保つ。番号（`[N]`）と aria-label は行の並びから描くので、行を外すと残りは描き直しで振り直される。名前が `[k]` 以降を指している間は行 k を外せず、通知で知らせる。行は URL が入って入力欄を離れたときだけリンク（一言、無ければ URL）と「直す」に見え、空や http(s) でない値は入力欄のまま残る
 - 送信中は名前の欄と行を disabled にし、終わると描き直しの後でフォーカスを名前へ戻す（disabled の欄にはフォーカスが入らないため、`wantFocus` で描き直しを待つ）
-- `document` に付けるキー（⌥+数字・Esc）は画面が表示中（`active`）のときだけ動く
+- 追加の応答は 1 回の送信ごとに 1 つで、送信中は `guard` で二重送信を止める（遅れた応答を捨てる連番は持たない）。`document` に付けるキー（⌥+数字・Esc）は画面が表示中（`active`）のときだけ動く
 
 ## 話題
 
@@ -300,24 +312,26 @@ todo 追加画面（`/add` と、`N`・「タスクを追加」で開くダイ�
 | 変えたいこと | 触る場所 |
 |---|---|
 | 期限の表示文字・色の境目（3 日以内は `SoonDays`） | `internal/taskapi/api.go` の `view` |
-| 次の期限（見出しの下の 1 行） | `internal/taskapi/api.go` の `nextDue`、画面は `list.js` の `render`（`#next-due`）|
+| 次の期限（見出しの下の 1 行） | `internal/taskapi/api.go` の `nextDue`、画面は `list.js` の `render`（`#next-due`） |
 | チケット番号の札・親の札 | `web/todo/static/js/list.js` の `splitTicket` / `stripTicket` / `parentTag`、見た目は `style.css` の `.tk-tag` |
 | 理由を聞く条件 | `internal/task/task.go` の `NeedsReason` / `AskReason`、待ちの閾値は `AskThresholdDays` |
 | 削除で理由を聞くまでの時間 | `web/todo/static/js/list.js` の `ASK_DROP_AFTER_MS` |
 | 画面の見た目 | `web/shared/static/css/tokens.css`（変数）、`web/todo/static/css/style.css` |
-| 画面の挙動（ドラッグ・開いた行・読み直し） | `web/todo/static/js/app.js` |
+| 画面の状態・ドラッグ・開閉・読み直し・ポーリング | `web/todo/static/js/app.js` |
 | 期限・見直し日のメニュー、削除の理由欄、通知と元に戻す | `web/todo/static/js/menus.js`（開閉は `app.js` の `openMenu` / `closeMenu` / `openDropAsk`、見た目は `style.css` の `.due-menu` / `.drop-ask` / `.err`） |
 | 一覧の区画・行・札・件数の描画 | `web/todo/static/js/list.js` |
+| 開いた行の詳細（名前・詳細・状況・補足・操作・経緯）と右の詳細欄 | `web/todo/static/js/detail.js`（見た目は `style.css`） |
 | 追加画面（`/add` と追加ダイアログの中身） | `web/todo/static/js/add.js`、`web/todo/static/css/add.css` |
+| 関連 URL の行（追加画面・開いた行・メモ追加画面で共通） | `web/shared/static/js/links.js` の `create` / `LinkEditor` |
+| リンク付きテキストの貼り付け | `web/shared/static/js/paste.js`（名前の欄への配線は `web/todo/static/js/shared.js` の `wirePaste`） |
 | 画面の切り替え・追加ダイアログ | `web/shared/static/js/router.js`、`web/shared/static/js/modal.js` |
 | 補足の追加・検証 | `internal/task/store.go` の `Annotate`、`internal/taskapi/api.go` の `annotateTask`、`cmd/todo/main.go` の `annotateCmd` |
-| 詳細での補足と「元のメモ」の表示 | `web/todo/static/js/app.js` の `supplementsBlock` |
-| 画面からの状況の追記（入力欄） | `web/todo/static/js/app.js` の `statusBlock`、見た目は `style.css` の `.status-*` |
-| 一覧の行に出す最新の状況 | `web/todo/static/js/app.js` の `latestStatus`、見た目は `style.css` の `.row-status` |
+| 詳細での補足と「元のメモ」の表示 | `web/todo/static/js/detail.js` の `Supplements` |
+| 画面からの状況の追記（入力欄） | `web/todo/static/js/detail.js` の `StatusBlock`、見た目は `style.css` の `.status-*` |
 | CLI の出力 | `cmd/todo/main.go`（サーバへの呼び出しは `internal/taskclient`） |
 | 話題の検査・設定・上限 | `internal/task/topic.go`（`NormalizeTopic` / `SetTopic` / `MaxTopicLen`）、undo は `internal/task/undo.go` の `KindTopicSet` |
 | 話題の候補（`topics`） | `internal/taskapi/api.go` の `topicsInUse` |
-| 話題の入力欄・区切り表示 | `web/todo/static/js/app.js` の `topicField`、`list.js` の `groupByTopic` / `groupedRows`、見た目は `style.css` の `.topic-*` / `.group-*` |
+| 話題の入力欄・区切り表示 | `web/todo/static/js/detail.js` の `TopicField`、`list.js` の `groupByTopic` / `groupedRows`、見た目は `style.css` の `.topic-*` / `.group-*` |
 | 保存の形 | `internal/task/store.go`。`persist` が状態、`appendEvent` がログ |
 | 旧台帳の読み取り | `internal/legacy/legacy.go` |
 | ポート・待ち受け・データ置き場 | `cmd/server/main.go` の `Config`（env で上書き）と `launchd/` のテンプレート |

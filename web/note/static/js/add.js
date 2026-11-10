@@ -19,7 +19,7 @@
   var useLayoutEffect = P.useLayoutEffect;
 
   var shared = window.noteShared;
-  var links = window.workbench.todoLinks;
+  var links = window.workbench.links;
   var TopicPicker = shared.TopicPicker;
   var useFit = shared.useFit;
 

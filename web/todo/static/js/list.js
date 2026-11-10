@@ -709,7 +709,6 @@
   window.workbench = window.workbench || {};
   window.workbench.todoList = {
     render: render,
-    dateLabel: dateLabel,
     monthDay: monthDay,
     shiftDay: shiftDay,
     linkRange: linkRange,

@@ -522,7 +522,7 @@
     // Made in the first draw, so the rows are in it from the start.
     if (!own.current) {
       var q = linkSaves[id] || (linkSaves[id] = { busy: false, next: null, last: '' });
-      var ed = window.workbench.todoLinks.create({
+      var ed = window.workbench.links.create({
         // A row the name points at cannot go. Both the name being typed and the
         // saved one count: the typed one may yet fail to save and come back.
         text: function () { return nameNow() + ' ' + props.current.t.name; },
@@ -608,7 +608,7 @@
     });
 
     // Typing in a row holds the poll, as the name and detail do.
-    return html`<${window.workbench.todoLinks.LinkEditor} ctl=${o0.ed} hostRef=${ref}
+    return html`<${window.workbench.links.LinkEditor} ctl=${o0.ed} hostRef=${ref}
       onFocusIn=${function () { props.current.ctx.state.busy = true; }}
       onFocusOut=${function () { props.current.ctx.state.busy = false; }} />`;
   }

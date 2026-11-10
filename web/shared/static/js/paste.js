@@ -126,39 +126,10 @@
     return m ? { url: m[1], label: (m[2] || '').trim() } : null;
   }
 
-  // writeLinkedText puts text into el with each [N] that names one of links
-  // ({n, url, label}) as a link to its URL, and the rest as plain text nodes
-  // (never HTML). cls is the links' class.
-  function writeLinkedText(el, text, links, cls) {
-    var byN = {};
-    (links || []).forEach(function (l) { byN[l.n] = l; });
-    var re = /\[([1-9][0-9]{0,3})\]/g;
-    var at = 0;
-    var m;
-    while ((m = re.exec(text)) !== null) {
-      var l = byN[Number(m[1])];
-      if (!l) continue;
-      if (m.index > at) el.appendChild(document.createTextNode(text.slice(at, m.index)));
-      var a = document.createElement('a');
-      a.className = cls || 'ref';
-      a.href = l.url;
-      a.textContent = m[0];
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.title = l.label ? l.label + ' — ' + l.url : l.url;
-      a.draggable = false; // dragging a row must not drag the link instead
-      el.appendChild(a);
-      at = m.index + m[0].length;
-    }
-    if (at < text.length) el.appendChild(document.createTextNode(text.slice(at)));
-  }
-
   window.workbench.paste = {
     pastedLink: pastedLink,
-    pastedLinks: pastedLinks,
     insertText: insertText,
     wireLinkPaste: wireLinkPaste,
     splitLinkInput: splitLinkInput,
-    writeLinkedText: writeLinkedText,
   };
 })();

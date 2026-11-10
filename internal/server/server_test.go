@@ -164,7 +164,7 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 		assert.Less(t, vendor, strings.Index(body, `src="/shared/js/common.js"`), s.path)
 		// The related-URL rows (links.js) load before the add screen and the open
 		// row's detail, which draw them.
-		links := strings.Index(body, `src="/static/js/links.js"`)
+		links := strings.Index(body, `src="/shared/js/links.js"`)
 		require.GreaterOrEqual(t, links, 0, s.path)
 		assert.Less(t, vendor, links, s.path)
 		assert.Less(t, links, strings.Index(body, `src="/static/js/detail.js"`), s.path)
@@ -201,7 +201,7 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 
 func TestSharedStaticServedBehindGuard(t *testing.T) {
 	h := newServer(t)
-	for _, p := range []string{"/shared/css/tokens.css", "/shared/css/base.css", "/shared/js/common.js", "/shared/js/paste.js", "/shared/js/router.js", "/shared/js/modal.js", "/shared/vendor/htm-preact.umd.js", "/shared/icon.svg"} {
+	for _, p := range []string{"/shared/css/tokens.css", "/shared/css/base.css", "/shared/js/common.js", "/shared/js/paste.js", "/shared/js/links.js", "/shared/js/router.js", "/shared/js/modal.js", "/shared/vendor/htm-preact.umd.js", "/shared/icon.svg"} {
 		assert.Equal(t, http.StatusOK, do(h, http.MethodGet, p, "").Code, p)
 
 		req := httptest.NewRequest(http.MethodGet, p, nil)

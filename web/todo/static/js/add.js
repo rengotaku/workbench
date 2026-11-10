@@ -19,7 +19,7 @@
   var useLayoutEffect = P.useLayoutEffect;
 
   var shared = window.todoShared;
-  var links = window.workbench.todoLinks;
+  var links = window.workbench.links;
 
   // active is true while the screen is on show (as a page or in the add
   // dialog): the key listener on document stays for the life of the page and
