@@ -978,7 +978,7 @@
       run=${function () {
         var at = ctx.waitIndex(t); // where its row is now, for the line left in its place
         return post('/resume', { note: '' })
-          .then(function (res) { ctx.closeRow(t.id); return ctx.load().then(function () { ctx.landed(t, res.event_id, at); }); });
+          .then(function (res) { ctx.closeRow(t.id); return ctx.load().then(function () { ctx.landed(t, res, at); }); });
       }} />` : null;
 
     // somedayButton shelves a task with one click: unlike WaitControl, nobody

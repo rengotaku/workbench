@@ -13,6 +13,9 @@ var ErrNothingToUndo = errors.New("nothing to undo")
 // not the one asked for: something else was done since, so nothing was undone.
 var ErrUndoMismatch = errors.New("the last change is not the one to undo")
 
+// ErrUndoEventRequired is returned by UndoEvent for an empty event ID.
+var ErrUndoEventRequired = errors.New("undo: event ID is required")
+
 // Undone describes what an undo put back, so the caller can say it out loud.
 type Undone struct {
 	EventID string `json:"event_id"`
@@ -38,6 +41,9 @@ func (s *Store) Undo(actor Actor) (Undone, error) {
 // 元に戻す next to a change uses it so a change made elsewhere in the meantime
 // (the CLI) is not undone instead.
 func (s *Store) UndoEvent(eventID string, actor Actor) (Undone, error) {
+	if eventID == "" {
+		return Undone{}, ErrUndoEventRequired // an empty ID must not fall back to "the last change"
+	}
 	return s.undo(eventID, actor)
 }
 

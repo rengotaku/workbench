@@ -76,8 +76,12 @@ func TestUndoEvent_OnlyTheNamedChange(t *testing.T) {
 	other, err := s.Add("B", "", "", task.ActorHuman)
 	require.NoError(t, err)
 
-	_, ev, err := s.ResumeWithEvent(id, "", task.ActorHuman)
+	_, rec, err := s.ResumeWithEvent(id, "", task.ActorHuman)
 	require.NoError(t, err)
+	ev := rec.EventID
+	assert.Equal(t, "高橋", rec.HandedTo)
+	assert.Equal(t, dateIn(-3), rec.HandedOn)
+	assert.Equal(t, s.Revision(), rec.Revision)
 	_, err = s.SetName(other.ID, "B2", task.ActorAI)
 	require.NoError(t, err)
 
@@ -98,4 +102,16 @@ func TestUndoEvent_OnlyTheNamedChange(t *testing.T) {
 	got, err = s.Get(id)
 	require.NoError(t, err)
 	assert.Equal(t, task.StateWaiting, got.State)
+}
+
+// An empty event ID is refused, not read as "undo the last change".
+func TestUndoEvent_RefusesAnEmptyID(t *testing.T) {
+	s := newStore(t)
+	added, err := s.Add("A", "", "", task.ActorHuman)
+	require.NoError(t, err)
+
+	_, err = s.UndoEvent("", task.ActorHuman)
+	require.ErrorIs(t, err, task.ErrUndoEventRequired)
+	_, err = s.Get(added.ID)
+	assert.NoError(t, err, "the task was not undone away")
 }

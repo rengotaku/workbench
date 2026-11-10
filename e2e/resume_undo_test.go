@@ -13,6 +13,7 @@ import (
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/chromedp"
+	"github.com/chromedp/chromedp/kb"
 
 	"github.com/rengotaku/workbench/internal/task"
 )
@@ -23,6 +24,7 @@ type handoff struct {
 	name    string
 	to      string
 	due     string
+	parent  string // name of the parent task, set before the handoff
 	daysAgo int
 }
 
@@ -50,10 +52,20 @@ func seedHandoffs(t *testing.T, dir string, seeds []handoff) map[string]string {
 			t.Fatal(addErr)
 		}
 		ids[h.name] = added.ID
+	}
+	for _, h := range seeds {
+		if h.parent == "" {
+			continue
+		}
+		if _, parentErr := s.SetParent(ids[h.name], ids[h.parent], task.ActorHuman); parentErr != nil {
+			t.Fatal(parentErr)
+		}
+	}
+	for _, h := range seeds {
 		if h.to == "" {
 			continue
 		}
-		if _, waitErr := s.Wait(added.ID, h.to, "", task.ActorHuman); waitErr != nil {
+		if _, waitErr := s.Wait(ids[h.name], h.to, "", task.ActorHuman); waitErr != nil {
 			t.Fatal(waitErr)
 		}
 	}
@@ -290,4 +302,122 @@ func TestTodoResumeLineLeadsToARowOutOfScope(t *testing.T) {
 	if n := p.num(`document.querySelectorAll('#waitlist .resumed-stub').length`); n != 1 {
 		t.Errorf("見る removed the line (%v)", n)
 	}
+}
+
+// holdAnswers makes the page's fetch hold the answer of the requests whose
+// "METHOD path" starts with prefix: the request goes out at once, the page gets
+// the answer when window.__release() is called (oldest first). The request
+// count is window.__held.length.
+func (p *page) holdAnswers(prefix string) {
+	p.t.Helper()
+	p.eval(`(() => {
+		const orig = window.fetch.bind(window);
+		window.__held = [];
+		window.__hold = true;
+		window.fetch = (url, opts) => {
+			const key = ((opts && opts.method) || 'GET') + ' ' + url;
+			const real = orig(url, opts);
+			if (!window.__hold || !key.startsWith(`+"`"+prefix+"`"+`)) return real;
+			return new Promise((resolve, reject) => window.__held.push(() => real.then(resolve, reject)));
+		};
+		window.__release = () => { const f = window.__held.shift(); if (f) f(); };
+		return true;
+	})()`, nil)
+}
+
+// The read after a resume can be overtaken by another read (the poll's), whose
+// answer is still on its way. The line must still be left, with the revision the
+// write made, and must not vanish when the slow answer arrives.
+func TestTodoResumeLineSurvivesAnOvertakingRead(t *testing.T) {
+	a, id := startAppWithHandoffs(t, handoff{name: "w1", to: "高橋", daysAgo: 3})
+	p := newPage(t, a, "/")
+	p.until("waiting", `document.getElementById('wait-count').textContent === '1'`)
+	p.holdAnswers("GET /api/tasks?")
+	p.resumeFromWaiting(id["w1"])
+	p.until("resume's read held", `window.__held.length === 1`)
+	p.eval(`document.dispatchEvent(new Event('visibilitychange'))`, nil) // a second read starts
+	p.until("second read held", `window.__held.length === 2`)
+
+	p.eval(`window.__hold = false; window.__release(); true`, nil) // the first read answers: it is dropped
+	p.until("line left", `document.querySelectorAll('#waitlist .resumed-stub').length === 1`)
+	p.eval(`window.__release(); true`, nil) // the slow read answers after
+	time.Sleep(1500 * time.Millisecond)
+	if n := p.num(`document.querySelectorAll('#waitlist .resumed-stub').length + document.querySelectorAll('#queue .task.landed .resumed-tag').length`); n != 2 {
+		t.Errorf("line and tag after the slow read = %v of 2, want both", n)
+	}
+}
+
+// 元に戻す answers late, after another task was resumed and has its own line:
+// the answer must not clear that line.
+func TestTodoResumeLateUndoAnswerLeavesTheNewerLine(t *testing.T) {
+	a, id := startAppWithHandoffs(t,
+		handoff{name: "w1", to: "高橋", daysAgo: 8},
+		handoff{name: "w2", to: "鈴木", daysAgo: 3},
+	)
+	p := newPage(t, a, "/")
+	p.until("waiting", `document.getElementById('wait-count').textContent === '2'`)
+	p.resumeFromWaiting(id["w1"])
+	p.until("first line", `document.querySelectorAll('#waitlist .resumed-stub').length === 1`)
+
+	p.holdAnswers("POST /api/undo")
+	p.eval(`document.querySelector('#waitlist .resumed-stub .rs-undo').click()`, nil)
+	p.until("undo answer held", `window.__held.length === 1`)
+	a.untilTask(t, id["w1"], "undone on the server", func(k map[string]any) bool { return str(k, "state") == "waiting" })
+
+	p.resumeFromWaiting(id["w2"])
+	p.until("second line", `document.querySelector('#waitlist .resumed-stub') && document.querySelector('#waitlist .resumed-stub').dataset.stub === '`+id["w2"]+`'`)
+	p.eval(`window.__release(); true`, nil)
+	time.Sleep(1500 * time.Millisecond)
+	if got := p.str(`(e => e ? e.dataset.stub : 'none')(document.querySelector('#waitlist .resumed-stub'))`); got != id["w2"] {
+		t.Errorf("line after the late answer = %q, want the one for %s", got, id["w2"])
+	}
+}
+
+// A child goes in above its open parent, not at the end: the line does not say
+// 末尾 then.
+func TestTodoResumeLineDoesNotClaimTheEndForAChild(t *testing.T) {
+	a, id := startAppWithHandoffs(t,
+		handoff{name: "親"},
+		handoff{name: "A"},
+		handoff{name: "子", to: "高橋", parent: "親", daysAgo: 3},
+	)
+	p := newPage(t, a, "/")
+	p.until("waiting", `document.getElementById('wait-count').textContent === '1'`)
+	p.resumeFromWaiting(id["子"])
+	p.until("line left", `document.querySelectorAll('#waitlist .resumed-stub').length === 1`)
+	if got := p.str(`document.querySelector('#waitlist .resumed-stub .rs-text').textContent`); strings.Contains(got, "末尾") || !strings.Contains(got, "着手順へ移した") {
+		t.Errorf("line = %q, want 着手順へ移した without 末尾", got)
+	}
+}
+
+// With the keyboard focus on the line, running out of time waits; the line goes
+// once the focus leaves it.
+func TestTodoResumeLineWaitsForFocusToLeave(t *testing.T) {
+	a, id := startAppWithHandoffs(t, handoff{name: "w1", to: "高橋", daysAgo: 3})
+	p := newPage(t, a, "/")
+	p.until("waiting", `document.getElementById('wait-count').textContent === '1'`)
+	p.resumeFromWaiting(id["w1"])
+	p.until("line left", `document.querySelectorAll('#waitlist .resumed-stub').length === 1`)
+	p.eval(`document.querySelector('#waitlist .resumed-stub .rs-see').focus(); true`, nil)
+	p.key(kb.Tab)
+	p.until("focus on 元に戻す", `document.activeElement && document.activeElement.classList.contains('rs-undo')`)
+
+	time.Sleep(11 * time.Second)
+	if n := p.num(`document.querySelectorAll('#waitlist .resumed-stub').length`); n != 1 {
+		t.Fatalf("the line went while the focus was on it (%v)", n)
+	}
+	p.key(kb.Tab)
+	p.until("line gone once the focus left", `document.querySelectorAll('#waitlist .resumed-stub').length === 0`)
+}
+
+// 元に戻す pressed from the keyboard: the focus goes to the restored task's row.
+func TestTodoResumeUndoKeepsTheKeyboardFocus(t *testing.T) {
+	a, id := startAppWithHandoffs(t, handoff{name: "w1", to: "高橋", daysAgo: 3})
+	p := newPage(t, a, "/")
+	p.until("waiting", `document.getElementById('wait-count').textContent === '1'`)
+	p.resumeFromWaiting(id["w1"])
+	p.until("line left", `document.querySelectorAll('#waitlist .resumed-stub').length === 1`)
+	p.eval(`document.querySelector('#waitlist .resumed-stub .rs-undo').focus(); true`, nil)
+	p.key(kb.Enter)
+	p.until("focus on the restored row", `document.querySelectorAll('#waitlist .resumed-stub').length === 0 && document.activeElement && document.activeElement.dataset && document.activeElement.dataset.id === '`+id["w1"]+`'`)
 }

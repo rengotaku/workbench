@@ -373,10 +373,10 @@
     // row seemed to vanish. The notice names the place, and 見る opens the
     // section and scrolls to the row. Nothing moves until 見る is pressed: the
     // waiting list is often worked through top to bottom.
-    function landed(t, eventId, at) {
+    function landed(t, res, at) {
       // A task that was waiting on someone leaves a line behind and takes the
       // move back there; the notice is not used, it is far from the click.
-      if (eventId && t.state === 'waiting' && t.handed_to) { landedFromWait(t, eventId, at); return; }
+      if (res && res.event_id && t.state === 'waiting' && t.handed_to) return settleResume(t, res, at, 0);
       var now = ((state.board && state.board.queue) || []).filter(function (q) { return q.id === t.id; })[0];
       // A task focused when it went to 待ち keeps the mark and returns to the
       // end of the band, whatever its due date.
@@ -401,49 +401,107 @@
       return 0;
     }
 
+    // settleResume waits for a board that has the resume in it. The read that
+    // follows the write can be overtaken by another read (the poll's): the older
+    // one is dropped by load(), and the board in hand may still be from before
+    // the write. res.revision is the revision the write made. A board past it
+    // means something else was written since, which is the next operation, so
+    // no line is left.
+    function settleResume(t, res, at, tries) {
+      var rev = state.board ? state.board.revision : 0;
+      if (rev < res.revision && tries < 3) return load().then(function () { return settleResume(t, res, at, tries + 1); });
+      if (rev === res.revision) landedFromWait(t, res, at);
+    }
+
+    // where says where a resumed task went, and only says 末尾 when it is last:
+    // a child goes in above its open parent, not at the end.
+    function whereWent(now) {
+      if (!now) return '着手順';
+      var queue = (state.board && state.board.queue) || [];
+      function lastOf(pick) {
+        var rows = queue.filter(pick);
+        return rows.length && rows[rows.length - 1].id === now.id;
+      }
+      if (now.focused) return lastOf(function (q) { return q.focused; }) ? 'フォーカスの末尾' : 'フォーカス';
+      if (now.in_scope) return lastOf(function (q) { return !q.focused && q.in_scope; }) ? '着手順の末尾' : '着手順';
+      return 'スコープ外（期限 ' + monthDay(now.due) + '）';
+    }
+
     // landedFromWait leaves a line where the waiting task stood, tints the row it
-    // became, and lets go of both after RESUMED_MS or at the next write. t is
-    // the task as it was in 待ち (it carries who held it and since when).
-    function landedFromWait(t, eventId, at) {
+    // became, and lets go of both after RESUMED_MS or at the next write. Who held
+    // it and since when come from the server's answer (what the event recorded
+    // and what undo puts back), not from the row that was pressed.
+    function landedFromWait(t, res, at) {
       var now = queueEntry(t.id);
-      var where = !now ? '着手順'
-        : now.focused ? 'フォーカスの末尾'
-          : now.in_scope ? '着手順の末尾'
-            : 'スコープ外（期限 ' + monthDay(now.due) + '）';
+      expired = false;
       state.resumed = {
-        id: t.id, where: where, handedTo: t.handed_to, handedOn: t.handed_on,
-        eventId: eventId, index: at, found: !!now, revision: state.board ? state.board.revision : 0,
+        id: t.id, where: whereWent(now), handedTo: res.handed_to, handedOn: res.handed_on,
+        eventId: res.event_id, index: at, found: !!now, revision: res.revision,
       };
       state.landedId = now ? t.id : null;
       window.clearTimeout(landedTimer);
-      landedTimer = window.setTimeout(clearResumed, RESUMED_MS);
+      landedTimer = window.setTimeout(expireResumed, RESUMED_MS);
       render();
+    }
+
+    // The line is a control the keyboard can be on. Time running out waits until
+    // the focus has left it (the focusout listener below), so it is not pulled
+    // out from under a key press.
+    var expired = false;
+    function stubHasFocus() {
+      var a = document.activeElement;
+      return !!(a && a.closest && a.closest('.resumed-stub'));
+    }
+    function expireResumed() {
+      if (!state.resumed) return;
+      if (stubHasFocus()) { expired = true; return; }
+      clearResumed();
+    }
+    // focusAfterStub puts the focus where the line was: on the task's row, or
+    // on the 待ち heading when the row is not there.
+    function focusAfterStub(id) {
+      var node = document.querySelector('.task[data-id="' + id + '"]');
+      if (!node || node.tabIndex < 0) node = document.getElementById('wait-fold');
+      if (node) node.focus({ preventScroll: true });
     }
 
     function clearResumed() {
       if (!state.resumed) return;
+      var hadFocus = stubHasFocus();
+      var id = state.resumed.id;
       window.clearTimeout(landedTimer);
+      expired = false;
       state.resumed = null;
       state.landedId = null;
       render();
+      if (hadFocus) focusAfterStub(id);
     }
 
     // undoResume takes the move back from the line left in 待ち. It names the
     // resume by its event, so a change made elsewhere since (the terminal) is
-    // never undone in its place: the server refuses and the page says so.
+    // never undone in its place: the server refuses and the page says so. The
+    // answer may come after another task was resumed and has its own line, so
+    // only the line that was pressed is cleared.
     function undoResume() {
       var r = state.resumed;
       if (!r) return;
+      var hadFocus = stubHasFocus();
       request('POST', '/api/undo?event=' + encodeURIComponent(r.eventId))
         .then(function () {
-          state.resumed = null;
-          state.landedId = null;
-          window.clearTimeout(landedTimer);
+          if (state.resumed === r) {
+            window.clearTimeout(landedTimer);
+            expired = false;
+            state.resumed = null;
+            state.landedId = null;
+          }
           state.openId = null;
-          return load();
+          return load().then(function () { if (hadFocus) focusAfterStub(r.id); });
         })
         .catch(function (err) {
-          clearResumed();
+          if (state.resumed === r) {
+            clearResumed();
+            if (hadFocus) focusAfterStub(r.id);
+          }
           return reloadShowing(new Error('元に戻せなかった: ' + (err.message || err)));
         });
     }
@@ -474,6 +532,12 @@
     }
 
     // ---- interaction ----
+
+    // The line's time ran out while the focus was on it: go once it leaves.
+    document.addEventListener('focusout', function () {
+      if (!expired) return;
+      window.setTimeout(function () { if (expired && !stubHasFocus()) clearResumed(); }, 0);
+    });
 
     document.addEventListener('click', function (ev) {
       if (!active) return;

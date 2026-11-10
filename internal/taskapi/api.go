@@ -363,9 +363,15 @@ const StalledDays = 8
 func (a *API) undo(c *gin.Context) {
 	var done task.Undone
 	var err error
-	if ev := c.Query("event"); ev != "" {
+	if evs, named := c.GetQueryArray("event"); named {
 		// event names the change the caller means; anything newer is left alone.
-		done, err = a.store.UndoEvent(ev, actorOf(c.Query("actor")))
+		// An empty or repeated value is refused rather than read as "the last
+		// change": the caller meant one particular change.
+		if len(evs) != 1 || evs[0] == "" {
+			badRequest(c, errors.New("event must be given once, with an event ID"))
+			return
+		}
+		done, err = a.store.UndoEvent(evs[0], actorOf(c.Query("actor")))
 	} else {
 		done, err = a.store.Undo(actorOf(c.Query("actor")))
 	}
@@ -737,13 +743,18 @@ func (a *API) resumeTask(c *gin.Context) {
 		badRequest(c, err)
 		return
 	}
-	t, eventID, err := a.store.ResumeWithEvent(c.Param("id"), req.Note, actorOf(req.Actor))
+	t, rec, err := a.store.ResumeWithEvent(c.Param("id"), req.Note, actorOf(req.Actor))
 	if err != nil {
 		a.fail(c, err)
 		return
 	}
-	// event_id is what POST /api/undo?event= takes to undo this resume only.
-	c.JSON(http.StatusOK, gin.H{"task": t, "event_id": eventID})
+	// event_id is what POST /api/undo?event= takes to undo this resume only;
+	// handed_to / handed_on are what that undo puts back, and revision is the
+	// board's revision after the write.
+	c.JSON(http.StatusOK, gin.H{
+		"task": t, "event_id": rec.EventID, "handed_to": rec.HandedTo,
+		"handed_on": rec.HandedOn, "revision": rec.Revision,
+	})
 }
 
 type somedayRequest struct {
