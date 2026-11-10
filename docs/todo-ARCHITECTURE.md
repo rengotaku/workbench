@@ -17,7 +17,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 - **書き手はサーバだけ**。CLI もブラウザも REST を叩く。CLI はサーバが落ちていればエラーで止まり、ファイルを直接書かない
 - サーバはループバック固定で認証を持たない。LAN へは出さない
-- 画面は JS で描き、ビルド工程は無い。描画は Preact と htm（同梱の `web/shared/static/vendor/htm-preact.umd.js`）へ画面ごとに移している途中で、移していない画面は素の JS で DOM を組み立てる（ADR todo-0025、#119）。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の枠を描く。todo 一覧・todo 追加・メモ追加（note の `add.js` と `picker.js`）は Preact に移してあり、一覧の枠の中の見出し・区画・行は `list.js` が、追加画面の中身は `add.js` が描く（「一覧の描画」「追加画面の描画」。メモ追加は note-ARCHITECTURE）。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
+- 画面は JS で描き、ビルド工程は無い。描画は Preact と htm（同梱の `web/shared/static/vendor/htm-preact.umd.js`）で、4 画面とも Preact で描く（ルーターとダイアログは素の JS。ADR todo-0025、#119）。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の枠を描く。todo 一覧・todo 追加・メモ追加・タイムライン（note の `add.js` / `picker.js` / `timeline.js`）は Preact で描き、一覧の枠の中の見出し・区画・行は `list.js` が、追加画面の中身は `add.js` が描く（「一覧の描画」「追加画面の描画」。メモ追加とタイムラインは note-ARCHITECTURE）。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
 
 ## ディレクトリ
 

@@ -21,13 +21,11 @@
   var shared = window.noteShared;
   var links = window.workbench.todoLinks;
   var TopicPicker = shared.TopicPicker;
+  var useFit = shared.useFit;
 
   // How many topic chips the row shows before folding the rest into "他 N"
   // (visibleTopics in internal/notepages).
   var VISIBLE_TOPICS = 6;
-
-  // Under 560px the chip row wraps and nothing is folded.
-  var narrow = window.matchMedia('(max-width: 560px)');
 
   // active is true while the screen is on show: the Escape listener on
   // document stays for the life of the page and must not act from a hidden
@@ -80,55 +78,6 @@
     }
     if (at < p.text.length) out.push(p.text.slice(at));
     return out;
-  }
-
-  // useFit keeps the one-line chip row on one line. It folds topic chips from
-  // the end, one more per pass, until the row no longer overflows, and the
-  // "他 N" button counts them. The chip that is picked stays. It returns the
-  // names folded here and whether the passes are done (the button is drawn
-  // while they run, so it is in the measure). Nothing runs while the picker is
-  // open in the row (paused).
-  function useFit(rowRef, names, selected, extraCount, paused) {
-    // One state, so a fit again and a pass that is already under way cannot
-    // mix: a pass only applies if nothing asked for a fresh start since.
-    var fitState = useState({ k: 0, done: false });
-    var cur = fitState[0];
-    var hideable = names.filter(function (n) { return n !== selected; });
-    var hidden = cur.k > 0 ? hideable.slice(Math.max(hideable.length - cur.k, 0)) : [];
-
-    function restart() { fitState[1]({ k: 0, done: false }); }
-
-    // Fit again whenever what the row holds changes.
-    var sig = names.join('\n') + '\t' + selected + '\t' + extraCount;
-    useLayoutEffect(function () {
-      if (!paused) restart();
-    }, [sig, paused]);
-
-    useLayoutEffect(function () {
-      if (cur.done || paused) return;
-      var row = rowRef.current;
-      var next = narrow.matches || row.scrollWidth <= row.clientWidth + 1 || cur.k >= hideable.length
-        ? { k: cur.k, done: true }
-        : { k: cur.k + 1, done: false };
-      fitState[1](function (s) { return s === cur ? next : s; });
-    });
-
-    // The row's width changes and the fonts finish loading: fit again.
-    var again = useRef(null);
-    again.current = function () { if (!paused) restart(); };
-    useEffect(function () {
-      var fit = function () { again.current(); };
-      var ro = window.ResizeObserver ? new ResizeObserver(fit) : null;
-      if (ro) ro.observe(rowRef.current);
-      window.addEventListener('resize', fit);
-      if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
-      return function () {
-        if (ro) ro.disconnect();
-        window.removeEventListener('resize', fit);
-      };
-    }, []);
-
-    return { hidden: hidden, done: cur.done };
   }
 
   // ---- the screen ----

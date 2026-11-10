@@ -5,412 +5,442 @@
 // "他 N" picks a topic from the ones folded out of the chips; "話題を整理" opens
 // the topic dialog (rename / merge / delete). Either dialog reads the timeline
 // again after it closes if something changed.
+//
+// It is drawn with Preact (ADR todo-0025). The router shows it by drawing
+// TimelineScreen again into the same root on every show. The topic dialog is a
+// native <dialog> drawn inside the same tree; the component opens it
+// (showModal) when the button is pressed, and the dialog's own close (Esc, the
+// router leaving the screen) comes back as an event. The rename input is
+// uncontrolled: the element holds the text and Preact never writes its value.
 (function () {
   'use strict';
 
-  var MARKUP = [
-    '<div class="page">',
-    '  <div class="frame">',
-    '  <header class="hd">',
-    '    <h1 class="page-title">タイムライン</h1>',
-    '    <span class="hd-acts">',
-    '      <button type="button" class="organize" id="organize"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h12M2 8h8M2 12h5"/></svg>話題を整理</button>',
-    '      <a href="/notes" id="to-add">＋ メモを追加 <kbd>N</kbd></a>',
-    '    </span>',
-    '  </header>',
-    '',
-    '  <nav class="filters one" id="filters" aria-label="話題で絞り込む">',
-    '    <span>話題:</span>',
-    '    <button type="button" class="chip more" id="chip-more" hidden>他 0 ▾</button>',
-    '    <span class="push" id="tl-pending">補足待ち 0</span>',
-    '  </nav>',
-    '',
-    '  <div id="tl-days"></div>',
-    '  <div class="status is-error" id="tl-error" role="alert" hidden></div>',
-    '  </div>',
-    '</div>',
-    '',
-    '<dialog class="organize-dialog" id="organize-dialog" aria-labelledby="organize-title">',
-    '  <div class="dlg-hd"><h2 id="organize-title">話題を整理</h2><button type="button" class="x" id="organize-close" aria-label="閉じる">×</button></div>',
-    '  <p class="sub">件数はその話題が付いているメモの数。変更はすべて履歴に残る</p>',
-    '  <div class="status is-error" id="organize-error" role="alert" hidden></div>',
-    '  <ul class="rows" id="organize-rows"></ul>',
-    '  <p class="foot">メモが付いている話題を削除すると、そのメモは「話題なし」になる。Esc で閉じる</p>',
-    '</dialog>',
-  ].join('\n');
+  var P = window.htmPreact;
+  var html = P.html;
+  var render = P.render;
+  var useState = P.useState;
+  var useRef = P.useRef;
+  var useEffect = P.useEffect;
+  var useLayoutEffect = P.useLayoutEffect;
+
+  var shared = window.noteShared;
+  var TopicPicker = shared.TopicPicker;
+  var useFit = shared.useFit;
 
   var TIMELINE_PATH = '/notes/timeline';
 
   // active is true while the timeline is on show: the N listener on document
   // stays for the life of the page and must not act from a hidden screen.
   var active = false;
-  var hooks = {};
 
-  function el(tag, cls, text) {
-    var n = document.createElement(tag);
-    if (cls) n.className = cls;
-    if (text !== undefined) n.textContent = text;
-    return n;
+  // What happened, then what to do next.
+  function failure(what, err) {
+    if (shared.unreachable(err)) return what + '。サーバに接続できません。note-stock のサーバが起動しているか確認してから、もう一度押してください。';
+    return what + '。' + err.message + '。内容を確認して、もう一度押してください。';
   }
 
   // An external link, opened in a new tab (as the page did).
-  function outLink(url, text, cls) {
-    var a = el('a', cls, text);
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    return a;
+  function OutLink(p) {
+    return html`<a class=${p.cls} href=${p.url} title=${p.title} target="_blank" rel="noopener noreferrer">${p.text}</a>`;
   }
 
-  function mount(root) {
-    root.innerHTML = MARKUP;
-
-    var wb = window.workbench;
-    var shared = window.noteShared;
-    var filters = root.querySelector('#filters');
-    var more = root.querySelector('#chip-more');
-    var pendingEl = root.querySelector('#tl-pending');
-    var daysEl = root.querySelector('#tl-days');
-    var errorEl = root.querySelector('#tl-error');
-
-    // ---- drawing ----
-
-    // extra: the topics the server folded into "他 N".
-    var extra = [];
-    // seq numbers the reads, so a slow reply for an old filter cannot draw
-    // over a newer one.
-    var seq = 0;
-
-    function noteView(n) {
-      var art = el('article', 'ev');
-      art.id = 'note-' + n.id;
-
-      var meta = el('div', 'meta');
-      var parts = [document.createTextNode(n.time)];
-      if (n.source) parts.push(el('span', 'src', n.source));
-      if (n.topic) parts.push(el('span', 'topic', n.topic));
-      parts.push(el('span', 'nid', '#' + n.id));
-      if (n.route) {
-        if (n.route.href) {
-          var r = el('a', 'route', n.route.label);
-          r.href = n.route.href;
-          parts.push(r);
-        } else {
-          parts.push(el('span', 'route', n.route.label));
-        }
-      }
-      parts.forEach(function (p, i) {
-        if (i > 0) meta.appendChild(document.createTextNode(' · '));
-        meta.appendChild(p);
-      });
-      art.appendChild(meta);
-
-      var memo = el('p', 'memo');
-      n.segments.forEach(function (s) {
-        if (s.ref) {
-          var a = outLink(s.url, s.text, 'ref');
-          a.title = s.url;
-          memo.appendChild(a);
-        } else if (s.url) {
-          memo.appendChild(outLink(s.url, s.text));
-        } else {
-          memo.appendChild(document.createTextNode(s.text));
-        }
-      });
-      art.appendChild(memo);
-
-      if (n.links.length) {
-        var ol = el('ol', 'links');
-        ol.setAttribute('aria-label', '関連 URL');
-        n.links.forEach(function (l) {
-          var li = el('li');
-          li.appendChild(el('span', 'ln', '[' + l.n + ']'));
-          li.appendChild(document.createTextNode(' '));
-          li.appendChild(el('span', 'src', l.source));
-          li.appendChild(document.createTextNode(' '));
-          li.appendChild(outLink(l.url, l.label || l.url));
-          ol.appendChild(li);
-        });
-        art.appendChild(ol);
-      }
-
-      n.annotations.forEach(function (a) {
-        var box = el('div', 'add k-' + a.kind);
-        box.appendChild(el('div', 'who', a.label + ' · ' + a.author + ' · ' + a.when + (a.source ? ' · ' + a.source : '')));
-        box.appendChild(el(a.kind === 'quote' ? 'blockquote' : 'p', 'body', a.body));
-        art.appendChild(box);
-      });
-
-      if (n.pending) art.appendChild(el('div', 'pending', '補足待ち'));
-      return art;
+  function NoteView(p) {
+    var n = p.note;
+    var parts = [n.time];
+    if (n.source) parts.push(html`<span class="src">${n.source}</span>`);
+    if (n.topic) parts.push(html`<span class="topic">${n.topic}</span>`);
+    parts.push(html`<span class="nid">${'#' + n.id}</span>`);
+    if (n.route) {
+      parts.push(n.route.href
+        ? html`<a class="route" href=${n.route.href}>${n.route.label}</a>`
+        : html`<span class="route">${n.route.label}</span>`);
     }
-
-    function draw(data) {
-      // Chips: すべて, the shown topics, 話題なし (links the router follows).
-      Array.prototype.slice.call(filters.querySelectorAll('a.chip')).forEach(function (c) { c.remove(); });
-      data.chips.forEach(function (c) {
-        var a = el('a', 'chip' + (c.on ? ' on' : ''), c.label);
-        a.href = c.href;
-        if (c.topic) a.dataset.topic = c.topic;
-        if (c.on) a.setAttribute('aria-current', 'page');
-        filters.insertBefore(a, more);
-      });
-      extra = data.other.slice();
-      pendingEl.textContent = '補足待ち ' + data.pending;
-
-      daysEl.textContent = '';
-      data.days.forEach(function (d) {
-        var sec = el('section');
-        sec.appendChild(el('h2', 'day', d.heading));
-        d.notes.forEach(function (n) { sec.appendChild(noteView(n)); });
-        daysEl.appendChild(sec);
-      });
-      if (data.days.length === 0) daysEl.appendChild(el('p', 'empty', data.empty));
-      refit();
-    }
-
-    // Chips that do not fit on the line fold into "他 N" with the ones the
-    // server already left out.
-    function refit() { return extra.concat(shared.fitChips(filters, more, extra)); }
-    shared.watchChips(filters, refit);
-
-    // load reads the timeline for url (a URL object) and draws it. A hash
-    // (#note-12, a link from a todo's source memo) scrolls to that memo.
-    function load(url) {
-      var mine = ++seq;
-      return shared.request('GET', '/api/notes/timeline' + url.search)
-        .then(function (data) {
-          if (mine !== seq) return;
-          errorEl.hidden = true;
-          draw(data);
-          var target = url.hash && root.querySelector(url.hash.replace(/[^#\w-]/g, ''));
-          if (target) target.scrollIntoView();
-        })
-        .catch(function (err) {
-          if (mine !== seq) return;
-          errorEl.textContent = shared.unreachable(err)
-            ? 'タイムラインを読み込めませんでした。サーバに接続できません。サーバが起動しているか確認してから、ページを再読み込みしてください。'
-            : 'タイムラインを読み込めませんでした。' + err.message + '。ページを再読み込みしてください。';
-          errorEl.hidden = false;
-        });
-    }
-
-    // reload reads the timeline again with the filter on screen.
-    function reload() { return load(new URL(location.href)); }
-
-    // ---- add dialog ----
-
-    function openAdd() {
-      wb.openAddDialog('/notes', 'メモを追加', function (changed) {
-        if (changed) reload();
-      });
-    }
-
-    root.querySelector('#to-add').addEventListener('click', function (e) {
-      // A modified click (new tab, new window) still opens the page itself.
-      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-      e.preventDefault();
-      openAdd();
+    var meta = [];
+    parts.forEach(function (part, i) {
+      if (i > 0) meta.push(' · ');
+      meta.push(part);
     });
 
-    document.addEventListener('keydown', function (e) {
-      if (!active) return;
-      if (shared.composing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (document.querySelector('dialog[open]')) return;
-      var t = e.target;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openAdd(); }
-    });
+    return html`<article class="ev" id=${'note-' + n.id}>
+      <div class="meta">${meta}</div>
+      <p class="memo">${n.segments.map(function (s, i) {
+        if (s.ref) return html`<${OutLink} key=${i} cls="ref" url=${s.url} title=${s.url} text=${s.text} />`;
+        if (s.url) return html`<${OutLink} key=${i} url=${s.url} text=${s.text} />`;
+        return s.text;
+      })}</p>
+      ${n.links.length ? html`<ol class="links" aria-label="関連 URL">
+        ${n.links.map(function (l, i) {
+          return html`<li key=${i}><span class="ln">${'[' + l.n + ']'}</span>${' '}<span class="src">${l.source}</span>${' '}<${OutLink} url=${l.url} text=${l.label || l.url} /></li>`;
+        })}
+      </ol>` : null}
+      ${n.annotations.map(function (a, i) {
+        var who = a.label + ' · ' + a.author + ' · ' + a.when + (a.source ? ' · ' + a.source : '');
+        return html`<div key=${i} class=${'add k-' + a.kind}>
+          <div class="who">${who}</div>
+          ${a.kind === 'quote' ? html`<blockquote class="body">${a.body}</blockquote>` : html`<p class="body">${a.body}</p>`}
+        </div>`;
+      })}
+      ${n.pending ? html`<div class="pending">補足待ち</div>` : null}
+    </article>`;
+  }
 
-    // ---- "他 N": pick a topic to filter by ----
+  // ---- 話題を整理: the edit area under a topic's row ----
+  // props: topic ({name, count}), topics (all of them), call(method, name,
+  // body) (a write; answers {err} on failure, null while another is out),
+  // onCancel().
 
-    more.addEventListener('click', function () {
-      var picker = shared.createPicker({
-        topics: refit(),
-        allowCreate: false,
-        label: '絞り込む話題を探す',
-        onPick: function (name) {
-          picker.el.remove();
-          wb.router.navigate(TIMELINE_PATH + '?topic=' + encodeURIComponent(name));
-        },
-        onClose: function () { picker.el.remove(); refit(); },
+  function RenameEdit(p) {
+    var t = p.topic;
+    var inputRef = useRef(null);
+    var typed = useState(t.name);
+    // A message from a refused submit or a failed call; typing clears it.
+    var override = useState(null);
+
+    useLayoutEffect(function () {
+      inputRef.current.value = t.name;
+      inputRef.current.focus();
+    }, []);
+
+    var v = typed[0].trim();
+    var other = p.topics.filter(function (o) { return o.name === v && o.name !== t.name; })[0];
+    var explain = other
+      ? '「' + v + '」は既にある話題なので統合になる。「' + t.name + '」の ' + t.count + ' 件を「' + v + '」に付け替え、「' + t.name + '」を一覧から消す'
+      : t.count + ' 件のメモも新しい名前になる。既にある話題名を入れると統合として扱う';
+
+    function submit() {
+      var name = inputRef.current.value.trim();
+      if (name === '' || name === t.name) { override[1]('今と違う名前を入れてください'); return; }
+      p.call('PUT', t.name, { name: name }).then(function (r) {
+        if (r && r.err) override[1](failure('名前を変えられませんでした', r.err));
       });
-      more.hidden = true;
-      filters.insertBefore(picker.el, more);
-      picker.input.focus();
-    });
-
-    // ---- 話題を整理 ----
-
-    var dlg = root.querySelector('#organize-dialog');
-    var rowsEl = root.querySelector('#organize-rows');
-    var errEl = root.querySelector('#organize-error');
-    var changed = false;
-    var topics = []; // [{name, count}] from GET /api/topics
-    var busy = false;
-
-    function showError(msg) {
-      errEl.textContent = msg;
-      errEl.hidden = msg === '';
     }
 
-    // What happened, then what to do next.
-    function failure(what, err) {
-      if (shared.unreachable(err)) return what + '。サーバに接続できません。note-stock のサーバが起動しているか確認してから、もう一度押してください。';
-      return what + '。' + err.message + '。内容を確認して、もう一度押してください。';
-    }
-
-    function button(label, cls, onClick) {
-      var b = el('button', cls, label);
-      b.type = 'button';
-      b.addEventListener('click', onClick);
-      return b;
-    }
-
-    // call runs a write. On success the dialog shows the topics the server
-    // answered with; a failure stays in the edit area it came from.
-    function call(method, name, body, onError) {
-      if (busy) return;
-      busy = true;
-      showError('');
-      shared.request(method, '/api/topics/' + encodeURIComponent(name), body)
-        .then(function (res) {
-          changed = true;
-          topics = res.details || [];
-          renderTopics();
-        })
-        .catch(function (err) { onError(err); })
-        .then(function () { busy = false; });
-    }
-
-    function closeEdits() {
-      rowsEl.querySelectorAll('.edit').forEach(function (e) { e.remove(); });
-    }
-
-    function edit(li, build) {
-      closeEdits();
-      var box = el('div', 'edit');
-      var warn = el('span', 'warn');
-      build(box, warn);
-      box.appendChild(button('やめる', 'btn plain', function () { box.remove(); }));
-      if (!box.classList.contains('del')) box.appendChild(warn);
-      li.appendChild(box);
-      var focus = box.querySelector('input, select');
-      if (focus) focus.focus();
-    }
-
-    function renameEdit(li, t) {
-      edit(li, function (box, warn) {
-        var input = el('input');
-        input.type = 'text';
-        input.value = t.name;
-        input.setAttribute('aria-label', '新しい名前');
-        function explain() {
-          warn.className = 'warn muted';
-          var v = input.value.trim();
-          var other = topics.filter(function (o) { return o.name === v && o.name !== t.name; })[0];
-          warn.textContent = other
-            ? '「' + v + '」は既にある話題なので統合になる。「' + t.name + '」の ' + t.count + ' 件を「' + v + '」に付け替え、「' + t.name + '」を一覧から消す'
-            : t.count + ' 件のメモも新しい名前になる。既にある話題名を入れると統合として扱う';
-        }
-        function submit() {
-          var v = input.value.trim();
-          if (v === '' || v === t.name) { warn.className = 'warn'; warn.textContent = '今と違う名前を入れてください'; return; }
-          call('PUT', t.name, { name: v }, function (err) { warn.className = 'warn'; warn.textContent = failure('名前を変えられませんでした', err); });
-        }
-        input.addEventListener('input', explain);
-        input.addEventListener('keydown', function (e) {
+    return html`<div class="edit">
+      <span>新しい名前</span>
+      <input type="text" aria-label="新しい名前" ref=${inputRef}
+        onInput=${function (e) { override[1](null); typed[1](e.target.value); }}
+        onKeyDown=${function (e) {
           if (shared.composing(e)) return;
           if (e.key === 'Enter') { e.preventDefault(); submit(); }
+        }} />
+      <button type="button" class="btn" onClick=${submit}>変える</button>
+      <button type="button" class="btn plain" onClick=${p.onCancel}>やめる</button>
+      <span class=${override[0] === null ? 'warn muted' : 'warn'}>${override[0] === null ? explain : override[0]}</span>
+    </div>`;
+  }
+
+  function MergeEdit(p) {
+    var t = p.topic;
+    var others = p.topics.filter(function (o) { return o.name !== t.name; });
+    var selRef = useRef(null);
+    var val = useState(others.length ? others[0].name : '');
+    var override = useState(null);
+
+    useLayoutEffect(function () {
+      if (selRef.current) selRef.current.focus();
+    }, []);
+
+    if (others.length === 0) {
+      return html`<div class="edit">
+        <span>統合先</span>
+        <button type="button" class="btn plain" onClick=${p.onCancel}>やめる</button>
+        <span class="warn">統合先になる話題がありません</span>
+      </div>`;
+    }
+    var explain = '「' + t.name + '」の ' + t.count + ' 件を「' + val[0] + '」に付け替え、「' + t.name + '」を一覧から消す';
+
+    return html`<div class="edit">
+      <span>統合先</span>
+      <select ref=${selRef} aria-label="統合先" onChange=${function (e) { override[1](null); val[1](e.target.value); }}>
+        ${others.map(function (o) { return html`<option key=${o.name} value=${o.name}>${o.name}</option>`; })}
+      </select>
+      <button type="button" class="btn" onClick=${function () {
+        p.call('PUT', t.name, { merge_into: selRef.current.value }).then(function (r) {
+          if (r && r.err) override[1](failure('統合できませんでした', r.err));
         });
-        box.appendChild(el('span', '', '新しい名前'));
-        box.appendChild(input);
-        box.appendChild(button('変える', 'btn', submit));
-        explain();
-      });
-    }
+      }}>統合する</button>
+      <button type="button" class="btn plain" onClick=${p.onCancel}>やめる</button>
+      <span class="warn">${override[0] === null ? explain : override[0]}</span>
+    </div>`;
+  }
 
-    function mergeEdit(li, t) {
-      edit(li, function (box, warn) {
-        var others = topics.filter(function (o) { return o.name !== t.name; });
-        box.appendChild(el('span', '', '統合先'));
-        if (others.length === 0) { warn.textContent = '統合先になる話題がありません'; return; }
-        var select = el('select');
-        select.setAttribute('aria-label', '統合先');
-        others.forEach(function (o) { var op = el('option', '', o.name); op.value = o.name; select.appendChild(op); });
-        function explain() {
-          warn.className = 'warn';
-          warn.textContent = '「' + t.name + '」の ' + t.count + ' 件を「' + select.value + '」に付け替え、「' + t.name + '」を一覧から消す';
-        }
-        select.addEventListener('change', explain);
-        box.appendChild(select);
-        box.appendChild(button('統合する', 'btn', function () {
-          call('PUT', t.name, { merge_into: select.value }, function (err) { warn.textContent = failure('統合できませんでした', err); });
-        }));
-        explain();
-      });
-    }
+  function DeleteEdit(p) {
+    var t = p.topic;
+    return html`<div class="edit del">
+      <span>${t.count > 0
+        ? '「' + t.name + '」を一覧から消す。付いている ' + t.count + ' 件のメモは話題なしになる'
+        : '「' + t.name + '」を一覧から消す。付いているメモは無い'}</span>
+      <button type="button" class="btn red" onClick=${function () {
+        p.call('DELETE', t.name, null).then(function (r) {
+          if (r && r.err) p.showError(failure('削除できませんでした', r.err));
+        });
+      }}>削除する</button>
+      <button type="button" class="btn plain" onClick=${p.onCancel}>やめる</button>
+    </div>`;
+  }
 
-    function deleteEdit(li, t) {
-      edit(li, function (box) {
-        box.className = 'edit del';
-        box.appendChild(el('span', '', t.count > 0
-          ? '「' + t.name + '」を一覧から消す。付いている ' + t.count + ' 件のメモは話題なしになる'
-          : '「' + t.name + '」を一覧から消す。付いているメモは無い'));
-        box.appendChild(button('削除する', 'btn red', function () {
-          call('DELETE', t.name, null, function (err) { showError(failure('削除できませんでした', err)); });
-        }));
-      });
-    }
+  var EDITS = { rename: RenameEdit, merge: MergeEdit, del: DeleteEdit };
 
-    function renderTopics() {
-      rowsEl.textContent = '';
-      topics.forEach(function (t) {
-        var li = el('li', 'row');
-        li.appendChild(el('span', 'name', t.name));
-        li.appendChild(el('span', 'n', t.count + ' 件'));
-        var acts = el('span', 'acts');
-        acts.appendChild(button('名前を変える', 'linklike', function () { renameEdit(li, t); }));
-        acts.appendChild(button('統合', 'linklike', function () { mergeEdit(li, t); }));
-        acts.appendChild(button('削除', 'linklike danger', function () { deleteEdit(li, t); }));
-        li.appendChild(acts);
-        rowsEl.appendChild(li);
-      });
-      if (topics.length === 0) rowsEl.appendChild(el('li', 'empty', '話題はまだありません'));
-    }
+  // ---- 話題を整理: the dialog ----
 
-    root.querySelector('#organize').addEventListener('click', function () {
-      changed = false;
+  // props: opens (counts the presses of the button; each one opens the dialog
+  // and reads the topics), reload() (the timeline reads again).
+  function OrganizeDialog(p) {
+    var dlgRef = useRef(null);
+    var topicsState = useState(null); // [{name, count}] from GET /api/topics; null until read
+    var topics = topicsState[0];
+    var errorState = useState('');
+    var editState = useState(null); // {name, kind, id}
+    var edit = editState[0];
+
+    var isOpen = useRef(false);
+    var changed = useRef(false);
+    var busy = useRef(false);
+    var editId = useRef(0);
+    // topicSeq numbers the reads and writes of the list: a reply that is not
+    // the newest is dropped, so an earlier open's list cannot draw over a later
+    // one.
+    var topicSeq = useRef(0);
+    var reloadRef = useRef(null);
+    reloadRef.current = p.reload;
+
+    function showError(msg) { errorState[1](msg); }
+
+    useLayoutEffect(function () {
+      if (p.opens === 0) return;
+      changed.current = false;
+      isOpen.current = true;
       showError('');
-      rowsEl.textContent = '';
-      dlg.showModal();
+      editState[1](null);
+      topicsState[1](null);
+      if (!dlgRef.current.open) dlgRef.current.showModal();
+      var mine = ++topicSeq.current;
       shared.request('GET', '/api/topics')
-        .then(function (res) { topics = res.details || []; renderTopics(); })
-        .catch(function (err) { showError(failure('話題を読み込めませんでした', err)); });
-    });
-    root.querySelector('#organize-close').addEventListener('click', function () { dlg.close(); });
-    // A click on the backdrop (outside the box) closes it too.
-    dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
-    // A renamed or removed topic changes the chips and the memos' topics.
-    dlg.addEventListener('close', function () { if (changed) reload(); });
+        .then(function (res) {
+          if (mine !== topicSeq.current) return;
+          topicsState[1](res.details || []);
+        })
+        .catch(function (err) {
+          if (mine !== topicSeq.current) return;
+          showError(failure('話題を読み込めませんでした', err));
+        });
+    }, [p.opens]);
 
-    // ---- shown by the router ----
+    // call runs a write. On success the dialog shows the topics the server
+    // answered with; a failure comes back as {err}, for the edit area it came
+    // from to show. The dialog may have been closed while the write was out:
+    // the timeline still has to read again then.
+    function call(method, name, body) {
+      if (busy.current) return Promise.resolve(null);
+      busy.current = true;
+      showError('');
+      return shared.request(method, '/api/topics/' + encodeURIComponent(name), body)
+        .then(function (res) {
+          changed.current = true;
+          topicSeq.current++;
+          editState[1](null);
+          topicsState[1](res.details || []);
+          if (!isOpen.current) reloadRef.current();
+          return { ok: true };
+        })
+        .catch(function (err) { return { err: err }; })
+        .then(function (r) { busy.current = false; return r; });
+    }
+
+    function onClosed() {
+      isOpen.current = false;
+      // A renamed or removed topic changes the chips and the memos' topics.
+      if (changed.current) reloadRef.current();
+    }
+
+    function startEdit(name, kind) { editState[1]({ name: name, kind: kind, id: ++editId.current }); }
+
+    return html`<dialog class="organize-dialog" id="organize-dialog" aria-labelledby="organize-title" ref=${dlgRef}
+      onClose=${onClosed}
+      onClick=${function (e) { if (e.target === e.currentTarget) e.currentTarget.close(); }}>
+      <div class="dlg-hd"><h2 id="organize-title">話題を整理</h2><button type="button" class="x" id="organize-close" aria-label="閉じる"
+        onClick=${function () { dlgRef.current.close(); }}>×</button></div>
+      <p class="sub">件数はその話題が付いているメモの数。変更はすべて履歴に残る</p>
+      <div class="status is-error" id="organize-error" role="alert" hidden=${errorState[0] === ''}>${errorState[0]}</div>
+      <ul class="rows" id="organize-rows">
+        ${(topics || []).map(function (t) {
+          var Edit = edit && edit.name === t.name ? EDITS[edit.kind] : null;
+          return html`<li key=${t.name} class="row">
+            <span class="name">${t.name}</span>
+            <span class="n">${t.count + ' 件'}</span>
+            <span class="acts">
+              <button type="button" class="linklike" onClick=${function () { startEdit(t.name, 'rename'); }}>名前を変える</button>
+              <button type="button" class="linklike" onClick=${function () { startEdit(t.name, 'merge'); }}>統合</button>
+              <button type="button" class="linklike danger" onClick=${function () { startEdit(t.name, 'del'); }}>削除</button>
+            </span>
+            ${Edit ? html`<${Edit} key=${edit.id} topic=${t} topics=${topics} call=${call} showError=${showError}
+              onCancel=${function () { editState[1](null); }} />` : null}
+          </li>`;
+        })}
+        ${topics !== null && topics.length === 0 ? html`<li class="empty">話題はまだありません</li>` : null}
+      </ul>
+      <p class="foot">メモが付いている話題を削除すると、そのメモは「話題なし」になる。Esc で閉じる</p>
+    </dialog>`;
+  }
+
+  // ---- the screen ----
+
+  // props: url (the URL object of this show), visit (counts the shows).
+  function TimelineScreen(p) {
+    var rowRef = useRef(null);
+    var pageRef = useRef(null);
+    var dataState = useState(null); // the last GET /api/notes/timeline; null until read
+    var data = dataState[0];
+    var errorState = useState('');
+    var pickerState = useState(null); // {topics} while the "他 N" input is open
+    var picker = pickerState[0];
+    var opensState = useState(0);
+
+    // seq numbers the reads, so a slow reply for an old filter cannot draw
+    // over a newer one.
+    var seq = useRef(0);
+    // The hash of the show whose reply is on its way (#note-12, a link from a
+    // todo's source memo): the memo is scrolled to once it is drawn.
+    var scrollHash = useRef('');
+
+    // load reads the timeline for url (a URL object) and draws it.
+    function load(url) {
+      var mine = ++seq.current;
+      return shared.request('GET', '/api/notes/timeline' + url.search)
+        .then(function (res) {
+          if (mine !== seq.current) return;
+          errorState[1]('');
+          scrollHash.current = url.hash;
+          dataState[1](res);
+        })
+        .catch(function (err) {
+          if (mine !== seq.current) return;
+          errorState[1](shared.unreachable(err)
+            ? 'タイムラインを読み込めませんでした。サーバに接続できません。サーバが起動しているか確認してから、ページを再読み込みしてください。'
+            : 'タイムラインを読み込めませんでした。' + err.message + '。ページを再読み込みしてください。');
+        });
+    }
+
+    // reload reads the timeline again with the filter on screen. The dialogs
+    // and the key listener outlive a draw, so they reach it through a ref.
+    function reload() { return load(new URL(location.href)); }
+    var reloadRef = useRef(null);
+    reloadRef.current = reload;
+
+    function openAdd() {
+      window.workbench.openAddDialog('/notes', 'メモを追加', function (changed) {
+        if (changed) reloadRef.current();
+      });
+    }
+    var openAddRef = useRef(null);
+    openAddRef.current = openAdd;
 
     // Every show reads the timeline: the first one, a new filter (the query
     // changed) and a return from another screen, where memos may have been
-    // added or picked up meanwhile.
-    hooks.show = load;
+    // added or picked up meanwhile. What was drawn stays until the reply.
+    var urlRef = useRef(null);
+    urlRef.current = p.url;
+    useLayoutEffect(function () {
+      load(urlRef.current);
+    }, [p.visit]);
+
+    useLayoutEffect(function () {
+      var hash = scrollHash.current;
+      scrollHash.current = '';
+      if (!data || !hash) return;
+      var target = null;
+      try { target = pageRef.current.querySelector(hash.replace(/[^#\w-]/g, '')); } catch (e) { target = null; }
+      if (target) target.scrollIntoView();
+    }, [data]);
+
+    useEffect(function () {
+      function onKey(e) {
+        if (!active) return;
+        if (shared.composing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (document.querySelector('dialog[open]')) return;
+        var t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openAddRef.current(); }
+      }
+      document.addEventListener('keydown', onKey);
+      return function () { document.removeEventListener('keydown', onKey); };
+    }, []);
+
+    // ---- the chips ----
+
+    var chips = data ? data.chips : [];
+    var names = chips.filter(function (c) { return c.topic; }).map(function (c) { return c.topic; });
+    var on = chips.filter(function (c) { return c.on && c.topic; })[0];
+    var extra = data ? data.other : [];
+    // The chips that do not fit on the line fold into "他 N" with the ones the
+    // server already left out.
+    var fit = useFit(rowRef, names, on ? on.topic : '', extra.length, picker !== null);
+    var folded = extra.concat(fit.hidden);
+
+    return html`<div class="page" ref=${pageRef}>
+      <div class="frame">
+        <header class="hd">
+          <h1 class="page-title">タイムライン</h1>
+          <span class="hd-acts">
+            <button type="button" class="organize" id="organize" onClick=${function () { opensState[1](opensState[0] + 1); }}><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h12M2 8h8M2 12h5"/></svg>話題を整理</button>
+            <a href="/notes" id="to-add" onClick=${function (e) {
+              // A modified click (new tab, new window) still opens the page itself.
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+              e.preventDefault();
+              openAdd();
+            }}>＋ メモを追加 <kbd>N</kbd></a>
+          </span>
+        </header>
+
+        <nav ref=${rowRef} class="filters one" id="filters" aria-label="話題で絞り込む">
+          <span>話題:</span>
+          ${chips.map(function (c) {
+            return html`<a key=${c.href} class=${'chip' + (c.on ? ' on' : '')} href=${c.href}
+              data-topic=${c.topic || undefined} aria-current=${c.on ? 'page' : undefined}
+              hidden=${!!c.topic && fit.hidden.indexOf(c.topic) !== -1}>${c.label}</a>`;
+          })}
+          ${picker ? html`<${TopicPicker} topics=${picker.topics} allowCreate=${false} label="絞り込む話題を探す" focus=${true}
+            onPick=${function (name) {
+              pickerState[1](null);
+              window.workbench.router.navigate(TIMELINE_PATH + '?topic=' + encodeURIComponent(name));
+            }}
+            onClose=${function () { pickerState[1](null); }} />` : null}
+          <button type="button" class="chip more" id="chip-more"
+            hidden=${(fit.done && folded.length === 0) || picker !== null}
+            onClick=${function () { pickerState[1]({ topics: folded }); }}>${'他 ' + folded.length + ' ▾'}</button>
+          <span class="push" id="tl-pending">${'補足待ち ' + (data ? data.pending : 0)}</span>
+        </nav>
+
+        <div id="tl-days">
+          ${data ? data.days.map(function (d) {
+            return html`<section key=${d.heading}>
+              <h2 class="day">${d.heading}</h2>
+              ${d.notes.map(function (n) { return html`<${NoteView} key=${n.id} note=${n} />`; })}
+            </section>`;
+          }) : null}
+          ${data && data.days.length === 0 ? html`<p class="empty">${data.empty}</p>` : null}
+        </div>
+        <div class="status is-error" id="tl-error" role="alert" hidden=${errorState[0] === ''}>${errorState[0]}</div>
+      </div>
+    </div>
+    <${OrganizeDialog} opens=${opensState[0]} reload=${reload} />`;
   }
+
+  // The root of the screen and the times it has been shown. The router builds
+  // the screen once (mount) and shows it many times (show); each show draws it
+  // again into the same root.
+  var screen = { root: null, visit: 0 };
 
   window.workbench.router.register('timeline', {
     title: 'note タイムライン',
     mount: function (root) {
       active = true;
-      mount(root);
+      screen.root = root;
     },
     show: function (url) {
       active = true;
-      hooks.show(url);
+      screen.visit++;
+      render(html`<${TimelineScreen} url=${url} visit=${screen.visit} />`, screen.root);
     },
     hide: function () {
       active = false;
