@@ -321,6 +321,13 @@
         });
     }
 
+    // waitTask hands a task on instead of deleting it (the reason field's
+    // second button). Same shape as detail.js: close the row, reload, say so.
+    function waitTask(t, to, note) {
+      return request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/wait', { to: to, note: note })
+        .then(function () { closeRow(t.id); return load().then(function () { flash('待ちへ移した'); }); });
+    }
+
     // openDropAsk hangs a reason field off the trash icon, the way the due menu
     // hangs off its chip (menus.js draws it).
     function openDropAsk(btn, t) {
@@ -1008,6 +1015,7 @@
       releaseBusy: function () { state.busy = false; },
       addChild: addChild,
       removeTask: removeTask,
+      waitTask: waitTask,
       openDropAsk: openDropAsk,
       closeDropAsk: closeDropAsk,
       closeMenu: closeMenu,
