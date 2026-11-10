@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -505,5 +506,97 @@ func TestTimelineTopicPickerStillWorks(t *testing.T) {
 	p.until("filtered", `location.search === '?topic=' + encodeURIComponent('`+hl+`')`)
 	if !p.bool(`!document.querySelector('.suggest-wrap')`) {
 		t.Error("the input is still there after a pick")
+	}
+}
+
+// holdFetch makes every fetch whose method and URL suffix match wait, once
+// window.__hold is set, until window.__release() is called.
+func (p *page) holdFetch(method, suffix string) {
+	p.t.Helper()
+	p.eval(fmt.Sprintf(`(() => {
+		const orig = window.fetch;
+		let release;
+		const gate = new Promise(r => { release = r; });
+		window.__hold = false;
+		window.__release = () => release();
+		window.fetch = function (url, opts) {
+			const m = (opts && opts.method) || 'GET';
+			if (window.__hold && m === %q && String(url).split('?')[0].endsWith(%q)) {
+				return orig.apply(this, arguments).then(res => gate.then(() => res));
+			}
+			return orig.apply(this, arguments);
+		};
+		return true;
+	})()`, method, suffix), nil)
+}
+
+// Coming back to the screen and pressing Enter at once must not save the topic
+// that was picked before it was deleted elsewhere: the save waits for the
+// topic list read that the visit starts, and the deleted topic does not return.
+func TestNoteAddSaveRightAfterReturningUsesTheFreshTopics(t *testing.T) {
+	a := startApp(t)
+	a.seedTopics(t, "alpha", "beta")
+	p := newPage(t, a, "/notes")
+	p.until("chips", `document.querySelectorAll('#topics .chip[data-topic]').length === 2`)
+	p.holdFetch("GET", "/api/topics")
+
+	p.click(`#topics .chip[data-topic="alpha"]`)
+	p.run(chromedp.SendKeys(`#memo`, "after the delete", chromedp.ByQuery))
+	p.nav("/notes/timeline")
+	p.until("timeline", shown("timeline"))
+
+	req, err := http.NewRequest(http.MethodDelete, a.base+"/api/topics/alpha", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode >= 300 {
+		t.Fatalf("deleting the topic = %d", res.StatusCode)
+	}
+
+	// The topic list read of the visit is held; Enter goes in before it lands.
+	p.eval(`window.__hold = true`, nil)
+	p.nav("/notes")
+	p.until("note add shown", shown("note-add")+` && document.activeElement === document.getElementById('memo')`)
+	p.key(kb.Enter)
+	p.eval(`window.__release()`, nil)
+
+	p.until("saved", `Array.from(document.querySelectorAll('#recent li')).some(li => li.textContent.includes('after the delete'))`)
+	if n := a.pendingNote(t, "after the delete"); str(n, "topic") == "alpha" {
+		t.Errorf("saved with the deleted topic %q", str(n, "topic"))
+	}
+	if topics, _ := a.get(t, "/api/topics")["topics"].([]any); strings.Contains(fmt.Sprint(topics), "alpha") {
+		t.Errorf("topics on the server = %v: the deleted topic came back", topics)
+	}
+}
+
+// A reply to a topic creation whose input was replaced by another one is
+// stale: it adds the chip but does not pick the topic.
+func TestNoteAddReplacedPickerReplyDoesNotSelect(t *testing.T) {
+	a := startApp(t)
+	a.seedTopics(t, "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8")
+	p := newPage(t, a, "/notes")
+	p.until("more button", `!document.getElementById('topic-more').hidden`)
+	p.holdFetch("POST", "/api/topics")
+	p.eval(`window.__hold = true`, nil)
+
+	p.click(`#topic-add`)
+	p.until("input open", `document.querySelector('.topic-q')`)
+	p.run(chromedp.SendKeys(`.topic-q`, "slow", chromedp.ByQuery))
+	p.key(kb.Enter)
+	waitTopic(t, a, "slow")
+	// Another input opens in its place, and is closed with Esc.
+	p.click(`#topic-more`)
+	p.until("replaced", `document.querySelectorAll('.topic-q').length === 1 && document.activeElement.classList.contains('topic-q') && !document.querySelector('.topic-q').value`)
+	p.esc()
+	p.until("closed", `!document.querySelector('.suggest-wrap')`)
+	p.eval(`window.__release()`, nil)
+	p.until("chip made", `document.querySelector('#topics .chip[data-topic="slow"]')`)
+	if got := p.str(notePressed); got != "" {
+		t.Errorf("picked = %q: a stale reply must not pick the topic", got)
 	}
 }

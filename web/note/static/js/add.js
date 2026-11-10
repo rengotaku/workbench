@@ -240,10 +240,14 @@
 
     // openPicker shows the input where the button was. A pick of an existing
     // topic selects it; a new name is created on the server first.
+    var stalePicker = useRef(null);
     function openPicker(from, suggest, initial) {
       // done: the input is gone. A reply that arrives after that is stale: the
       // person has moved on, so it must not touch the current selection.
       var done = false;
+      // Opening another input replaces this one: its replies are stale too.
+      if (stalePicker.current) stalePicker.current();
+      stalePicker.current = function () { done = true; };
       function close() {
         if (done) return;
         done = true;
@@ -425,13 +429,15 @@
     // Each time the screen is shown. While another screen was on show, memos
     // may have been saved or picked up and topics renamed or removed: read
     // both again.
-    useEffect(function () {
-      topicsReady.current = loadTopics();
-      loadPending(p.visit > 1);
-    }, [p.visit]);
+    // The topics are read before the memo takes the focus, so a save made at
+    // once waits for them (topicsReady) instead of sending a stale pick.
     useLayoutEffect(function () {
+      topicsReady.current = loadTopics();
       // autofocus only works once per page; the screen is shown many times.
       focusMemo();
+    }, [p.visit]);
+    useEffect(function () {
+      loadPending(p.visit > 1);
     }, [p.visit]);
 
     var waiting = recent.filter(function (r) { return !r.undone; }).length;
