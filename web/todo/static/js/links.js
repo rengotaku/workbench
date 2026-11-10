@@ -39,9 +39,13 @@
   // create makes the owner of the rows. It holds the list of rows and tells the
   // LinkEditor drawing them to draw again; the text of each row is in its input.
   //   opts.text()        the name the rows belong to (for the removal check)
+  //   opts.subject       what text() is called in the message ("名前" by default;
+  //                      the note screen calls it "本文")
   //   opts.onError(msg)  a row cannot be removed or is empty
   //   opts.onChange()    a row was added (with a value), edited or removed
+  //   opts.onRemoved()   a row was removed (after onChange)
   //   opts.onEnter()     Enter in a row
+  //   opts.focusEmpty    read(false) puts the caret in the empty row it names
   // It returns
   //   add(value, keepFocus)  appends a row, prefilled with value when given, and
   //                          returns its number. It focuses the row unless the
@@ -81,7 +85,8 @@
       var k = ctl.rows.indexOf(row) + 1;
       var from = referencedFrom(opts.text(), k);
       if (from) {
-        if (opts.onError) opts.onError('名前が ' + from + ' を指しているので [' + k + '] は外せません。名前の番号を直してから外してください。');
+        var subject = opts.subject || '名前';
+        if (opts.onError) opts.onError(subject + 'が ' + from + ' を指しているので [' + k + '] は外せません。' + subject + 'の番号を直してから外してください。');
         return;
       }
       ctl.rows = ctl.rows.filter(function (r) { return r !== row; });
@@ -89,6 +94,7 @@
       // Always a change to look at: a saved URL emptied before its removal
       // was never saved empty, so the removal is what takes it off.
       changed();
+      if (opts.onRemoved) opts.onRemoved();
     }
 
     function read(silent) {
@@ -97,6 +103,7 @@
         var v = text(ctl.rows[i]).trim();
         if (v === '') {
           if (!silent && opts.onError) opts.onError('関連 URL [' + (i + 1) + '] が空です。URL を入れるか「外す」を押してください。');
+          if (!silent && opts.focusEmpty && ctl.rows[i].input) ctl.rows[i].input.focus();
           return null;
         }
         var m = /^(\S+)(?:[\s　]+([\s\S]*))?$/.exec(v);
@@ -187,6 +194,7 @@
   }
 
   // LinkEditor draws the rows of ctl (from create) and the button that adds one.
+  //   addClass / addId                 class and id of the add button ("link-add" by default)
   //   hostRef                          set to the .link-editor element
   //   onFocusIn / onFocusOut           the focus entered / left the editor
   function LinkEditor(p) {
@@ -204,7 +212,7 @@
           return html`<${LinkRow} key=${row.key} ctl=${ctl} row=${row} index=${i} />`;
         })}
       </div>
-      <button type="button" class="link-add" disabled=${ctl.locked}
+      <button type="button" class=${p.addClass || 'link-add'} id=${p.addId} disabled=${ctl.locked}
         onClick=${function () { ctl.add('', false); }}>＋ 関連 URL</button>
     </div>`;
   }

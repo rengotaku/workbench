@@ -17,7 +17,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 - **書き手はサーバだけ**。CLI もブラウザも REST を叩く。CLI はサーバが落ちていればエラーで止まり、ファイルを直接書かない
 - サーバはループバック固定で認証を持たない。LAN へは出さない
-- 画面は JS で描き、ビルド工程は無い。描画は Preact と htm（同梱の `web/shared/static/vendor/htm-preact.umd.js`）へ画面ごとに移している途中で、移していない画面は素の JS で DOM を組み立てる（ADR todo-0025、#119）。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の枠を描く。todo 一覧と todo 追加は Preact に移してあり、一覧の枠の中の見出し・区画・行は `list.js` が、追加画面の中身は `add.js` が描く（「一覧の描画」「追加画面の描画」）。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
+- 画面は JS で描き、ビルド工程は無い。描画は Preact と htm（同梱の `web/shared/static/vendor/htm-preact.umd.js`）へ画面ごとに移している途中で、移していない画面は素の JS で DOM を組み立てる（ADR todo-0025、#119）。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の枠を描く。todo 一覧・todo 追加・メモ追加（note の `add.js` と `picker.js`）は Preact に移してあり、一覧の枠の中の見出し・区画・行は `list.js` が、追加画面の中身は `add.js` が描く（「一覧の描画」「追加画面の描画」。メモ追加は note-ARCHITECTURE）。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
 
 ## ディレクトリ
 
@@ -152,12 +152,12 @@ todo 追加画面（`/add` と、`N`・「タスクを追加」で開くダイ�
 | ファイル | 持つもの |
 |---|---|
 | `web/todo/static/js/add.js` | `AddScreen`。見出し・名前・関連 URL・期限の札・詳細・追加ボタン・通知・「いま追加したもの」を描く。期限（`due`）・保存中（`busy`）・通知（`toast`）・追加した一覧（`recent`）・期限の札（`chips`）は部品の状態。ルーターの `show` のたびに、`?parent=` と表示回数（`visit`）を渡して描き直す |
-| `web/todo/static/js/links.js` | `create(opts)`（関連 URL の行の持ち主）と `LinkEditor`（行と「＋ 関連 URL」を描く部品）。追加画面と開いた行の `LinksBlock` が使う |
+| `web/todo/static/js/links.js` | `create(opts)`（関連 URL の行の持ち主）と `LinkEditor`（行と「＋ 関連 URL」を描く部品）。追加画面・開いた行の `LinksBlock`・メモ追加画面が使う（ページの全画面が読み込む `base.html` で、note の `add.js` より前に置く。`server_test.go` が順番を確かめる）。`create` は `subject`（メッセージの「名前」を「本文」に替える）・`focusEmpty`（空の行へキャレットを置く）・`onRemoved` を受け、`LinkEditor` は `addClass` / `addId` で追加ボタンの見た目を替えられる |
 
 - 名前・詳細・日付の入力・関連 URL の各行の入力は書き換えない要素（uncontrolled）。文字は要素が持ち、Preact は value を書かない。描き直し（札・通知・行の追加と削除）をまたいで、要素・文字・フォーカス・キャレットが残る
 - ルーターが追加画面のルート要素をダイアログへ貸し出して閉じても、`render` は同じルート要素へ描き直すだけなので、部品の状態と入力の文字は残る（`mount` では枠を作らず、`show` で描く）
 - 関連 URL の行は key（行ごとの連番）で保つ。番号（`[N]`）と aria-label は行の並びから描くので、行を外すと残りは描き直しで振り直される。名前が `[k]` 以降を指している間は行 k を外せず、通知で知らせる
-- 行は URL が入って入力欄を離れたときだけリンク（一言、無ければ URL）と「直す」に見え、空や http(s) でない値は入力欄のまま残る。貼り付けの解析（`pastedLinks` など）と `linkRowView` は描画の外の `paste.js` にあり、`linkRowView` は素の JS で描くメモ追加画面が使う（todo 側は使わない）
+- 行は URL が入って入力欄を離れたときだけリンク（一言、無ければ URL）と「直す」に見え、空や http(s) でない値は入力欄のまま残る。貼り付けの解析（`pastedLinks` など）は描画の外の `paste.js` にある
 - 送信中は名前の欄と行を disabled にし、終わると描き直しの後でフォーカスを名前へ戻す（disabled の欄にはフォーカスが入らないため、`wantFocus` で描き直しを待つ）
 - `document` に付けるキー（⌥+数字・Esc）は画面が表示中（`active`）のときだけ動く
 

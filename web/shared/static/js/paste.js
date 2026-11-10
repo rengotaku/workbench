@@ -126,49 +126,6 @@
     return m ? { url: m[1], label: (m[2] || '').trim() } : null;
   }
 
-  // The note add screen still draws its rows by hand and uses this; the todo
-  // screens draw the same row with Preact (todo links.js), which follows it.
-  //
-  // linkRowView shows a related-URL row as a link ("一言", or the URL when
-  // there is none) that opens in a new tab, with a 直す button that turns it
-  // back into the input. The row returns to a link when the input loses focus
-  // holding an http(s) URL; an empty or unusable value stays in the input to
-  // be fixed. remove is the row's 外す button; 直す goes just before it.
-  function linkRowView(row, input, remove) {
-    var view = document.createElement('a');
-    view.className = 'link-view';
-    view.target = '_blank';
-    view.rel = 'noopener noreferrer';
-    view.draggable = false; // dragging a row must not drag the link instead
-    var edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'linklike link-edit';
-    edit.textContent = '直す';
-    row.insertBefore(view, input);
-    row.insertBefore(edit, remove);
-
-    function show() {
-      var l = splitLinkInput(input.value);
-      if (!l || !/^https?:\/\//i.test(l.url)) return false;
-      view.href = l.url;
-      view.textContent = l.label || l.url;
-      view.title = l.url;
-      view.hidden = false;
-      edit.hidden = false;
-      input.hidden = true;
-      return true;
-    }
-    function editing() {
-      view.hidden = true;
-      edit.hidden = true;
-      input.hidden = false;
-    }
-    edit.addEventListener('click', function () { editing(); input.focus(); });
-    input.addEventListener('blur', show);
-    if (!show()) editing();
-    return { show: show, edit: edit };
-  }
-
   // writeLinkedText puts text into el with each [N] that names one of links
   // ({n, url, label}) as a link to its URL, and the rest as plain text nodes
   // (never HTML). cls is the links' class.
@@ -202,7 +159,6 @@
     insertText: insertText,
     wireLinkPaste: wireLinkPaste,
     splitLinkInput: splitLinkInput,
-    linkRowView: linkRowView,
     writeLinkedText: writeLinkedText,
   };
 })();

@@ -169,6 +169,10 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 		assert.Less(t, vendor, links, s.path)
 		assert.Less(t, links, strings.Index(body, `src="/static/js/detail.js"`), s.path)
 		assert.Less(t, links, strings.Index(body, `src="/static/js/add.js"`), s.path)
+		// The note add screen draws its rows with them too, and its topic input
+		// (picker.js) comes before the screen that draws it.
+		assert.Less(t, links, strings.Index(body, `src="/notes/static/js/add.js"`), s.path)
+		assert.Less(t, strings.Index(body, `src="/notes/static/js/picker.js"`), strings.Index(body, `src="/notes/static/js/add.js"`), s.path)
 		// The todo list's Preact components (list.js) load before app.js, which
 		// draws through them (ADR todo-0025).
 		list := strings.Index(body, `src="/static/js/list.js"`)
