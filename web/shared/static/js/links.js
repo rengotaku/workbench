@@ -218,5 +218,5 @@
   }
 
   window.workbench = window.workbench || {};
-  window.workbench.todoLinks = { create: create, LinkEditor: LinkEditor };
+  window.workbench.links = { create: create, LinkEditor: LinkEditor };
 })();

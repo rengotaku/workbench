@@ -207,6 +207,5 @@
     navigate: navigate,
     lend: lend,
     viewFor: viewFor,
-    current: function () { return current; },
   };
 })();

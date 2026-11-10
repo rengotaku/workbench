@@ -1,6 +1,6 @@
-// Pieces both todo pages need: the API call and the IME guard (from the shared
+// Pieces the todo screens need: the API call and the IME guard (from the shared
 // common.js), and how a pasted link keeps its URL. The related-URL rows are
-// links.js. Loaded before the page script, which reads them from
+// the shared links.js. Loaded before the page script, which reads them from
 // window.todoShared.
 (function () {
   'use strict';
@@ -35,18 +35,9 @@
     });
   }
 
-  // writeLinkedText puts text into el with each [N] that names one of links as
-  // a link to its URL (/shared/js/paste.js), styled as the name's links.
-  function writeLinkedText(el, text, links) {
-    window.workbench.paste.writeLinkedText(el, text, links, 'ticket ref');
-  }
-
   window.todoShared = {
     composing: composing,
     request: request,
-    pastedLink: pastedLink,
-    insertText: insertText,
     wirePaste: wirePaste,
-    writeLinkedText: writeLinkedText,
   };
 })();
