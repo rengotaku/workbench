@@ -162,6 +162,13 @@ func TestSiteHeaderOnEveryScreen(t *testing.T) {
 		vendor := strings.Index(body, `src="/shared/vendor/htm-preact.umd.js"`)
 		require.GreaterOrEqual(t, vendor, 0, s.path)
 		assert.Less(t, vendor, strings.Index(body, `src="/shared/js/common.js"`), s.path)
+		// The related-URL rows (links.js) load before the add screen and the open
+		// row's detail, which draw them.
+		links := strings.Index(body, `src="/static/js/links.js"`)
+		require.GreaterOrEqual(t, links, 0, s.path)
+		assert.Less(t, vendor, links, s.path)
+		assert.Less(t, links, strings.Index(body, `src="/static/js/detail.js"`), s.path)
+		assert.Less(t, links, strings.Index(body, `src="/static/js/add.js"`), s.path)
 		// The todo list's Preact components (list.js) load before app.js, which
 		// draws through them (ADR todo-0025).
 		list := strings.Index(body, `src="/static/js/list.js"`)

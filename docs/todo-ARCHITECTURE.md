@@ -17,7 +17,7 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 - **書き手はサーバだけ**。CLI もブラウザも REST を叩く。CLI はサーバが落ちていればエラーで止まり、ファイルを直接書かない
 - サーバはループバック固定で認証を持たない。LAN へは出さない
-- 画面は JS で描き、ビルド工程は無い。描画は Preact と htm（同梱の `web/shared/static/vendor/htm-preact.umd.js`）へ画面ごとに移している途中で、移していない画面は素の JS で DOM を組み立てる（ADR todo-0025、#119）。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の枠を描く。todo 一覧は Preact に移してあり、枠の中の見出し・区画・行は `list.js` が描く（「一覧の描画」）。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
+- 画面は JS で描き、ビルド工程は無い。描画は Preact と htm（同梱の `web/shared/static/vendor/htm-preact.umd.js`）へ画面ごとに移している途中で、移していない画面は素の JS で DOM を組み立てる（ADR todo-0025、#119）。todo・note の 4 画面は 1 ページに置き、ルーター（`web/shared/static/js/router.js`）が表示を切り替える（ADR todo-0013）。todo 一覧と todo 追加はルーターに登録した画面で、初めて表示したときに `app.js` / `add.js` が自分の枠を描く。todo 一覧と todo 追加は Preact に移してあり、一覧の枠の中の見出し・区画・行は `list.js` が、追加画面の中身は `add.js` が描く（「一覧の描画」「追加画面の描画」）。サーバの `index.html` / `add.html` は空で、レイアウトがどのページにも全画面のルート要素（`data-view="…"`）と CSS・JS を置く。CSS は `.view-todo` / `.view-todo-add` の下に絞ってある
 
 ## ディレクトリ
 
@@ -139,11 +139,27 @@ todo 一覧は 3 つのファイルで描く（ADR todo-0025、#121・#122）。
   - パネルと名前は、`state.busy`（欄にフォーカスがある間・ドラッグ中・メニューが開いている間）は盤面が進んでも前の task を表示したままにする（`useHeld`）。離れた後の最初の描画で追いつく
   - 外から変わった値は、欄が編集中（フォーカスがある・保存中・未保存の文字がある）でなければ欄に流し込む。編集中なら流し込まず、保存が済んでから追いつく
 - 保存の仕方は欄ごとに変えない: 名前と詳細は入力が止まって 0.9 秒で保存し、欄を離れたときにも保存して読み直す。話題も同じ。状況は Enter か「追記」で追記する。関連 URL は 1 件の変更ごとにリスト全体を PATCH し、タスクごとに 1 つずつ直列に送る。「保存中…／保存した」は `Panel` の保存印に、タスク ID を宛先にして各欄が書く。欄が取り外されるときにフォーカスが中にあれば `state.busy` を戻す（blur が来ない場合に備える）
-- 関連 URL の行は、todo 追加画面やメモ画面と共有する `linkEditor`（`shared.js`）が自分の DOM を作る。`LinksBlock` はそれを置く要素を 1 つだけ持ち、中身には Preact も他の素の JS も触らない
+- 関連 URL の行は、todo 追加画面と共有する `links.js`（`LinkEditor`）が Preact で描く。`LinksBlock` は行の持ち主（`links.create` が返す controller）を最初の描画で 1 つ作り、`LinkEditor` に渡す。持ち主は `add` / `read` / `set` / `lock` を持ち、名前の欄への貼り付け（`linkEditors[id].add`）と保存（`read(true)`）はそれを通す。外から来た一覧を行へ流し込むとき（`applied` / `seen`）は、編集中でなければ `set` で入れ替える
 - Preact が描く要素を素の JS から直接書き換えない。期限メニューと削除の理由欄は `.app` の外（画面のルート要素の直下の `.menus`）に、通知は `.flash-slot`（`display: contents`）に、`menus.js` が描く。メニューが開いている行の印（`aria-expanded`）・戻した行の色（`landed`）・ドラッグ中の行の薄い表示（`dragging`）・帯の「落とせる」印（`drop-ready`）は、`state.menu` / `state.landedId` / `state.drag` から描く
 - 削除の理由欄の入力は書き換えない要素にしてあり、描き直しをまたいで同じ要素が残る（打ち込み中の文字とフォーカスが消えない）。メニューと理由欄は位置が決まってからフォーカスを取る（決まる前に取るとウィンドウがその要素までスクロールする）
 - ドラッグのプレビューは、ブラウザが掴んでいる行の要素を直接動かす（行をまたぐと Preact は別の要素を作るため、掴んだ要素が文書から外れて `dragend` が来なくなるおそれがあるので、動かす見せ方を残した）。落とす位置は動かした要素から読み戻さず、`state.drag.dest`（`{listId, anchorId, after}`）に持つ。`render()` は描く前に要素を元の場所へ戻し、描いた後に `dest` へ動かし直すので、ドラッグ中に描き直されても落とす位置は変わらない
 - `load()` は連番（`loadSeq`）を持ち、遅れて届いた古い一覧の応答は捨てる（タイムラインの `seq` と同じ）
+
+## 追加画面の描画
+
+todo 追加画面（`/add` と、`N`・「タスクを追加」で開くダイアログ）は `add.js` の `AddScreen` が描く（ADR todo-0025、#124）。関連 URL の行は `links.js`。
+
+| ファイル | 持つもの |
+|---|---|
+| `web/todo/static/js/add.js` | `AddScreen`。見出し・名前・関連 URL・期限の札・詳細・追加ボタン・通知・「いま追加したもの」を描く。期限（`due`）・保存中（`busy`）・通知（`toast`）・追加した一覧（`recent`）・期限の札（`chips`）は部品の状態。ルーターの `show` のたびに、`?parent=` と表示回数（`visit`）を渡して描き直す |
+| `web/todo/static/js/links.js` | `create(opts)`（関連 URL の行の持ち主）と `LinkEditor`（行と「＋ 関連 URL」を描く部品）。追加画面と開いた行の `LinksBlock` が使う |
+
+- 名前・詳細・日付の入力・関連 URL の各行の入力は書き換えない要素（uncontrolled）。文字は要素が持ち、Preact は value を書かない。描き直し（札・通知・行の追加と削除）をまたいで、要素・文字・フォーカス・キャレットが残る
+- ルーターが追加画面のルート要素をダイアログへ貸し出して閉じても、`render` は同じルート要素へ描き直すだけなので、部品の状態と入力の文字は残る（`mount` では枠を作らず、`show` で描く）
+- 関連 URL の行は key（行ごとの連番）で保つ。番号（`[N]`）と aria-label は行の並びから描くので、行を外すと残りは描き直しで振り直される。名前が `[k]` 以降を指している間は行 k を外せず、通知で知らせる
+- 行は URL が入って入力欄を離れたときだけリンク（一言、無ければ URL）と「直す」に見え、空や http(s) でない値は入力欄のまま残る。貼り付けの解析（`pastedLinks` など）と `linkRowView` は描画の外の `paste.js` にあり、`linkRowView` は素の JS で描くメモ追加画面が使う（todo 側は使わない）
+- 送信中は名前の欄と行を disabled にし、終わると描き直しの後でフォーカスを名前へ戻す（disabled の欄にはフォーカスが入らないため、`wantFocus` で描き直しを待つ）
+- `document` に付けるキー（⌥+数字・Esc）は画面が表示中（`active`）のときだけ動く
 
 ## 話題
 
