@@ -214,14 +214,19 @@
   // ---- 削除の理由欄 ----
 
   // DropAsk hangs a reason field off the trash icon, the way the due menu
-  // hangs off its chip. Enter deletes once something is written; Escape or a
-  // click elsewhere leaves the task where it is.
+  // hangs off its chip. Enter in the reason field deletes once something is
+  // written; Enter in the name field below hands the task to that person
+  // instead (a wait, nothing is deleted), with the reason as the wait note.
+  // Escape or a click elsewhere leaves the task where it is.
   function DropAsk(p) {
     var ctx = p.ctx;
     var ask = p.ask;
     var placed = useAnchored(ask.btn);
     var boxRef = placed[0];
     var inputRef = useRef(null);
+    var whoRef = useRef(null);
+    // The field that was used last gets the caret back after a refusal.
+    var lastRef = useRef(null);
     var emptyState = useState(true);
     var empty = emptyState[0];
     var sendState = useState(false);
@@ -246,7 +251,7 @@
 
     // After a refused DELETE the field comes back with the caret in it.
     useLayoutEffect(function () {
-      if (wasSending.current && !sending) inputRef.current.focus();
+      if (wasSending.current && !sending) (lastRef.current || inputRef.current).focus();
       wasSending.current = sending;
     }, [sending]);
 
@@ -256,9 +261,23 @@
       var input = inputRef.current;
       var reason = input.value.trim();
       if (!reason || sendingRef.current) { input.focus(); return; }
+      send(input, ctx.removeTask(ask.task, reason));
+    }
+
+    // wait hands the task on instead of deleting it. The reason, if written,
+    // becomes the wait note; an empty name sends nothing.
+    function wait() {
+      var who = whoRef.current;
+      var to = who.value.trim();
+      if (!to || sendingRef.current) { who.focus(); return; }
+      send(who, ctx.waitTask(ask.task, to, inputRef.current.value.trim()));
+    }
+
+    function send(field, promise) {
+      lastRef.current = field;
       sendingRef.current = true;
       sendState[1](true);
-      ctx.removeTask(ask.task, reason)
+      promise
         .then(function () { if (ctx.state.dropAsk === ask) ctx.closeDropAsk(); })
         .catch(function (err) {
           sendingRef.current = false;
@@ -285,6 +304,15 @@
           if (ev.key === 'Enter') { ev.preventDefault(); submit(); }
         }} />
       <button type="button" class="drop-ask-go" disabled=${sending || empty} onClick=${submit}>削除する</button>
+      ${ask.task.state === 'open' ? html`
+      <div class="dm-label drop-ask-sep">削除せず、相手に渡して待ちにする</div>
+      <input ref=${whoRef} type="text" class="drop-ask-input" placeholder="渡した相手" aria-label="渡した相手"
+        disabled=${sending}
+        onKeyDown=${function (ev) {
+          if (composing(ev)) return;
+          if (ev.key === 'Enter') { ev.preventDefault(); wait(); }
+        }} />
+      <button type="button" class="drop-ask-wait" disabled=${sending} onClick=${wait}>待ちにする</button>` : null}
     </div>`;
   }
 

@@ -986,6 +986,16 @@
     cursor: pointer;
   }
   .drop-ask-go:disabled { opacity: .45; cursor: default; }
+  .drop-ask-sep { margin-top: var(--space-1); padding-top: var(--space-1); border-top: 1px solid var(--line-soft); }
+  .drop-ask-wait {
+    padding: 3px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    font-size: var(--fs-md);
+    cursor: pointer;
+  }
+  .drop-ask-wait:disabled { opacity: .45; cursor: default; }
   .dm-sec { padding: var(--space-1) 0; }
   .dm-sec + .dm-sec { border-top: 1px solid var(--line-soft); }
   .dm-label { font-size: var(--fs-xs); color: var(--muted); padding: 2px var(--space-2) var(--space-1); }
