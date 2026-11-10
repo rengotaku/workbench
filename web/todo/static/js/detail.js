@@ -502,84 +502,83 @@
   // Numbers follow the rows' order, and a row the name still points at (or
   // one before it) cannot be removed, so a [N] never moves to another URL.
   //
-  // The rows themselves are the shared linkEditor (todo-add and the note
-  // screens build the same widget), which draws its own DOM. This component
-  // owns the one element it is put in and nothing else touches that; the
-  // editor is made once and the board's links flow into it only while it is
-  // not being edited.
+  // The rows themselves are links.js (the todo add screen draws the same
+  // widget). This component owns the editor's owner (ed) and draws its rows;
+  // the editor is made once and the board's links flow into it only while it
+  // is not being edited.
   function LinksBlock(p) {
     var ref = useRef(null);
     var props = useRef(p);
     props.current = p;
     // applied: the list the server last confirmed (read from the board or saved
     // from here); seen: the last board list looked at.
-    var own = useRef({ ed: null, applied: '', seen: '' });
+    var own = useRef(null);
     var id = p.t.id;
 
     function norm(links) {
       return JSON.stringify((links || []).map(function (l) { return { url: l.url, label: l.label || '' }; }));
     }
 
-    useEffect(function () {
-      var ctx = props.current.ctx;
-      var host = ref.current;
-      function nameNow() {
-        var n = document.querySelector('.task[data-id="' + id + '"] .txt.live');
-        return n ? n.textContent : props.current.t.name;
-      }
+    // Made in the first draw, so the rows are in it from the start.
+    if (!own.current) {
       var q = linkSaves[id] || (linkSaves[id] = { busy: false, next: null, last: '' });
-      var ed = shared.linkEditor({
+      var ed = window.workbench.todoLinks.create({
         // A row the name points at cannot go. Both the name being typed and the
         // saved one count: the typed one may yet fail to save and come back.
         text: function () { return nameNow() + ' ' + props.current.t.name; },
-        onError: function (msg) { ctx.showError(new Error(msg)); },
+        onError: function (msg) { props.current.ctx.showError(new Error(msg)); },
         onChange: save,
         onEnter: function () { if (document.activeElement) document.activeElement.blur(); },
       });
-      // One save at a time per task (linkSaves): each PATCH replaces the whole
-      // list, so two in flight could land in either order and the older list
-      // would win. A save asked for meanwhile runs once the one out has
-      // answered, and compares with what the server last confirmed, so
-      // changing a row and changing it back while a save is out still lands.
-      function save() {
-        if (q.busy) { q.next = save; return; }
-        var links = ed.read(true);
-        if (!links) return; // an empty row: saved once it has a URL
-        var now = JSON.stringify(links);
-        if (now === q.last) return;
-        q.busy = true;
-        markSave(id, '保存中…');
-        request('PATCH', '/api/tasks/' + encodeURIComponent(id), { links: links })
-          .then(function () {
-            q.last = now;
-            own.current.applied = now;
-            markSave(id, '保存した', true);
-          })
-          .catch(function (err) { ctx.showError(err); })
-          .then(function () {
-            q.busy = false;
-            var next = q.next;
-            q.next = null;
-            if (next) next();
-          });
-      }
-      own.current.ed = ed;
-      own.current.q = q;
-      q.last = norm(props.current.t.links);
+      own.current = { ed: ed, q: q, applied: '', seen: '' };
+      q.last = norm(p.t.links);
       own.current.applied = q.last;
       own.current.seen = q.last;
-      ed.set(props.current.t.links || []);
-      // Typing in a row holds the poll, as the name and detail do.
-      host.addEventListener('focusin', function () { ctx.state.busy = true; });
-      host.addEventListener('focusout', function () { ctx.state.busy = false; });
-      // The editor draws its rows and button into its own wrapper; they move
-      // into the element drawn here, so the wrapper is the one this component
-      // draws (class link-editor) and no extra element sits in the panel.
-      while (ed.el.firstChild) host.appendChild(ed.el.firstChild);
+      ed.set(p.t.links || []);
+    }
+    var o0 = own.current;
+
+    function nameNow() {
+      var n = document.querySelector('.task[data-id="' + id + '"] .txt.live');
+      return n ? n.textContent : props.current.t.name;
+    }
+
+    // One save at a time per task (linkSaves): each PATCH replaces the whole
+    // list, so two in flight could land in either order and the older list
+    // would win. A save asked for meanwhile runs once the one out has
+    // answered, and compares with what the server last confirmed, so
+    // changing a row and changing it back while a save is out still lands.
+    function save() {
+      var q = o0.q;
+      var ed = o0.ed;
+      if (q.busy) { q.next = save; return; }
+      var links = ed.read(true);
+      if (!links) return; // an empty row: saved once it has a URL
+      var now = JSON.stringify(links);
+      if (now === q.last) return;
+      q.busy = true;
+      markSave(id, '保存中…');
+      request('PATCH', '/api/tasks/' + encodeURIComponent(id), { links: links })
+        .then(function () {
+          q.last = now;
+          o0.applied = now;
+          markSave(id, '保存した', true);
+        })
+        .catch(function (err) { props.current.ctx.showError(err); })
+        .then(function () {
+          q.busy = false;
+          var next = q.next;
+          q.next = null;
+          if (next) next();
+        });
+    }
+
+    useEffect(function () {
+      var ed = o0.ed;
       linkEditors = {};
       linkEditors[id] = ed;
       return function () {
-        if (host.contains(document.activeElement)) ctx.releaseBusy();
+        if (ref.current && ref.current.contains(document.activeElement)) props.current.ctx.releaseBusy();
         if (linkEditors[id] === ed) delete linkEditors[id];
       };
     }, []);
@@ -608,7 +607,10 @@
       o.seen = want;
     });
 
-    return html`<div class="link-editor" ref=${ref}></div>`;
+    // Typing in a row holds the poll, as the name and detail do.
+    return html`<${window.workbench.todoLinks.LinkEditor} ctl=${o0.ed} hostRef=${ref}
+      onFocusIn=${function () { props.current.ctx.state.busy = true; }}
+      onFocusOut=${function () { props.current.ctx.state.busy = false; }} />`;
   }
 
   // ---- 読むだけの部品 ----

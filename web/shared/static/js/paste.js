@@ -126,6 +126,9 @@
     return m ? { url: m[1], label: (m[2] || '').trim() } : null;
   }
 
+  // The note add screen still draws its rows by hand and uses this; the todo
+  // screens draw the same row with Preact (todo links.js), which follows it.
+  //
   // linkRowView shows a related-URL row as a link ("一言", or the URL when
   // there is none) that opens in a new tab, with a 直す button that turns it
   // back into the input. The row returns to a link when the input loses focus
