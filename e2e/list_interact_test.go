@@ -106,14 +106,14 @@ func TestTodoListControls(t *testing.T) {
 	p.run(chromedp.Click(`#queue .task:nth-child(1) .del`, chromedp.ByQuery))
 	p.until("deleted", `document.querySelectorAll('#queue .task').length === 2`)
 
-	// Resuming a waiting task tints its row for a moment, then the tint goes.
+	// Resuming a waiting task tints its row for a moment (10 seconds), then the tint goes.
 	p.click(`#wait-fold`)
 	p.until("waiting row", `document.querySelectorAll('#waitlist .task').length === 1`)
 	p.eval(`document.querySelector('#waitlist .task').click()`, nil)
 	p.until("waiting open", `document.querySelectorAll('#waitlist .task.row-open').length === 1`)
 	p.eval(`Array.from(document.querySelectorAll('#waitlist .panel button')).find(b => b.textContent === '着手順へ戻す').click()`, nil)
 	p.until("landed", `document.querySelectorAll('.task.landed').length === 1`)
-	p.untilWithin(6*time.Second, "landed gone", `document.querySelectorAll('.task.landed').length === 0`)
+	p.untilWithin(12*time.Second, "landed gone", `document.querySelectorAll('.task.landed').length === 0`)
 
 	// A long-run task with no next step offers 子を追加, which opens the add
 	// dialog without opening the row.

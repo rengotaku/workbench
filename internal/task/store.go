@@ -351,21 +351,40 @@ func (s *Store) Wait(id, to, note string, actor Actor) (Task, error) {
 
 // Resume brings a waiting or someday task back into the queue, at the end of
 // it. Clearing the handoff means a future chase starts its own count; clearing
-// Until means a future shelve starts its own.
+// Until means a future shelve starts its own. Who held it and since when are
+// kept on the event, which is what undo puts back.
 func (s *Store) Resume(id, note string, actor Actor) (Task, error) {
+	t, _, err := s.ResumeWithEvent(id, note, actor)
+	return t, err
+}
+
+// Resumed is what Resume recorded: the event it wrote, who held the task and
+// since when (the values undo puts back), and the revision after the write.
+// The page passes EventID to UndoEvent, so its 元に戻す cannot reverse some
+// other change that came in between, and draws the rest from here rather than
+// from the row it was pressed on, which may be out of date.
+type Resumed struct {
+	EventID  string
+	HandedTo string
+	HandedOn string
+	Revision int
+}
+
+// ResumeWithEvent is Resume, also returning what it recorded.
+func (s *Store) ResumeWithEvent(id, note string, actor Actor) (Task, Resumed, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	i, err := s.indexOf(id)
 	if err != nil {
-		return Task{}, err
+		return Task{}, Resumed{}, err
 	}
 	t := s.st.Tasks[i]
 	if t.State != StateWaiting && t.State != StateSomeday {
-		return Task{}, fmt.Errorf("%s is not waiting or someday", id)
+		return Task{}, Resumed{}, fmt.Errorf("%s is not waiting or someday", id)
 	}
 
-	from := t.HandedTo
+	from, handedOn := t.HandedTo, t.HandedOn
 	t.State = StateOpen
 	t.HandedTo = ""
 	t.HandedOn = ""
@@ -375,13 +394,14 @@ func (s *Store) Resume(id, note string, actor Actor) (Task, error) {
 	s.st.Tasks[i] = t
 	s.renumber()
 
-	if err := s.record(Event{TaskID: id, Kind: KindResumed, Actor: actor, FromValue: from, ToValue: note}); err != nil {
-		return Task{}, err
+	evID, err := s.recordID(Event{TaskID: id, Kind: KindResumed, Actor: actor, FromValue: from, HandedOn: handedOn, ToValue: note})
+	if err != nil {
+		return Task{}, Resumed{}, err
 	}
 	if err := s.persist(); err != nil {
-		return Task{}, err
+		return Task{}, Resumed{}, err
 	}
-	return s.mustGet(id), nil
+	return s.mustGet(id), Resumed{EventID: evID, HandedTo: from, HandedOn: handedOn, Revision: s.st.Revision}, nil
 }
 
 // Shelve moves an open or waiting task to someday: worth doing, not now.

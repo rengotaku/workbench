@@ -143,12 +143,16 @@ type Task struct {
 }
 
 // Event is one entry in the append-only log for a task. Reason is empty until
-// somebody explains the change; Store never invents one.
+// somebody explains the change; Store never invents one. HandedOn is the date
+// a resumed task had been handed on, so undoing the resume puts the same day
+// back; Resumed events written before it was added lack it, and undo then uses
+// today.
 type Event struct {
 	At        time.Time    `json:"at"`
 	ReasonAt  *time.Time   `json:"reason_at,omitempty"`
 	Snapshot  *Task        `json:"snapshot,omitempty"`
 	FromValue string       `json:"from_value,omitempty"`
+	HandedOn  string       `json:"handed_on,omitempty"`
 	Actor     Actor        `json:"actor"`
 	Kind      Kind         `json:"kind"`
 	TaskID    string       `json:"task_id"`
