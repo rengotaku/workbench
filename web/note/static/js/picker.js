@@ -2,24 +2,19 @@
 // 追加") and the timeline filter ("他 N"). Typing narrows the topics by partial
 // match; ↑ ↓ move, Enter picks, Esc closes. With allowCreate, a name that is not
 // among the topics can be confirmed as a new one.
-// A topic input with suggestions, used by the add screen ("他 N" and "＋ 話題を
-// 追加") and the timeline filter ("他 N"). Typing narrows the topics by partial
-// match; ↑ ↓ move, Enter picks, Esc closes. With allowCreate, a name that is not
-// among the topics can be confirmed as a new one.
 //
-// TopicPicker is the Preact component (ADR todo-0025); the add screen draws it
-// inside its own tree. The timeline is still plain JS, so createPicker draws a
-// TopicPicker into a host element and hands back {el, input} as it always did.
-// The input is uncontrolled: the element holds the typed text and Preact never
-// writes its value, so a draw keeps the text, the focus and the caret.
+// TopicPicker is the Preact component (ADR todo-0025); both screens draw it
+// inside their own tree. The input is uncontrolled: the element holds the typed
+// text and Preact never writes its value, so a draw keeps the text, the focus
+// and the caret. useFit keeps a screen's one-line chip row on one line.
 (function () {
   'use strict';
 
   var P = window.htmPreact;
   var html = P.html;
-  var render = P.render;
   var useState = P.useState;
   var useRef = P.useRef;
+  var useEffect = P.useEffect;
   var useLayoutEffect = P.useLayoutEffect;
 
   var MAX_SHOWN = 8;
@@ -111,79 +106,58 @@
     </div>`;
   }
 
-  // createPicker returns {el, input} for plain-JS callers (the timeline). The
-  // caller puts el in the page, calls input.focus(), and removes el when
-  // onPick or onClose runs; removing el also takes the component down.
-  //   opts.topics      names to suggest
-  //   opts.allowCreate offer "「q」を新しい話題として作る"
-  //   opts.label       aria-label of the input
-  //   opts.initial     text the input starts with
-  //   opts.onPick(name, isNew)
-  //   opts.onClose()   Esc, or focus left with nothing typed
-  function createPicker(opts) {
-    var host = document.createElement('div');
-    host.style.display = 'contents'; // the .suggest-wrap inside is the row's item
-    render(html`<${TopicPicker} topics=${opts.topics} allowCreate=${!!opts.allowCreate} label=${opts.label}
-      initial=${opts.initial} onPick=${opts.onPick} onClose=${opts.onClose} />`, host);
-    var removeHost = Element.prototype.remove;
-    host.remove = function () {
-      render(null, host);
-      removeHost.call(host);
-    };
-    return { el: host, input: host.querySelector('input') };
-  }
-
-  // fitChips keeps a plain-JS one-line chip row on one line (the timeline's;
-  // the add screen folds its chips itself, useFit in add.js). It hides topic chips
-  // (elements with data-topic) from the end until the row no longer overflows,
-  // and shows how many are folded away on the "他 N" button. Chips that are
-  // selected (.on / aria-pressed=true) stay, and so does everything that has no
-  // data-topic (すべて, 話題なし, buttons, the count on the right). Under 560px
-  // the row wraps and nothing is hidden.
-  //   extra: names already folded away by the page (not in the row at all)
-  // Returns the names of the chips hidden here, so the caller can offer them
-  // together with extra. It does nothing while a picker is open in the row.
+  // Under 560px the chip row wraps and nothing is folded.
   var narrow = window.matchMedia('(max-width: 560px)');
-  function fitChips(row, more, extra) {
-    if (row.querySelector('.suggest-wrap')) return [];
-    var hideable = Array.prototype.slice.call(row.querySelectorAll('[data-topic]')).filter(function (c) {
-      return !c.classList.contains('on') && c.getAttribute('aria-pressed') !== 'true';
+
+  // useFit keeps the one-line chip row on one line. It folds topic chips from
+  // the end, one more per pass, until the row no longer overflows, and the
+  // "他 N" button counts them. The chip that is picked stays. It returns the
+  // names folded here and whether the passes are done (the button is drawn
+  // while they run, so it is in the measure). Nothing runs while the picker is
+  // open in the row (paused).
+  function useFit(rowRef, names, selected, extraCount, paused) {
+    // One state, so a fit again and a pass that is already under way cannot
+    // mix: a pass only applies if nothing asked for a fresh start since.
+    var fitState = useState({ k: 0, done: false });
+    var cur = fitState[0];
+    var hideable = names.filter(function (n) { return n !== selected; });
+    var hidden = cur.k > 0 ? hideable.slice(Math.max(hideable.length - cur.k, 0)) : [];
+
+    function restart() { fitState[1]({ k: 0, done: false }); }
+
+    // Fit again whenever what the row holds changes.
+    var sig = names.join('\n') + '\t' + selected + '\t' + extraCount;
+    useLayoutEffect(function () {
+      if (!paused) restart();
+    }, [sig, paused]);
+
+    useLayoutEffect(function () {
+      if (cur.done || paused) return;
+      var row = rowRef.current;
+      var next = narrow.matches || row.scrollWidth <= row.clientWidth + 1 || cur.k >= hideable.length
+        ? { k: cur.k, done: true }
+        : { k: cur.k + 1, done: false };
+      fitState[1](function (s) { return s === cur ? next : s; });
     });
-    var all = Array.prototype.slice.call(row.querySelectorAll('[data-topic]'));
-    all.forEach(function (c) { c.hidden = false; });
-    var hidden = [];
-    function label() {
-      var n = extra.length + hidden.length;
-      more.textContent = '他 ' + n + ' ▾';
-      more.hidden = n === 0;
-    }
-    label();
-    if (narrow.matches) return hidden;
-    // The button must be in the row while measuring, with its widest label.
-    more.hidden = false;
-    while (row.scrollWidth > row.clientWidth + 1) {
-      var last = hideable.filter(function (c) { return !c.hidden; }).pop();
-      if (!last) break;
-      last.hidden = true;
-      hidden.unshift(last.dataset.topic);
-      label();
-      more.hidden = false;
-    }
-    label();
-    return hidden;
+
+    // The row's width changes and the fonts finish loading: fit again.
+    var again = useRef(null);
+    again.current = function () { if (!paused) restart(); };
+    useEffect(function () {
+      var fit = function () { again.current(); };
+      var ro = window.ResizeObserver ? new ResizeObserver(fit) : null;
+      if (ro) ro.observe(rowRef.current);
+      window.addEventListener('resize', fit);
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+      return function () {
+        if (ro) ro.disconnect();
+        window.removeEventListener('resize', fit);
+      };
+    }, []);
+
+    return { hidden: hidden, done: cur.done };
   }
 
-  // watchChips runs fit now, when the row's width changes, and when fonts
-  // finish loading (they change chip widths).
-  function watchChips(row, fit) {
-    fit();
-    if (window.ResizeObserver) new ResizeObserver(fit).observe(row);
-    window.addEventListener('resize', fit);
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
-  }
-
-  window.noteShared.createPicker = createPicker;
   window.noteShared.TopicPicker = TopicPicker;
-  window.noteShared.fitChips = fitChips;
-  window.noteShared.watchChips = watchChips;
+  window.noteShared.useFit = useFit;
 })();

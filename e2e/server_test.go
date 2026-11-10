@@ -52,6 +52,13 @@ type app struct {
 // stops it when the test ends.
 func startApp(t *testing.T) *app {
 	t.Helper()
+	return startAppWith(t, t.TempDir())
+}
+
+// startAppWith is startApp with a note data directory the test has already
+// put files in (notes.json, to seed memos on several days).
+func startAppWith(t *testing.T, noteDir string) *app {
+	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("finding a free port: %v", err)
@@ -70,7 +77,7 @@ func startApp(t *testing.T) *app {
 		"PORT="+port,
 		"APP_ENV=",
 		"TODO_DATA_DIR="+t.TempDir(),
-		"NOTE_DATA_DIR="+t.TempDir(),
+		"NOTE_DATA_DIR="+noteDir,
 	)
 	cmd.Stdout = &logs
 	cmd.Stderr = &logs
