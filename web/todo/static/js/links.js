@@ -152,7 +152,10 @@
       var input = inputRef.current;
       input.value = row.init;
       row.input = input;
-      return function () { row.input = null; };
+      // A save queued behind one in flight reads the rows after the row is
+      // gone (a closed row): the text goes back to row.init so it is the last
+      // typed, not the one the row was made with.
+      return function () { row.init = input.value; row.input = null; };
     }, []);
 
     // The focus waits until the input is on show (直す shows it, then focuses).

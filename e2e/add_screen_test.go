@@ -317,3 +317,54 @@ func TestTodoDetailLinksAddRemoveAreSaved(t *testing.T) {
 	p.reload()
 	p.until("the saved row", `document.querySelectorAll('.task.row-open .link-row').length === 1 && document.querySelector('.task.row-open .link-view')?.href === 'https://example.com/b'`)
 }
+
+// An edit made while the previous save of the related URLs is still out is
+// saved even when the row is closed before the first answer: the queued save
+// sends the last typed list, not the one the row was drawn with.
+func TestTodoDetailLinksQueuedSaveSurvivesClosingTheRow(t *testing.T) {
+	a := startApp(t)
+	_, second, p := openSecond(t, a)
+
+	// Hold the answer of the first PATCH until __releaseLinks().
+	p.eval(`(() => {
+		const orig = window.fetch;
+		let held = false, release;
+		const gate = new Promise(r => { release = r; });
+		window.__releaseLinks = () => release();
+		window.fetch = function (url, opts) {
+			if (!held && opts && opts.method === 'PATCH' && String(opts.body).includes('"links"')) {
+				held = true;
+				return orig.apply(this, arguments).then(res => gate.then(() => res));
+			}
+			return orig.apply(this, arguments);
+		};
+		return true;
+	})()`, nil)
+
+	p.click(`.task.row-open .link-add`)
+	p.run(chromedp.SendKeys(`.task.row-open .link-row:last-child .link-input`, "https://example.com/a first", chromedp.ByQuery))
+	p.key(kb.Enter)
+	a.untilTask(t, second, "the first save to reach the server", func(m map[string]any) bool {
+		links, _ := m["links"].([]any)
+		return len(links) == 1
+	})
+	// Edit the row while that answer is held, then close the row by opening another.
+	p.eval(`(() => {
+		const input = document.querySelector('.task.row-open .link-input');
+		input.value = 'https://example.com/c last';
+		input.dispatchEvent(new Event('change', { bubbles: true }));
+		return true;
+	})()`, nil)
+	p.eval(`document.querySelectorAll('#queue .task')[0].click()`, nil)
+	p.until("the second row closed", `!document.querySelector('.task[data-id="`+second+`"].row-open')`)
+	p.eval(`window.__releaseLinks()`, nil)
+
+	a.untilTask(t, second, "the last typed URL", func(m map[string]any) bool {
+		links, _ := m["links"].([]any)
+		if len(links) != 1 {
+			return false
+		}
+		l, _ := links[0].(map[string]any)
+		return str(l, "url") == "https://example.com/c"
+	})
+}
