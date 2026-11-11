@@ -651,8 +651,8 @@
      止まって, 状況, trash. Narrower than the table needs, the box scrolls. */
   .tbl-scroll { overflow-x: auto; }
   .tbl {
-    --cols: 10px 18px minmax(292px, 1fr) 148px 140px 84px minmax(0, 0.7fr) 22px;
-    min-width: 780px;
+    --cols: 10px 18px minmax(220px, 1fr) 148px 140px 84px minmax(120px, 0.7fr) 22px;
+    min-width: 850px;
   }
   .tbl-colhead {
     display: grid;

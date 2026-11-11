@@ -82,4 +82,17 @@ func TestTodoTableCells(t *testing.T) {
 	if got := p.num(`document.documentElement.scrollWidth - document.documentElement.clientWidth`); got > 1 {
 		t.Errorf("the page scrolls sideways by %v px at 390px wide", got)
 	}
+	// The status column keeps a readable width; the box scroll reaches it.
+	if w := p.num(`document.querySelector('.task[data-id="` + open + `"] .c-status').getBoundingClientRect().width`); w < 100 {
+		t.Errorf("status column is %v px wide, want >= 100", w)
+	}
+
+	// A menu opened on a row closes when the table scrolls sideways, rather
+	// than staying where the row was.
+	// Click from script: chromedp's Click scrolls the box to the button first,
+	// and that scroll would itself close the menu this step opens.
+	p.eval(`document.querySelector('.task[data-id="`+open+`"] .due-warn').click(), true`, nil)
+	p.until("due menu open again", `!!document.querySelector('.due-menu')`)
+	p.eval(`(() => { const b = document.querySelector('.tbl-scroll'); b.scrollLeft = 200; b.dispatchEvent(new Event('scroll')); return true; })()`, nil)
+	p.until("due menu closed on scroll", `!document.querySelector('.due-menu')`)
 }
