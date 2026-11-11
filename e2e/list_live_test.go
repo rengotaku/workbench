@@ -30,9 +30,9 @@ func TestTodoListLateReplyDoesNotOverwriteNewerList(t *testing.T) {
 	p.until("first drawn", `document.querySelectorAll('#queue .task').length === 1`)
 
 	g := p.holdList(fetch.RequestStageResponse)
-	// Read 0: the scope button reads again. The server answers with just
-	// "first"; the reply is held at the page's door.
-	p.click(`[data-scope="all"]`)
+	// Read 0: coming back to the window reads again. The server answers with
+	// just "first"; the reply is held at the page's door.
+	p.eval(`document.dispatchEvent(new Event('visibilitychange'))`, nil)
 	g.waitHeld(t, 5*time.Second)
 
 	a.addTask(t, "second")

@@ -631,7 +631,6 @@
     var reached = someday.filter(function (t) { return t.until_reached; }).length;
     var done = b.done || [];
     var dropped = b.dropped || [];
-    var scopes = [['week', '1週間', '今週の日曜まで'], ['2weeks', '2週間', '来週の日曜まで'], ['all', 'すべて'], ['custom', '指定']];
     var nd = b.next_due;
 
     var tree = [
@@ -646,14 +645,6 @@
               title="着手順を話題ごとの見出しで区切って見せる。順序は変わらない" onClick=${ctx.toggleGroup}>話題で分ける</button>
             <span class="group-note" id="group-note" hidden=${!st.groupByTopic}>分けている間は並べ替えできない</span>
           </div>
-          <div class="scope-set" role="group" aria-label="スコープ">
-            ${scopes.map(function (s) {
-              return html`<button type="button" key=${s[0]} data-scope=${s[0]} aria-pressed=${String(st.scopeKey === s[0])}
-                title=${s[2]} onClick=${function () { ctx.pickScope(s[0]); }}>${s[1]}</button>`;
-            })}
-          </div>
-          <label class="scope-until" id="scope-until-wrap" hidden=${st.scopeKey !== 'custom'}>～<input type="date" id="scope-until"
-            aria-label="スコープの締め日" onChange=${ctx.pickUntil} /></label>
           <div class="counts-col">
             <div class="counts">
               <span class="count over" title=${'赤: 期限を過ぎている — ' + counts.over + '件'}><i aria-hidden="true"></i>超過 <b id="c-over">${counts.over}</b><span class="sr">件 期限超過</span></span>

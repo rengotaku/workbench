@@ -122,7 +122,17 @@ description: 着手順リストの構成・データの流れ・変更点の地�
 
 カードの中は左端が 1 本（22px）。`.app-head` / `.sec` / `.add-row` の水平 padding と、行の `border-left`(3px) + `padding-left`(19px) を同じ値に保つ。行だけがカード端まで伸びるのは、色帯を縁に置くため。
 
-画面幅が 900px 以上のときは、一覧の右に詳細の箱が常に出る（`.panes` の 2 列）。箱は 260px 固定で、一覧が残りを取る（`minmax(0, 1fr) 260px`、間 18px）。全体の上限は 1100px なので、一覧は最大 822px。箱の中の名前・詳細・関連 URL・経緯・状況は折り返し、横にはみ出さない。900px 未満では箱ごと消える。
+todo 一覧は全幅で、サイトヘッダの上部ナビ（`.site-nav`）は出さない（ルーターが todo と todo 追加の画面を見せている間だけ `body` に `no-site-nav` を付ける。note の 2 画面では今まで通り出る）。他の画面へはサイドバーの下のリンクで行く。
+
+画面幅が 900px 以上のときは、左からサイドバー・一覧・詳細の箱の 3 列（`.panes` の `232px minmax(0, 1fr) 260px`、間 18px）。サイドバーと詳細の箱は上部に貼り付き、一覧が残りを取る。箱の中の名前・詳細・関連 URL・経緯・状況は折り返し、横にはみ出さない。900px 未満では詳細の箱が消え、サイドバーが一覧の上に来る（区画のボタンは横に折り返して並ぶ）。
+
+| 操作 | どうなるか |
+|---|---|
+| サイドバーの区画（フォーカス・着手順・長期・スコープ外・待ち・いつか・今週完了・今週やめた） | 件数を出す。件数は各区画の見出しと同じ盤面・同じ絞り込みで数える。押すとその区画を開き（閉じていれば開いて localStorage の開閉状態も更新）、そこまでスクロールする。フォーカスと着手順は常に開いているので、スクロールだけ。0 件で隠れている区画は開く状態だけ変わる |
+| サイドバーの話題 | 盤面の `topics` と、各話題の未完了タスク数（着手順・待ち・いつか・長期）。押せない行 |
+| サイドバーの下のリンク | note とタイムライン。ルーターが画面を切り替える |
+
+スコープは常に `week`（暦の週）で、画面から変える手段は無い。localStorage に別のスコープ（旧 `todo-order.scope`）が残っていても読まない（ADR todo-0027）。
 
 ## 画面の描画
 
@@ -143,14 +153,15 @@ todo の 2 画面（一覧・追加）と note の 2 画面（メモ追加・タ
 
 | ファイル | 描く画面・部品 |
 |---|---|
-| `web/todo/static/js/app.js` | 画面の枠（`mount` が `MARKUP` を 1 回だけ書く）と、状態・API 呼び出し・ポーリング・ドラッグ。`render()` が `list.render` と `menus.render` を呼ぶ |
+| `web/todo/static/js/app.js` | 画面の枠（`mount` が `MARKUP` を 1 回だけ書く）と、状態・API 呼び出し・ポーリング・ドラッグ。`render()` が `list.render`・`sidebar.render`・`menus.render` を呼ぶ。区画を開いてスクロールする `openSection` もここ |
 | `web/todo/static/js/list.js` | `.app` の中。見出し・件数・長期の見直しの帯・フォーカスの帯・各区画・行・札（`render(container, view)`） |
+| `web/todo/static/js/sidebar.js` | `.side`（`.app` とは別の Preact の根）。区画の一覧と件数・話題の一覧・他の画面へのリンク（`render(container, view)`）。状態は持たず、区画を押すと `ctx.openSection` を呼ぶ |
 | `web/todo/static/js/detail.js` | 開いた行の名前の欄（`NameField`）と詳細パネル（`Panel`: 話題・状況・関連 URL・補足・操作・経緯）、一覧の横の詳細欄（`renderSide`） |
 | `web/todo/static/js/menus.js` | 期限のメニュー（`DueMenu`）・長期の見直し日のメニュー（`ReviewMenu`）・削除の理由欄（`DropAsk`）・通知と元に戻す（`Flash`） |
 | `web/todo/static/js/shared.js` | `window.todoShared`。`composing` / `request` と、名前の欄への貼り付け `wirePaste` |
 
 - **描画の入口**: ルーターが一覧を見せるたびに、`show` が `load()` で盤面を読み直し、`render()` が同じ `.app` へ `list.render` で描く。枠（`MARKUP`）は 1 回しか作らず、描き直しで作り直さない。状態が変わる操作（開閉・メニュー・ドラッグ・保存の応答）も `render()` を呼ぶ
-- **状態の持ち方**: 状態は `app.js` の `state` 1 つ。`list.js` / `detail.js` / `menus.js` は状態を持たず、`state` と盤面（`board`）を受け取って描く。例外は `detail.js` の欄ごとの「最後に保存した文字」と保存中の印だけ（部品の中）。区画の開閉・スコープ・話題で分ける設定は localStorage に残す
+- **状態の持ち方**: 状態は `app.js` の `state` 1 つ。`list.js` / `detail.js` / `menus.js` は状態を持たず、`state` と盤面（`board`）を受け取って描く。例外は `detail.js` の欄ごとの「最後に保存した文字」と保存中の印だけ（部品の中）。区画の開閉・話題で分ける設定は localStorage に残す（スコープは `week` 固定で残さない）
 - **行は key で保つ**: 行は task の ID を key にするので、描き直しで変わっていない行の DOM が残る（開いた行・入力中の欄・フォーカス・CSS アニメーション）
 - **入力欄は書き換えない要素（uncontrolled）にする**: 文字は要素が持ち、Preact は value も子も書かない。描き直しのたびに値を書き戻すと、ポーリングの応答や別の欄の操作で、打っている文字・フォーカス・キャレットが消える。これを次の 2 つで担保する
   - パネルと名前は、`state.busy`（欄にフォーカスがある間・ドラッグ中・メニューが開いている間）は盤面が進んでも前の task を表示したままにする（`useHeld`）。離れた後の最初の描画で追いつく
@@ -240,7 +251,7 @@ todo 追加画面（`/add` と、`N`・「タスクを追加」で開くダイ�
 
 ## 期限とスコープ
 
-判定は `internal/taskapi` の `view` に集約されている。スコープは `scope` クエリで受け、`week`（既定）と `2weeks` は今週・来週の日曜までの日数に直す（`scopeDays`）。日数と `all` もそのまま受ける。応答の `scope_days` が実際に使った日数で、画面はこの値から境目の日付を出す。
+判定は `internal/taskapi` の `view` に集約されている。画面が送るスコープは `week` だけ（ADR todo-0027）。API は `scope` クエリで受け、`week`（既定）と `2weeks` は今週・来週の日曜までの日数に直す（`scopeDays`）。日数と `all` もそのまま受ける。応答の `scope_days` が実際に使った日数で、画面はこの値から境目の日付を出す。
 
 | 条件 | `due_class` | 表示 | 件数 |
 |---|---|---|---|
@@ -323,6 +334,8 @@ todo 追加画面（`/add` と、`N`・「タスクを追加」で開くダイ�
 | 画面の状態・ドラッグ・開閉・読み直し・ポーリング | `web/todo/static/js/app.js` |
 | 期限・見直し日のメニュー、削除の理由欄、通知と元に戻す | `web/todo/static/js/menus.js`（開閉は `app.js` の `openMenu` / `closeMenu` / `openDropAsk`、見た目は `style.css` の `.due-menu` / `.drop-ask` / `.err`） |
 | 一覧の区画・行・札・件数の描画 | `web/todo/static/js/list.js` |
+| サイドバー（区画・話題・リンク）の描画、見た目 | `web/todo/static/js/sidebar.js`、`style.css` の `.side*` |
+| 上部ナビを todo の画面で隠す | `router.js` の `OWN_NAV`、`base.css` の `.no-site-nav` |
 | 開いた行の詳細（名前・詳細・状況・補足・操作・経緯）と右の詳細欄 | `web/todo/static/js/detail.js`（見た目は `style.css`） |
 | 追加画面（`/add` と追加ダイアログの中身） | `web/todo/static/js/add.js`、`web/todo/static/css/add.css` |
 | 関連 URL の行（追加画面・開いた行・メモ追加画面で共通） | `web/shared/static/js/links.js` の `create` / `LinkEditor` |

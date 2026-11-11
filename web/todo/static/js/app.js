@@ -11,6 +11,7 @@
   var MARKUP = [
     '<div class="wrap">',
     '  <div class="panes">',
+    '  <nav class="side" aria-label="todo のナビゲーション"></nav>',
     '  <div class="app"></div>',
     '  <aside class="detail" id="detail" aria-live="polite"></aside>',
     '  <datalist id="todo-topics"></datalist>',
@@ -36,6 +37,7 @@
   function mount(root) {
     root.innerHTML = MARKUP;
     var appEl = root.querySelector('.app');
+    var sideEl = root.querySelector('.side');
 
     var shared = window.todoShared;
     var composing = shared.composing;
@@ -44,10 +46,10 @@
     var list = window.workbench.todoList;
     var detail = window.workbench.todoDetail;
     var menus = window.workbench.todoMenus;
+    var sidebar = window.workbench.todoSidebar;
     var monthDay = list.monthDay;
     var shiftDay = list.shiftDay;
 
-    var SCOPE_KEY = 'todo-order.scope';
     var DONE_KEY = 'todo-order.done-open';
     var DROP_KEY = 'todo-order.drop-open';
     var SOMEDAY_KEY = 'todo-order.someday-open';
@@ -58,7 +60,6 @@
     var POLL_MS = 4000;
     var state = {
       scope: 'week',
-      scopeKey: 'week', // which scope button is pressed; 'custom' has its own date field
       // What is drawn over the list (menus.js draws all three from these):
       menu: null, // the due or review menu open on a chip: { seq, kind, taskId, chip, current, inLong }
       dropAsk: null, // the reason field open on a trash icon: { seq, task, btn }
@@ -123,7 +124,6 @@
     };
     var LIVE = {
       longList: 'long-list',
-      until: 'scope-until',
     };
     Object.keys(LIVE).forEach(function (k) {
       Object.defineProperty(el, k, { get: function () { return document.getElementById(LIVE[k]); } });
@@ -247,6 +247,7 @@
       // move it to where the pointer put it once the draw is done.
       restorePreview();
       list.render(appEl, { board: state.board, state: state, ctx: ctx });
+      sidebar.render(sideEl, { board: state.board, ctx: ctx });
       applyPreview();
       renderOverlays();
       var b = state.board;
@@ -689,8 +690,8 @@
       openAdd();
     });
 
-    // The folds, the topic grouping and the scope are buttons in the header and
-    // the section heads (list.js); they land here.
+    // The folds and the topic grouping are buttons in the header and the
+    // section heads (list.js), and the sidebar's section buttons; they land here.
     var FOLDS = {
       done: ['doneOpen', DONE_KEY],
       drop: ['dropOpen', DROP_KEY],
@@ -713,32 +714,27 @@
       render();
     }
 
-    function pickScope(v) {
-      clearResumed(); // where the task went was said for the scope it was in
-      state.scopeKey = v;
-      if (v === 'custom') {
-        state.scope = String(daysUntil(el.until.value));
-      } else {
-        state.scope = v;
-        try { localStorage.setItem(SCOPE_KEY, v); } catch (e) { /* private window */ }
+    // The sidebar's section buttons: open the section (and keep it open, like
+    // its own head does) and scroll to it. focus and queue are always open.
+    var SECTION_TARGETS = {
+      focus: 'focus-band', queue: 'queue', long: 'long-band', out: 'out-sec',
+      wait: 'waiting-sec', someday: 'someday-sec', done: 'done-sec', drop: 'drop-sec',
+    };
+
+    function openSection(name) {
+      var f = FOLDS[name];
+      if (f && !state[f[0]]) {
+        state[f[0]] = true;
+        try { localStorage.setItem(f[1], '1'); } catch (e) { /* private window */ }
+        render();
       }
-      render();
-      load();
-    }
-
-    function pickUntil() {
-      clearResumed();
-      state.scope = String(daysUntil(el.until.value));
-      load();
-    }
-
-    function daysUntil(value) {
-      if (!value) return 7;
-      var target = new Date(value + 'T00:00:00');
-      var now = new Date();
-      var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      var days = Math.round((target - today) / 86400000);
-      return days < 0 ? 0 : days;
+      var target = document.getElementById(SECTION_TARGETS[name]);
+      if (!target || target.closest('[hidden]')) return;
+      target.scrollIntoView({ block: 'start' });
+      // Move the keyboard there too, so the next Tab goes on from the section
+      // rather than back up to the sidebar (its head, or its first control).
+      var first = target.querySelector('button, a[href], [tabindex="0"]');
+      if (first) first.focus({ preventScroll: true });
     }
 
     // ---- drag to reorder, and to focus ----
@@ -988,16 +984,6 @@
       state.groupByTopic = localStorage.getItem(GROUP_KEY) === '1';
     } catch (e) { /* storage unavailable; closed is the default */ }
 
-    try {
-      var saved = localStorage.getItem(SCOPE_KEY);
-      // 7 and 14 were days from today; the same buttons are now calendar weeks.
-      saved = { '7': 'week', '14': '2weeks' }[saved] || saved;
-      if (saved) {
-        state.scope = saved;
-        state.scopeKey = saved;
-      }
-    } catch (e) { /* storage unavailable; the default scope still applies */ }
-
     // What list.js calls back into: the parts of the list that stay here.
     var ctx = {
       state: state,
@@ -1025,8 +1011,7 @@
       openLongTask: openLongTask,
       toggleFold: toggleFold,
       toggleGroup: toggleGroup,
-      pickScope: pickScope,
-      pickUntil: pickUntil,
+      openSection: openSection,
       openAdd: openAdd,
       onCheck: onCheck,
       drag: { start: onDragStart, over: onDragOver, drop: onDrop, end: onDragEnd },
