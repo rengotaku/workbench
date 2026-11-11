@@ -9,7 +9,27 @@ import (
 	"github.com/chromedp/chromedp/kb"
 )
 
-const panelOpenFor = `(id => { const d = document.getElementById('detail'); return !d.hidden && !!d.querySelector('.d-id') && d.querySelector('.d-id').textContent === id; })`
+// Cmd/Ctrl+Z typed in the panel's name undoes the typing, not the list's
+// history: the task done just before stays done.
+func TestTodoDetailPanelUndoKeyStaysInTheField(t *testing.T) {
+	a := startApp(t)
+	done := a.addTask(t, "done before")
+	open := a.addTask(t, "typing here")
+	a.post(t, "/api/tasks/"+done+"/done", map[string]any{})
+	p := newPage(t, a, "/")
+	p.until("row", `!!document.querySelector('.task[data-id="`+open+`"]')`)
+	p.eval(`document.querySelector('.task[data-id="`+open+`"] .txt').click(), true`, nil)
+	p.until("panel open", `!document.getElementById('detail').hidden`)
+	p.eval(`document.querySelector('#detail .d-name .txt.live').focus(), true`, nil)
+	p.until("caret in the name", `document.activeElement && document.activeElement.isContentEditable`)
+	p.eval(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true, metaKey: true, bubbles: true})), true`, nil)
+	p.eval(`new Promise(r => setTimeout(() => r(true), 800))`, nil)
+	if got := str(a.task(t, done), "state"); got != "done" {
+		t.Errorf("state of the task done before = %q, want done (the list's undo ran)", got)
+	}
+}
+
+const panelOpenFor =`(id => { const d = document.getElementById('detail'); return !d.hidden && !!d.querySelector('.d-id') && d.querySelector('.d-id').textContent === id; })`
 
 // The detail panel opens only when a row is pressed, lies over the right of the
 // list, and is replaced by another row; the same row, the cross and Escape close
@@ -37,7 +57,7 @@ func TestTodoDetailPanelOpensAndCloses(t *testing.T) {
 	// A press opens it, over the right of the list, with the caret in the name.
 	p.eval(rowOf(one)+`.click()`, nil)
 	p.until("panel for the first", isOpen(one))
-	p.until("the name has the focus", `document.activeElement && document.activeElement.classList.contains('live') && !!document.activeElement.closest('.d-name')`)
+	p.until("the panel has the focus", `document.activeElement === document.getElementById('detail')`)
 	if got := p.str(`getComputedStyle(document.getElementById('detail')).position`); got != "fixed" {
 		t.Errorf("panel position = %q, want fixed", got)
 	}
@@ -80,12 +100,11 @@ func TestTodoDetailPanelOpensAndCloses(t *testing.T) {
 	p.until("closed by ×", `document.getElementById('detail').hidden`)
 	p.until("the row has the focus", `document.activeElement === `+rowOf(one))
 
-	// Enter on the focused row opens it; the first Escape leaves the name field,
-	// the second closes the panel and returns the focus to the row.
+	// Enter on the focused row opens it with the focus on the panel; Escape
+	// closes it and returns the focus to the row.
 	p.key(kb.Enter)
 	p.until("opened by Enter", isOpen(one))
-	p.esc()
-	p.until("left the field", `!document.activeElement.classList.contains('live')`)
+	p.until("the panel has the focus", `document.activeElement === document.getElementById('detail')`)
 	p.esc()
 	p.until("closed by Escape", `document.getElementById('detail').hidden`)
 	p.until("the row has the focus again", `document.activeElement === `+rowOf(one))

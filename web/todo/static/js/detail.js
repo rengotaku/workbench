@@ -232,7 +232,10 @@
       s.applied = v;
     });
 
-    useEffect(function () {
+    // Registered before the browser paints (layout effect), not after: the
+    // panel puts the caret in the name right after it is drawn, and a focus
+    // that came before these listeners would leave the field unguarded.
+    useLayoutEffect(function () {
       var node = ref.current;
       var field = props.current.field;
       var id = props.current.t.id;

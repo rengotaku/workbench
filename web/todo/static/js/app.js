@@ -14,7 +14,7 @@
     '  <div class="app"></div>',
     '  <datalist id="todo-topics"></datalist>',
     '  </div>',
-    '  <aside class="dpanel" id="detail" aria-label="タスクの詳細" hidden></aside>',
+    '  <aside class="dpanel" id="detail" aria-label="タスクの詳細" tabindex="-1" hidden></aside>',
     '',
     '  <div class="legend">',
     '    <span class="l-over"><i></i>期限超過</span>',
@@ -310,17 +310,21 @@
       if (id && !b) return; // the first reply is not here yet
       el.detail.hidden = !t;
       detail.renderPanel(el.detail, t, b ? b.revision : 0, ctx);
+      // Below 900px the panel covers the whole list: keep Tab out of what is
+      // behind it. On a wide screen the list stays usable beside the panel.
+      var panes = document.querySelector('.view-todo .panes');
+      if (panes) panes.inert = !!t && window.innerWidth < 900;
     }
 
-    // openPanel opens the detail of a task and puts the caret in its name, so
-    // typing goes where the panel is. focusName is false for a link (#T007),
-    // which should not take the keyboard.
-    function openPanel(id, focusName) {
+    // openPanel opens the detail of a task. With focusPanel the keyboard moves
+    // to the panel itself (Tab goes on into its fields, Esc closes it). It does
+    // not put the caret in the name: a field with the caret holds the list's
+    // redraws (state.busy), and merely opening a task must not stop them.
+    // focusPanel is false for a link (#T007), which should not take the keyboard.
+    function openPanel(id, focusPanel) {
       state.openId = id;
       render();
-      if (!focusName) return;
-      var n = el.detail.querySelector('.d-name .txt.live');
-      if (n) n.focus({ preventScroll: true });
+      if (focusPanel) el.detail.focus({ preventScroll: true });
     }
 
     // closePanel closes it. With returnFocus the keyboard goes back to the row
@@ -331,8 +335,14 @@
       state.openId = null;
       render();
       if (!returnFocus) return;
+      // Back to the row; when the task has moved into a closed section (done,
+      // waiting) the row is hidden, so go to that section's head instead.
       var row = document.querySelector('.task[data-id="' + id + '"]');
-      if (row) row.focus({ preventScroll: true });
+      if (row && row.getClientRects().length) { row.focus({ preventScroll: true }); return; }
+      var head = row && row.closest('section') && row.closest('section').querySelector('.fold-head');
+      if (head) { head.focus({ preventScroll: true }); return; }
+      var first = document.querySelector('#queue .task, #focus-list .task');
+      if (first) first.focus({ preventScroll: true });
     }
 
     // openLongTask opens the long-run fold and the task's row in it.
@@ -614,7 +624,10 @@
       // While the add dialog is open the list's keys are off: Cmd+Z here would
       // undo the list's history behind it.
       if (document.querySelector('dialog[open]')) return;
-      if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z' && !state.busy) {
+      // In a text field Cmd/Ctrl+Z undoes the typing, not the list's history.
+      var tgt = ev.target;
+      var typing = tgt && (tgt.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tgt.tagName));
+      if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z' && !state.busy && !typing) {
         ev.preventDefault();
         undo();
         return;
