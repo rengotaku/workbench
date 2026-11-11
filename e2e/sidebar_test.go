@@ -94,7 +94,7 @@ func TestTodoSidebarTopicFilter(t *testing.T) {
 		t.Errorf("filter label = %q", got)
 	}
 	// While it is on, the queue cannot be reordered, and it says so.
-	if n := p.num(`document.querySelectorAll('#queue .task[draggable="true"]').length`); n != 0 {
+	if n := p.num(`document.querySelectorAll('.task[draggable="true"]').length`); n != 0 {
 		t.Errorf("draggable rows while filtered = %v, want 0", n)
 	}
 	if got := p.str(`(e => e.hidden ? '' : e.textContent)(document.getElementById('group-note'))`); got != "絞っている間は並べ替えできない" {
@@ -135,6 +135,7 @@ func TestTodoSidebarFolds(t *testing.T) {
 		t.Errorf("fold button aria-expanded = %q, want true", got)
 	}
 	p.eval(`document.getElementById('side-fold').click()`, nil)
+	p.until("keyboard on the show button", `document.activeElement === document.getElementById('side-show')`)
 	p.until("sidebar hidden", `getComputedStyle(document.querySelector('.side')).display === 'none'`)
 	if after := p.num(listLeft); after >= before {
 		t.Errorf("list left edge %v -> %v, want it to move left", before, after)
@@ -149,6 +150,7 @@ func TestTodoSidebarFolds(t *testing.T) {
 	p.run(chromedp.Reload())
 	p.until("still hidden after a reload", `document.querySelectorAll('#queue .task').length === 1 && getComputedStyle(document.querySelector('.side')).display === 'none'`)
 	p.eval(`document.getElementById('side-show').click()`, nil)
+	p.until("keyboard on the fold button", `document.activeElement === document.getElementById('side-fold')`)
 	p.until("shown again", `getComputedStyle(document.querySelector('.side')).display !== 'none' && !!document.getElementById('side-fold')`)
 	if got := p.str(`localStorage.getItem('todo-order.side-open')`); got != "1" {
 		t.Errorf("saved state = %q, want 1", got)

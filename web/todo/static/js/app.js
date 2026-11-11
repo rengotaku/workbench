@@ -775,6 +775,10 @@
 
     function toggleTopic(name) {
       state.topicFilter = state.topicFilter === name ? null : name;
+      // The open row and the task in the box may now be hidden: let go of them
+      // rather than keep acting on a task the list no longer shows.
+      state.openId = null;
+      state.shownId = null;
       render();
     }
 
@@ -782,6 +786,10 @@
       state.sideOpen = !state.sideOpen;
       try { localStorage.setItem(SIDE_KEY, state.sideOpen ? '1' : '0'); } catch (e) { /* private window */ }
       render();
+      // The pressed button is gone (or hidden) now; keep the keyboard on the
+      // button that does the opposite.
+      var next = document.getElementById(state.sideOpen ? 'side-fold' : 'side-show');
+      if (next) next.focus();
     }
 
     function toggleGroup() {
@@ -876,7 +884,10 @@
         if (!d || !d.active) return;
         // Grouped: nothing can land in the queue. No preventDefault, so the
         // browser shows the drop as not allowed and the drag ends as a cancel.
-        if ((state.groupByTopic || state.topicFilter) && listId === 'queue') return;
+        if (state.groupByTopic && listId === 'queue') return;
+        // Narrowed to a topic: rows of other topics are hidden, so a position
+        // among the shown rows says nothing about the hidden ones. No drop at all.
+        if (state.topicFilter) return;
         ev.preventDefault();
         var target = byId(listId);
         var li = taskNode(d.id);

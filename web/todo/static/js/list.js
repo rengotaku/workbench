@@ -716,7 +716,7 @@
       </div>`,
       html`<section class=${'focus-band' + (st.drag && st.drag.active ? ' drop-ready' : '')} id="focus-band" ...${dragProps(ctx, 'focus-list')}>
         <div class="focus-head">フォーカス<span class="n" id="focus-count">${focus.length}</span></div>
-        <ul class="list focus-list" id="focus-list">${focus.map(function (t) { return queueRow(t, false, v); })}</ul>
+        <ul class="list focus-list" id="focus-list">${focus.map(function (t) { return queueRow(t, !!st.topicFilter, v); })}</ul>
         <p class="focus-empty" id="focus-empty" hidden=${focus.length > 0}>ここへドラッグするとフォーカスになる</p>
       </section>`,
 
@@ -743,7 +743,7 @@
         listId="outlist" label="スコープ外" countId="out-count" count=${outRows.length}
         noteId="out-from" note=${'期限 ' + monthDay(shiftDay(b.today, b.scope_days + 1)) + ' 以降'}
         secProps=${dragProps(ctx, 'outlist')}
-        onToggle=${function () { ctx.toggleFold('out'); }}>${outRows.map(function (t) { return queueRow(t, false, v); })}<//>`,
+        onToggle=${function () { ctx.toggleFold('out'); }}>${outRows.map(function (t) { return queueRow(t, !!st.topicFilter, v); })}<//>`,
 
       // Folded, the longest wait is what would otherwise go unseen.
       html`<${Fold} secId="waiting-sec" hidden=${waiting.length === 0 && !st.resumed} foldId="wait-fold" open=${st.waitOpen}
