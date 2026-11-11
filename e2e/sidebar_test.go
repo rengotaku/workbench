@@ -40,6 +40,7 @@ func TestTodoSidebarOpensAndScrollsToASection(t *testing.T) {
 	p.click(`[data-section="someday"]`)
 	p.until("someday open", `!document.getElementById('somedaylist').hidden && document.getElementById('someday-fold').getAttribute('aria-expanded') === 'true'`)
 	p.until("scrolled to it", `window.scrollY > 100 && document.getElementById('someday-sec').getBoundingClientRect().top < window.innerHeight`)
+	p.until("keyboard moved into it", `document.getElementById('someday-sec').contains(document.activeElement)`)
 	if got := p.str(`localStorage.getItem('todo-order.someday-open')`); got != "1" {
 		t.Errorf("saved open state = %q, want 1", got)
 	}

@@ -729,7 +729,12 @@
         render();
       }
       var target = document.getElementById(SECTION_TARGETS[name]);
-      if (target && !target.closest('[hidden]')) target.scrollIntoView({ block: 'start' });
+      if (!target || target.closest('[hidden]')) return;
+      target.scrollIntoView({ block: 'start' });
+      // Move the keyboard there too, so the next Tab goes on from the section
+      // rather than back up to the sidebar (its head, or its first control).
+      var first = target.querySelector('button, a[href], [tabindex="0"]');
+      if (first) first.focus({ preventScroll: true });
     }
 
     // ---- drag to reorder, and to focus ----
