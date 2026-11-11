@@ -659,9 +659,11 @@
 
   // ---- 操作ボタン ----
 
-  // Act is a button that runs one request. It is held shut once pressed (the
-  // task usually leaves the row's section, and a second press would send a
-  // second request); a failure opens it again and says why.
+  // Act is a button that runs one request. It is held shut while the request
+  // and the reload after it run (a second press would send a second request),
+  // and opens again when they end: the box beside the list keeps the same
+  // task after a move, and its button now does the opposite (完了を取り消す).
+  // A failure opens it again too and says why.
   function Act(p) {
     var st = useState(false);
     var off = st[0];
@@ -671,7 +673,8 @@
       if (guard.current) return;
       guard.current = true;
       setOff(true);
-      p.run().catch(function (err) { guard.current = false; setOff(false); p.ctx.showError(err); });
+      p.run().then(function () { guard.current = false; setOff(false); },
+        function (err) { guard.current = false; setOff(false); p.ctx.showError(err); });
     }
     return html`<button type="button" class=${p.cls} title=${p.title} disabled=${off} onClick=${onClick}>${p.label}</button>`;
   }
@@ -1158,7 +1161,12 @@
       html`<div key="moves" class="d-moves" hidden=${moves.length === 0}>${moves}</div>`,
       html`<div key="body" class=${'d-body' + (t.detail ? '' : ' none')}>${t.detail || '詳細なし'}</div>`,
       html`<${RelatedList} key="related" t=${t} />`,
-      html`<div key="status" class="d-sec"><h2>状況</h2><${StatusBlock} t=${t} ctx=${ctx} idPrefix="d-" /></div>`,
+      // One status input per task on screen: while the task's row is open the
+      // row has the input, and the box only points there (two inputs would each
+      // keep the sent text and could append it twice).
+      html`<div key="status" class="d-sec"><h2>状況</h2>${ctx.state.openId === t.id
+        ? html`<p class="d-status-here">開いた行の「状況」に書く</p>`
+        : html`<${StatusBlock} t=${t} ctx=${ctx} idPrefix="d-" />`}</div>`,
       html`<${Supplements} key="supplements" t=${t} />`,
       html`<${SideTrail} key="trail" t=${t} rev=${p.rev} />`,
     ];
