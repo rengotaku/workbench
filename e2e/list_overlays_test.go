@@ -64,10 +64,28 @@ func (p *page) pickItem(label string) {
 	p.eval(`Array.from(document.querySelectorAll('.due-menu .dm-item')).find(b => b.textContent.startsWith('`+label+`')).click()`, nil)
 }
 
-// setDate types a date into the open menu's date field.
-func (p *page) setDate(value string) {
+// pickDay presses a day (YYYY-MM-DD) of the open menu's calendar, moving the
+// calendar back or on a month at a time until the month shown holds it.
+func (p *page) pickDay(value string) {
 	p.t.Helper()
-	p.eval(`(() => { const i = document.querySelector('.due-menu .due-input'); i.value = '`+value+`'; i.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`, nil)
+	sel := `.due-menu .cal-day[data-day="` + value + `"]`
+	for i := 0; i < 24; i++ {
+		var have bool
+		p.eval(`!!document.querySelector('`+sel+`')`, &have)
+		if have {
+			p.eval(`document.querySelector('`+sel+`').click()`, nil)
+			return
+		}
+		var first string
+		p.eval(`document.querySelector('.due-menu .cal-day').dataset.day`, &first)
+		way := "次の月"
+		if value < first {
+			way = "前の月"
+		}
+		p.eval(`document.querySelector('.due-menu .cal-nav button[aria-label="`+way+`"]').click()`, nil)
+		p.until("month moved", `document.querySelector('.due-menu .cal-day').dataset.day !== '`+first+`'`)
+	}
+	p.t.Fatalf("day %s not found in the calendar", value)
 }
 
 // noticeText is what the notice says, "" while it is hidden.
@@ -106,7 +124,7 @@ func TestTodoDueMenu(t *testing.T) {
 	a.untilTask(t, month, "due +1 month", func(k map[string]any) bool { return str(k, "due") == want })
 
 	p.openMenu(picked)
-	p.setDate(day(5))
+	p.pickDay(day(5))
 	a.untilTask(t, picked, "due picked", func(k map[string]any) bool { return str(k, "due") == day(5) })
 	p.until("notice for the date", `(`+noticeText+`).startsWith('期限を')`)
 
@@ -128,9 +146,10 @@ func TestTodoDueMenu(t *testing.T) {
 	p.untilWithin(9*time.Second, "notice gone", `(`+noticeText+`) === ''`)
 }
 
-// The menu's keys: the first item takes the focus, the arrows move between
-// items, Escape closes it and returns the focus to the chip, and a click
-// outside only closes it.
+// The menu's keys: the calendar's current day (or today) takes the focus, the
+// arrows move the day and Enter sets it; outside the calendar the arrows move
+// between items; Escape closes it and returns the focus to the chip; and a
+// click outside only closes it.
 func TestTodoDueMenuKeys(t *testing.T) {
 	a := startApp(t)
 	id := a.addTaskDue(t, "one", day(2))
@@ -138,12 +157,34 @@ func TestTodoDueMenuKeys(t *testing.T) {
 	p := newPage(t, a, "/")
 	p.until("rows", `document.querySelectorAll('#queue .task').length === 2`)
 
+	focusedDay := `(document.activeElement.dataset || {}).day`
 	p.openMenu(id)
-	p.until("first item focused", `document.activeElement && document.activeElement.classList.contains('dm-item') && document.activeElement.textContent.startsWith('+1週間')`)
+	p.until("the current day focused", focusedDay+` === '`+day(2)+`'`)
+	p.key(kb.ArrowRight)
+	p.until("a day on", focusedDay+` === '`+day(3)+`'`)
 	p.key(kb.ArrowDown)
-	p.until("second item focused", `document.activeElement.textContent.startsWith('+2週間')`)
+	p.until("a week on", focusedDay+` === '`+day(10)+`'`)
+	p.key(kb.ArrowLeft)
 	p.key(kb.ArrowUp)
-	p.until("first item again", `document.activeElement.textContent.startsWith('+1週間')`)
+	p.until("back a week and a day", focusedDay+` === '`+day(2)+`'`)
+
+	// Outside the calendar the arrows move between the items.
+	p.eval(`document.querySelector('.due-menu .dm-shift').focus()`, nil)
+	p.key(kb.ArrowDown)
+	p.until("second shift focused", `document.activeElement.textContent.startsWith('+3日')`)
+	p.key(kb.ArrowUp)
+	p.until("first shift again", `document.activeElement.textContent.startsWith('+1日')`)
+
+	// Enter on a day sets it and closes the menu.
+	p.eval(`document.querySelector('.due-menu .cal-day[tabindex="0"]').focus()`, nil)
+	p.key(kb.ArrowLeft)
+	p.until("a day back", focusedDay+` === '`+day(1)+`'`)
+	p.key(kb.Enter)
+	a.untilTask(t, id, "due set by Enter", func(k map[string]any) bool { return str(k, "due") == day(1) })
+	p.until("closed by Enter", `!document.querySelector('.due-menu')`)
+	p.until("the list has the new date", chipOf(id)+`.dataset.due === '`+day(1)+`'`)
+
+	p.openMenu(id)
 	p.esc()
 	p.until("closed, the chip has the focus", `!document.querySelector('.due-menu') && document.activeElement === `+chipOf(id))
 
@@ -160,7 +201,9 @@ func TestTodoDueMenuKeys(t *testing.T) {
 	var gap [2]float64
 	p.eval(`(() => { const m = document.querySelector('.due-menu').getBoundingClientRect(), c = `+chipOf(id)+`.getBoundingClientRect(); return [Math.round(m.right - c.right), Math.round(m.top - c.bottom)]; })()`, &gap)
 	if gap != [2]float64{0, 4} {
-		t.Errorf("menu offset from the chip (right, below) = %v, want [0 4]", gap)
+		var dbg string
+		p.eval(`JSON.stringify([document.querySelector('.due-menu').getBoundingClientRect(), `+chipOf(id)+`.getBoundingClientRect(), window.innerWidth, window.scrollX])`, &dbg)
+		t.Errorf("menu offset from the chip (right, below) = %v, want [0 4] %s", gap, dbg)
 	}
 }
 
@@ -186,7 +229,7 @@ func TestTodoReviewMenu(t *testing.T) {
 
 	p.eval(`document.querySelector('`+chip+`').click()`, nil)
 	p.until("review menu again", `document.querySelector('.due-menu')`)
-	p.setDate(day(3))
+	p.pickDay(day(3))
 	a.untilTask(t, long, "review on a date", func(k map[string]any) bool { return str(k, "review_on") == day(3) })
 }
 
@@ -474,4 +517,82 @@ func TestTodoDragStartedWhileTheLastDropIsSaving(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// The calendar: a grid of days with the current date filled, the shifts of 1
+// day and 3 days count from the right base, and the month buttons and the
+// arrows move between months.
+func TestTodoDueMenuCalendar(t *testing.T) {
+	a := startApp(t)
+	one := a.addTask(t, "one")
+	three := a.addTask(t, "three")
+	cur := a.addTaskDue(t, "cur", day(2))
+	p := newPage(t, a, "/")
+	p.until("rows", `document.querySelectorAll('#queue .task').length === 3`)
+
+	now := time.Now()
+	title := `document.querySelector('.due-menu .cal-title').textContent`
+	monthText := func(d time.Time) string { return d.Format("2006") + "年 " + d.Format("1") + "月" }
+
+	p.openMenu(cur)
+	if got := p.str(`document.querySelector('.due-menu [role="grid"]').getAttribute('role')`); got != "grid" {
+		t.Errorf("role = %q", got)
+	}
+	if n := p.num(`document.querySelectorAll('.due-menu .cal-day').length`); n != 42 {
+		t.Errorf("day buttons = %v, want 6 weeks", n)
+	}
+	if got := p.str(title); got != monthText(now.AddDate(0, 0, 2)) {
+		t.Errorf("month shown = %q, want the month of the due date %q", got, monthText(now.AddDate(0, 0, 2)))
+	}
+	if got := p.str(`document.querySelector('.due-menu .cal-day.cur').dataset.day`); got != day(2) {
+		t.Errorf("filled day = %q, want %q", got, day(2))
+	}
+	wd := "日月火水木金土"
+	want := fmt.Sprintf("%d月%d日（%s）", int(now.AddDate(0, 0, 2).Month()), now.AddDate(0, 0, 2).Day(), string([]rune(wd)[now.AddDate(0, 0, 2).Weekday()]))
+	if got := p.str(`document.querySelector('.due-menu .cal-day.cur').getAttribute('aria-label')`); !strings.HasPrefix(got, want) {
+		t.Errorf("day label = %q, want it to start with %q", got, want)
+	}
+	if got := p.str(`document.querySelector('.due-menu .cal-day.today').dataset.day`); got != day(0) {
+		t.Errorf("framed day = %q, want today", got)
+	}
+	if n := p.num(`document.querySelectorAll('.due-menu .dm-shift').length`); n != 5 {
+		t.Errorf("shifts = %v, want 5", n)
+	}
+
+	// The month buttons.
+	p.eval(`document.querySelector('.due-menu .cal-nav button[aria-label="次の月"]').click()`, nil)
+	next := time.Date(now.AddDate(0, 0, 2).Year(), now.AddDate(0, 0, 2).Month()+1, 1, 0, 0, 0, 0, time.Local)
+	p.until("next month", title+` === '`+monthText(next)+`'`)
+	p.eval(`document.querySelector('.due-menu .cal-nav button[aria-label="前の月"]').click()`, nil)
+	p.until("back", title+` === '`+monthText(now.AddDate(0, 0, 2))+`'`)
+	p.esc()
+	p.until("closed", `!document.querySelector('.due-menu')`)
+
+	// The arrows cross into the next month: six weeks on from today.
+	p.openMenu(one)
+	p.until("today focused", `(document.activeElement.dataset || {}).day === '`+day(0)+`'`)
+	for i := 0; i < 6; i++ {
+		p.key(kb.ArrowDown)
+	}
+	p.until("month followed the arrows", title+` === '`+monthText(now.AddDate(0, 0, 42))+`'`)
+	p.esc()
+	p.until("closed again", `!document.querySelector('.due-menu')`)
+
+	// A day pressed becomes the due date.
+	p.openMenu(one)
+	p.pickDay(day(4))
+	a.untilTask(t, one, "due on the pressed day", func(k map[string]any) bool { return str(k, "due") == day(4) })
+
+	// +1日 and +3日 count from today for a task with no date.
+	p.openMenu(three)
+	if got := p.str(`Array.from(document.querySelectorAll('.due-menu .dm-shift')).find(b => b.textContent.startsWith('+3日')).querySelector('.dm-hint').textContent`); got != now.AddDate(0, 0, 3).Format("1/2") {
+		t.Errorf("+3日 hint = %q, want %q", got, now.AddDate(0, 0, 3).Format("1/2"))
+	}
+	p.pickItem("+3日")
+	a.untilTask(t, three, "due +3 days", func(k map[string]any) bool { return str(k, "due") == day(3) })
+	p.until("the list has the new date", chipOf(three)+`.dataset.due === '`+day(3)+`'`)
+	p.openMenu(three)
+	// The base is the due date when it is still ahead: +1日 from day(3) is day(4).
+	p.pickItem("+1日")
+	a.untilTask(t, three, "due +1 day from the date", func(k map[string]any) bool { return str(k, "due") == day(4) })
 }
