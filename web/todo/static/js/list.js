@@ -396,7 +396,7 @@
         // long-run row always shows.
         + (o.warnDue ? ' due-warn' : (!o.reviewChip && !t.due ? ' due-none' : ''));
       due = html`<button type="button" class=${dcls} title=${o.dueTitle || undefined}
-        aria-haspopup="menu" aria-expanded=${String(!!st.menu && st.menu.taskId === t.id)}
+        aria-haspopup="menu" aria-expanded=${String(!!st.menu && !st.menu.fromSide && st.menu.taskId === t.id)}
         data-due=${o.reviewChip ? (t.review_on || '') : (t.due || '')}>${o.dueLabel}</button>`;
     } else {
       due = html`<span class=${'due' + (o.dueClass ? ' ' + o.dueClass : '')} title=${o.dueTitle || undefined}>${o.dueLabel}</span>`;
@@ -773,6 +773,8 @@
   window.workbench.todoList = {
     render: render,
     monthDay: monthDay,
+    dueText: dueText,
+    dueChip: dueChip,
     shiftDay: shiftDay,
     linkRange: linkRange,
     nameParts: nameParts,

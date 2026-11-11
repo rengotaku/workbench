@@ -366,6 +366,8 @@
       // Typing in the box's topic field: another row under the pointer must not
       // swap the box (and the field) away mid-edit.
       if (el.detail.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+      // Nor while a menu opened from the box is out: it belongs to this task.
+      if (state.menu && state.menu.fromSide && t.id !== state.menu.taskId) return;
       state.shownId = t.id;
       detail.renderSide(el.detail, t, state.board ? state.board.revision : 0, ctx);
     }
@@ -656,6 +658,27 @@
       };
       state.busy = true; // hold the poll while the menu is open
       render(); // the chip's aria-expanded is drawn by list.js
+    }
+
+    // toggleSideMenu opens the same menu from the box beside the list: the 期限
+    // button there stands in for the row's chip (a long-run task's opens the
+    // review menu). The box keeps its task while the menu is open (showDetail).
+    function toggleSideMenu(t, btn) {
+      var same = state.menu && state.menu.chip === btn;
+      closeMenu();
+      if (same) return;
+      var long = t.state === 'long';
+      state.menu = {
+        seq: ++overlaySeq,
+        kind: long ? 'review' : 'due',
+        taskId: t.id,
+        chip: btn,
+        current: (long ? t.review_on : t.due) || '',
+        inLong: long,
+        fromSide: true,
+      };
+      state.busy = true;
+      render();
     }
 
     function closeMenu() {
@@ -1014,6 +1037,7 @@
       openDropAsk: openDropAsk,
       closeDropAsk: closeDropAsk,
       closeMenu: closeMenu,
+      toggleSideMenu: toggleSideMenu,
       undo: undo,
       showError: showError,
       reviewDone: reviewDone,
