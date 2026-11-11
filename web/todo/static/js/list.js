@@ -273,7 +273,39 @@
     }[t.idle_from] || '';
     var title = from + 'から ' + t.idle_days + '日'
       + (t.idle_from === 'annotation' ? '' : '。人が補足を書くと、そこから数え直す');
-    return html`<span class=${'idle-tag s' + t.idle_stage} title=${title}>${'止まって ' + t.idle_days + '日'}</span>`;
+    return html`<span class=${'idle-tag s' + t.idle_stage} title=${title}><span class="sr">止まって </span>${t.idle_days + '日'}</span>`;
+  }
+
+  // dueText is how a queue row writes its due date: the date and what is left
+  // of it. The colour is dueChip's, judged by the server (ADR todo-0011, 0023).
+  //   today 11/11  → 今日 11/11        tomorrow → 明日 11/12
+  //   later        → 11/16（月）        past     → 11/10（火）· 1日超過
+  function dueText(t, today) {
+    var n = daysBetween(today, t.due);
+    var day = monthDay(t.due);
+    if (n === 0) return '今日 ' + day;
+    if (n === 1) return '明日 ' + day;
+    var wd = '（' + '日月火水木金土'.charAt(new Date(t.due + 'T00:00:00Z').getUTCDay()) + '）';
+    return n < 0 ? day + wd + ' · ' + t.due_label : day + wd;
+  }
+
+  // The colours a topic's tag takes, handed out in the order the board lists
+  // the topics (the order they first appear down the list).
+  var TOPIC_COLORS = 6;
+
+  function topicTag(t, board) {
+    if (!t.topic) return null;
+    var at = (board.topics || []).indexOf(t.topic);
+    return html`<span class=${'topic-tag tp' + (Math.max(at, 0) % TOPIC_COLORS)} title=${t.topic}>${t.topic}</span>`;
+  }
+
+  // statusText is the latest supplement's body, one line (the full text is the
+  // title). Annotations come oldest first.
+  function statusText(t) {
+    var a = t.annotations || [];
+    if (!a.length) return null;
+    var body = a[a.length - 1].body || '';
+    return html`<span class="status-text" title=${body}>${body}</span>`;
   }
 
   // reasonLabel is the words for one reason a long-run task needs a review.
@@ -315,8 +347,10 @@
       dangerouslySetInnerHTML=${{ __html: TRASH_SVG }}></button>`;
   }
 
-  // Row builds the shared 5-column shape: every section lines up on the same
-  // left baseline, so the grip column is present even where it is unused.
+  // Row is one line of the table: grip, check, name, then the cells 期限 / 話題 /
+  // 止まって / 状況 and the trash. Every section shares the columns, so the grip
+  // is present even where it is unused. The open row's panel is a line of its own
+  // under the cells.
   //   o.tags       parent and kids tags (queue, waiting and someday rows)
   //   o.long       the next step and child counts under the name (long-run rows)
   function Row(p) {
@@ -331,13 +365,12 @@
     var cls = 'task' + (o.extraClass ? ' ' + o.extraClass : '') + (st.landedId === t.id ? ' landed' : '')
       + (st.drag && st.drag.active && st.drag.id === t.id ? ' dragging' : '');
     if (o.hasPanel) cls += ' openable' + (open ? ' row-open' : '');
-    if (o.noNum) cls += ' no-num';
 
     // The parent and kids tags go inside the name text (inline, so wrapped
     // lines run under them) for queue-style rows, or beside it while the name
     // is being edited, so the editable text stays plain.
     var tags = o.tags ? [parentTag(t), kidsTag(t)] : null;
-    var tagsInside = !!tags && !!o.noNum && !open;
+    var tagsInside = !!tags && !open;
     var txt;
     if (open) {
       // An open row is the editable one. The name is the same text in the same
@@ -354,13 +387,14 @@
 
     var due;
     // The due chip doubles as the way to set a due date: clicking it opens a
-    // menu (app.js). Keeping it in the chip avoids adding a column to a row
-    // that is meant to stay one line.
+    // menu (app.js).
     if (o.editableDue) {
       var dcls = 'due due-edit' + (o.reviewChip ? ' review-chip' : '') + (o.dueClass ? ' ' + o.dueClass : '')
-        // "期限なし" only shows on the hovered row (CSS), so the list is not a
-        // column of them; the review chip of a long-run row always shows.
-        + (!o.reviewChip && !t.due ? ' due-none' : '');
+        // A queue row with no date warns (due-warn), always shown. Other rows
+        // without one (the focus band) show "期限なし" only on the hovered row
+        // (CSS), so the list is not a column of them; the review chip of a
+        // long-run row always shows.
+        + (o.warnDue ? ' due-warn' : (!o.reviewChip && !t.due ? ' due-none' : ''));
       due = html`<button type="button" class=${dcls} title=${o.dueTitle || undefined}
         aria-haspopup="menu" aria-expanded=${String(!!st.menu && st.menu.taskId === t.id)}
         data-due=${o.reviewChip ? (t.review_on || '') : (t.due || '')}>${o.dueLabel}</button>`;
@@ -368,24 +402,29 @@
       due = html`<span class=${'due' + (o.dueClass ? ' ' + o.dueClass : '')} title=${o.dueTitle || undefined}>${o.dueLabel}</span>`;
     }
 
+    // The mark of a long-run (▶), someday (◇) or done row sits in front of the name.
+    var mark = o.mark ? html`<span class=${'num' + (o.markClass ? ' ' + o.markClass : '')}
+      aria-hidden=${o.markClass ? 'true' : undefined}>${o.mark}</span>` : null;
+
     return html`<li class=${cls} data-id=${t.id}
       tabindex=${o.hasPanel ? 0 : undefined}
       aria-expanded=${o.hasPanel ? String(open) : undefined}
       draggable=${o.draggable}
       onMouseEnter=${function () { ctx.showDetail(t); }}>
       <span class=${'grip' + (o.draggable ? '' : ' empty')} aria-hidden="true">${o.draggable ? '⠿' : ''}</span>
-      ${o.noNum ? null : html`<span class=${'num' + (o.markClass ? ' ' + o.markClass : '')}
-        aria-hidden=${o.markClass ? 'true' : undefined}>${o.mark}</span>`}
       <input type="checkbox" class="check" checked=${!!o.checked}
         aria-label=${o.checked ? '完了を取り消す' : '完了にする'}
         onChange=${function (ev) { ctx.onCheck(ev.target, t); }} />
       <div class="body">
-        <div class="name">${tagsInside ? null : tags}${txt}${idleTag(t)}${st.resumed && st.landedId === t.id ? html`<span class="resumed-tag">待ちから戻した</span>` : null}${o.long ? reasonTags(t) : null}</div>
+        <div class="name">${tagsInside ? null : tags}${mark}${txt}${st.resumed && st.landedId === t.id ? html`<span class="resumed-tag">待ちから戻した</span>` : null}${o.long ? reasonTags(t) : null}</div>
         ${o.long ? longNext(t, ctx) : null}
-        ${open ? html`<${D.Panel} key="panel" t=${t} rev=${p.rev} ctx=${ctx} />` : null}
       </div>
-      ${due}
+      <div class="cell c-due">${due}</div>
+      <div class="cell c-topic">${topicTag(t, ctx.state.board || EMPTY_BOARD)}</div>
+      <div class="cell c-idle">${idleTag(t)}</div>
+      <div class="cell c-status">${statusText(t)}</div>
       ${html`<${RemoveIcon} t=${t} ctx=${ctx} />`}
+      ${open ? html`<${D.Panel} key="panel" t=${t} rev=${p.rev} ctx=${ctx} />` : null}
     </li>`;
   }
 
@@ -415,10 +454,12 @@
       // `todo order` uses it.
       mark: '',
       markClass: '',
-      noNum: true,
       ticketBadge: true,
       tags: true,
-      dueLabel: t.due_label,
+      // An open-ended queue row (not focused, no date) is a start day nobody
+      // has set: it warns instead of saying nothing (ADR todo-0028).
+      warnDue: !t.due && !t.focused,
+      dueLabel: !t.due ? (t.focused ? t.due_label : '⚠ 期限なし') : dueText(t, v.board.today),
       dueClass: dueChip(t),
       hasPanel: true,
       editableDue: true,
@@ -477,7 +518,9 @@
       mark: '',
       markClass: '',
       tags: true,
-      dueLabel: days + '日',
+      // A waiting task has no start day to show (ADR todo-0028): the cell says
+      // how long the ball has been with someone else.
+      dueLabel: '渡して ' + days + '日',
       dueClass: days >= 10 ? 'over' : (days >= 5 ? 'near' : ''),
       dueTitle: level + '経過\n' + (t.handed_on || '?') + ' に ' + (t.handed_to || '?')
         + ' へ渡してから ' + days + '日。14日で理由を聞かれる',
@@ -532,13 +575,15 @@
     var when = (at.getMonth() + 1) + '/' + at.getDate();
     return html`<li class="task drop" key=${d.event_id}>
       <span class="grip empty" aria-hidden="true"></span>
-      <span class="num" aria-hidden="true"></span>
       <span class="check empty" aria-hidden="true"></span>
       <div class="body">
         <div class="name"><span class="txt" title=${d.name}>${nameParts(d)}</span></div>
         <div class=${'drop-why' + (d.reason ? '' : ' none')}>${d.reason || '理由なし'}</div>
       </div>
-      <span class="due" title=${when + ' にやめた。直近の月曜以降の分だけ残る'}>${when}</span>
+      <div class="cell c-due"><span class="due" title=${when + ' にやめた。直近の月曜以降の分だけ残る'}>${when}</span></div>
+      <div class="cell"></div>
+      <div class="cell"></div>
+      <div class="cell"></div>
     </li>`;
   }
 
@@ -661,13 +706,18 @@
         <ul class="review-list" id="review-list">${review.map(function (t) { return reviewLine(t, ctx); })}</ul>
       </section>`,
 
+      html`<div class="tbl-scroll"><div class="tbl">${[
+      html`<div class="tbl-colhead" aria-hidden="true">
+        <span class="ch-name">タスク名</span><span>期限</span><span>話題</span><span>止まって</span><span>状況</span><span></span>
+      </div>`,
       html`<section class=${'focus-band' + (st.drag && st.drag.active ? ' drop-ready' : '')} id="focus-band" ...${dragProps(ctx, 'focus-list')}>
         <div class="focus-head">フォーカス<span class="n" id="focus-count">${focus.length}</span></div>
         <ul class="list focus-list" id="focus-list">${focus.map(function (t) { return queueRow(t, false, v); })}</ul>
         <p class="focus-empty" id="focus-empty" hidden=${focus.length > 0}>ここへドラッグするとフォーカスになる</p>
       </section>`,
 
-      html`<section class="sec" ...${dragProps(ctx, 'queue')}>
+      html`<section class="sec" id="queue-sec" ...${dragProps(ctx, 'queue')}>
+        <h2 class="sec-headline" id="queue-head">着手順<span class="n" id="queue-count">${inScope.length}</span><span class="fold-note" id="queue-note">${monthDay(b.today) + '〜' + monthDay(shiftDay(b.today, b.scope_days))}</span></h2>
         <ul class="list" id="queue">${st.groupByTopic ? groupedRows(inScope, v) : inScope.map(function (t) { return queueRow(t, false, v); })}</ul>
         <div class="add" id="add-slot">
           <span></span>
@@ -709,6 +759,7 @@
       html`<${Fold} secId="drop-sec" hidden=${dropped.length === 0} foldId="drop-fold" open=${st.dropOpen}
         listId="droplist" label="今週やめた" countId="drop-count" count=${dropped.length}
         onToggle=${function () { ctx.toggleFold('drop'); }}>${dropped.map(dropRow)}<//>`,
+      ]}</div></div>`,
 
       html`<div class="add-row">
         <code>todo "タスク名" --due YYYY-MM-DD</code>
