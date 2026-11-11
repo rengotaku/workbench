@@ -28,44 +28,51 @@
 :where(.view-todo, .view-todo-add) {
   .wrap { max-width: 660px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 
-  /* 画面は全幅。左にサイドバー、中央に一覧、右に詳細の箱。詳細は一覧とは別の箱で、
-     広い画面でだけ出し、狭ければ箱ごと消す（行を開く導線は残っているので、消えても
-     操作は一通りそろう）。狭い画面ではサイドバーが一覧の上に来る。 */
+  /* 画面は全幅。左にサイドバー、その右に一覧（一覧は右端まで使う）。詳細は行を押した
+     ときだけ、一覧の右に重ねて出す（下の .dpanel。ADR todo-0030）。狭い画面では
+     サイドバーが一覧の上に来る。 */
   .panes { display: contents; }
-  .detail { display: none; }
   @media (min-width: 900px) {
     .wrap { max-width: none; margin: 0; }
     .panes {
       display: grid;
-      grid-template-columns: 200px minmax(0, 1fr) 360px;
+      grid-template-columns: 200px minmax(0, 1fr);
       gap: 18px;
       align-items: start;
     }
-    .panes.side-hidden { grid-template-columns: minmax(0, 1fr) 360px; }
-    /* Below 1440px the list would scroll sideways under a 360px box: give
-       the list the room and narrow the box instead. */
-    @media (max-width: 1439px) {
-      .panes { grid-template-columns: 200px minmax(0, 1fr) 280px; }
-      .panes.side-hidden { grid-template-columns: minmax(0, 1fr) 280px; }
-    }
+    .panes.side-hidden { grid-template-columns: minmax(0, 1fr); }
     .side {
       position: sticky;
       top: var(--head-h);
       max-height: calc(100vh - var(--head-h));
       overflow-y: auto;
     }
-    .detail {
-      display: block;
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-xl);
-      box-shadow: var(--shadow);
-      padding: 15px 17px;
-      position: sticky;
-      top: var(--head-h); /* right below the sticky site header */
-      max-height: calc(100vh - var(--head-h));
-      overflow-y: auto;
-    }
+  }
+
+  /* The detail panel: laid over the right of the list, from the header band to the
+     foot of the window. The list is not dimmed and not blocked: it can be scrolled,
+     pressed and dragged beside and under it. The shadow says it is over. Above the
+     rows and the sticky sidebar, below the header band and the menus (20). */
+  .dpanel {
+    position: fixed;
+    top: var(--head-h);
+    right: 0;
+    bottom: 0;
+    z-index: 15;
+    box-sizing: border-box;
+    width: max(360px, 45vw);
+    padding: 15px 17px 28px;
+    overflow-y: auto;
+    background: var(--surface);
+    border-left: 1px solid var(--line);
+    box-shadow: -10px 0 28px rgba(0, 0, 0, .22);
+  }
+  .dpanel[hidden] { display: none; }
+  @media (min-width: 1440px) {
+    .dpanel { width: 480px; }
+  }
+  @media (max-width: 899px) {
+    .dpanel { width: 100%; border-left: 0; }
   }
 
   /* ---- サイドバー: 区画・話題・他の画面へのリンク ---- */
@@ -165,9 +172,6 @@
   button.d-due.d-due-off { cursor: default; color: var(--ink-soft); background: var(--surface-sunk); white-space: normal; text-align: left; }
   .d-ico { display: inline-flex; flex: none; }
   .d-sec .status-add { margin-bottom: 8px; }
-  .d-fields + .d-moves + .d-body, .d-moves + .d-body { margin-top: 16px; }
-  .d-body { font-size: var(--fs-md); line-height: 1.85; color: var(--ink-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
-  .d-body.none { color: var(--muted); }
   .d-sec { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--line-soft); }
   .d-sec h2 { margin: 0 0 6px; font-size: var(--fs-xs); letter-spacing: .08em; color: var(--muted); font-weight: 500; }
   .d-trail { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
@@ -327,7 +331,6 @@
     font-size: var(--fs-md2);
   }
   .topic-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .detail > .topic-line { margin-bottom: 8px; }
 
   /* ---- counts: the same bar language as the rows ---- */
   .counts { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -423,7 +426,7 @@
     padding: 1px 6px;
     border-radius: var(--radius-sm);
   }
-  .panel-actions button.focus-on { color: var(--accent); border-color: var(--accent); }
+  .d-fval button.focus-on { color: var(--accent); border-color: var(--accent); }
 
   /* ---- long-run fold: months-long jobs, below the queue (ADR todo-0022) ---- */
   /* A fold like スコープ外 and 待ち. What needs attention comes up in the review
@@ -531,7 +534,7 @@
     cursor: pointer;
   }
   .ln-add:focus-visible { outline: 2px solid var(--near); outline-offset: 2px; }
-  .panel-actions button.long-on { color: var(--ink-soft); border-color: var(--ink-soft); }
+  .d-moves button.long-on { color: var(--ink-soft); border-color: var(--ink-soft); }
   .parent-tag {
     display: inline-block;
     flex: none;
@@ -655,8 +658,6 @@
   /* No labels, no boxes, no save button: the text itself is the field. */
   .live { outline: none; }
   .live:empty::before { content: attr(data-placeholder); color: var(--muted); }
-  .name .live { cursor: text; }
-  .name .live:focus { box-shadow: inset 0 -1px 0 var(--accent); }
 
   .save-state {
     font-family: var(--mono);
@@ -669,16 +670,6 @@
   .save-state.on { opacity: 1; }
   .save-state.saved { color: var(--done); }
 
-  .panel-actions .spacer { flex: 1; }
-  .panel-actions input {
-    font-family: var(--sans);
-    font-size: var(--fs-md);
-    color: var(--ink);
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-chip);
-    padding: 2px 6px;
-  }
 
   /* The history is one line; its tooltip carries the content, so opening a row
      does not grow by as many lines as the task has events. */
@@ -783,7 +774,6 @@
      shorthand resets the colour; only the colour is set here, so the stripe and
      its tint stay. The accent lines mark where the open row starts and ends;
      the fill stays grey so it does not read as the focus band. */
-  .task.row-open > .panel { grid-column: 3 / 8; align-self: stretch; }
   .task.row-open {
     background-color: var(--surface-sunk);
     box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent);
@@ -827,7 +817,6 @@
   .task.dragging { opacity: .4; }
   .task.openable { cursor: pointer; }
   .task.openable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-  .panel { cursor: auto; }
   .task.done { opacity: .78; }
 
   .grip {
@@ -955,44 +944,27 @@
 
 
 
-  /* Opened panel: what I wrote on top, what happened underneath. */
-  .panel {
-    border-left: 2px solid var(--line);
-    padding: 4px 0 4px 10px;
-    margin-top: 4px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .panel .live.detail {
+  /* The detail's text: what I wrote, edited where it is read. */
+  .dp .live.detail {
     font-size: var(--fs-lg);
     color: var(--ink-soft);
     line-height: 1.7;
-    min-height: 1.7em;
+    min-height: 3.4em;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
     cursor: text;
   }
-  .panel .live.detail:focus { box-shadow: inset 0 -1px 0 var(--accent); }
-  .panel-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    padding-top: 2px;
+  .dp .live.detail:focus { box-shadow: inset 0 -1px 0 var(--accent); }
+  .d-name .live { cursor: text; }
+  .d-name .live:focus { box-shadow: inset 0 -1px 0 var(--accent); }
+  .d-top .d-close {
+    appearance: none; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-md);
+    background: transparent; color: var(--ink-soft); font-size: 20px; line-height: 1; cursor: pointer;
   }
-  .panel-actions button {
-    appearance: none;
-    background: none;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-chip);
-    padding: 2px 8px;
-    font-family: var(--sans);
-    font-size: var(--fs-md);
-    color: var(--muted);
-    cursor: pointer;
-  }
-  .panel-actions button:hover { color: var(--ink); border-color: var(--muted); }
-  .panel-actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .d-top .d-close:hover { background: var(--surface-sunk); color: var(--ink); }
+  .d-trailrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+  .d-sec .d-sec { margin-top: 8px; padding-top: 0; border-top: 0; }
+  .d-sec .d-ann h2 { margin-top: 8px; }
 
   /* The delete button lives in the row, next to the due chip, and is only
      visible while the pointer is on that row: the everyday reading view stays

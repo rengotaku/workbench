@@ -8,14 +8,15 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// The box beside the list keeps the same task after an operation, so its
-// button opens again and does the opposite: 完了にする, then 完了を取り消す.
+// The detail panel keeps the same task after an operation, so its button
+// opens again and does the opposite: 完了にする, then 完了を取り消す. Completing
+// moves the task to 今週完了, and the panel stays open for it.
 func TestTodoSideActReopens(t *testing.T) {
 	a := startApp(t)
 	id := a.addTask(t, "toggle me")
 	p := newPage(t, a, "/")
 	p.until("row", `!!document.querySelector('.task[data-id="`+id+`"]')`)
-	p.until("box shows it", `document.querySelector('.d-id') && document.querySelector('.d-id').textContent === '`+id+`'`)
+	p.openRow(id)
 
 	p.eval(`document.querySelector('.d-complete').click(), true`, nil)
 	p.until("undo label, enabled", `(() => { const b = document.querySelector('.d-complete'); return b && b.textContent === '完了を取り消す' && !b.disabled; })()`)
@@ -23,18 +24,22 @@ func TestTodoSideActReopens(t *testing.T) {
 	p.until("back to 完了にする, enabled", `(() => { const b = document.querySelector('.d-complete'); return b && b.textContent === '完了にする' && !b.disabled; })()`)
 }
 
-// While a task's row is open, only the row has the status input; the box
-// points to it, so one text cannot be appended twice from two inputs.
+// The panel has one status input, and none while no row is open.
 func TestTodoSideOneStatusInput(t *testing.T) {
 	a := startApp(t)
 	id := a.addTask(t, "one input")
 	p := newPage(t, a, "/")
-	p.until("box input", `!!document.getElementById('d-status-`+id+`')`)
-	p.eval(`document.querySelector('.task[data-id="`+id+`"] .name').click(), true`, nil)
-	p.until("row open, box points to it", `!document.getElementById('d-status-`+id+`') && !!document.querySelector('.d-status-here')`)
+	p.until("rows", `document.querySelectorAll('#queue .task').length === 1`)
+	if n := p.num(`document.querySelectorAll('.status-input').length`); n != 0 {
+		t.Errorf("status inputs before a row is open = %v, want 0", n)
+	}
+	p.openRow(id)
+	if n := p.num(`document.querySelectorAll('.status-input').length`); n != 1 {
+		t.Errorf("status inputs with a row open = %v, want 1", n)
+	}
 }
 
-// At 1440px wide the table fits beside the sidebar and the box; it does not
+// At 1440px wide the table fits beside the sidebar; it does not
 // scroll sideways.
 func TestTodoTableFitsAt1440(t *testing.T) {
 	a := startApp(t)

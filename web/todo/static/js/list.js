@@ -5,7 +5,7 @@
 // 行は task の ID を key にするので、描き直しをまたいで同じ行の DOM が残る
 // （開いた行・入力中の欄・フォーカス・CSS アニメーション）。
 //
-// 開いた行の名前の欄と詳細パネルは detail.js の部品（NameField・Panel）が描く。
+// 開いた行の名前の欄と詳細パネルは detail.js の部品（NameField・DetailPanel）が描く。
 // メニュー・削除の理由欄・通知は menus.js が描く。ドラッグ中の行の薄い表示と、フォーカスの帯の
 // 「落とせる」印は state.drag から描く。Preact が描く要素を素の JS から直接書き換えない
 // （ドラッグ中の行の要素を動かす見せ方だけが例外で、app.js が描画の前後で戻す）。
@@ -358,32 +358,20 @@
     var t = o.task;
     var ctx = p.ctx;
     var st = ctx.state;
+    // The open row is the one whose detail panel is shown (it is marked, not
+    // expanded: the row stays one line of the table).
     var open = !!o.hasPanel && st.openId === t.id;
-    // The open row's name and panel (detail.js, loaded after this file).
-    var D = window.workbench.todoDetail;
 
     var cls = 'task' + (o.extraClass ? ' ' + o.extraClass : '') + (st.landedId === t.id ? ' landed' : '')
       + (st.drag && st.drag.active && st.drag.id === t.id ? ' dragging' : '');
     if (o.hasPanel) cls += ' openable' + (open ? ' row-open' : '');
 
-    // The parent and kids tags go inside the name text (inline, so wrapped
-    // lines run under them) for queue-style rows, or beside it while the name
-    // is being edited, so the editable text stays plain.
+    // The parent and kids tags go inside the name text, in front of the words.
     var tags = o.tags ? [parentTag(t), kidsTag(t)] : null;
-    var tagsInside = !!tags && !open;
-    var txt;
-    if (open) {
-      // An open row is the editable one. The name is the same text in the same
-      // place, so there is no second copy of it inside the panel. Ticket keys
-      // stop being links while editing: a link inside an editable line fights
-      // the caret.
-      txt = html`<${D.NameField} key="name" t=${t} rev=${p.rev} ctx=${ctx} />`;
-    } else {
-      var split = o.ticketBadge ? splitTicket(t) : null;
-      // The badge sits at the head of the name text, so a wrapped line runs
-      // under it instead of leaving a column of its own.
-      txt = html`<span class="txt" title=${t.name}>${tagsInside ? tags : null}${split ? split.badge : null}${nameParts(split ? split.task : t)}</span>`;
-    }
+    var split = o.ticketBadge ? splitTicket(t) : null;
+    // The badge sits at the head of the name text, so a wrapped line runs
+    // under it instead of leaving a column of its own.
+    var txt = html`<span class="txt" title=${t.name}>${tags}${split ? split.badge : null}${nameParts(split ? split.task : t)}</span>`;
 
     var due;
     // The due chip doubles as the way to set a due date: clicking it opens a
@@ -410,13 +398,13 @@
       tabindex=${o.hasPanel ? 0 : undefined}
       aria-expanded=${o.hasPanel ? String(open) : undefined}
       draggable=${o.draggable}
-      onMouseEnter=${function () { ctx.showDetail(t); }}>
+      >
       <span class=${'grip' + (o.draggable ? '' : ' empty')} aria-hidden="true">${o.draggable ? '⠿' : ''}</span>
       <input type="checkbox" class="check" checked=${!!o.checked}
         aria-label=${o.checked ? '完了を取り消す' : '完了にする'}
         onChange=${function (ev) { ctx.onCheck(ev.target, t); }} />
       <div class="body">
-        <div class="name">${tagsInside ? null : tags}${mark}${txt}${st.resumed && st.landedId === t.id ? html`<span class="resumed-tag">待ちから戻した</span>` : null}${o.long ? reasonTags(t) : null}</div>
+        <div class="name">${mark}${txt}${st.resumed && st.landedId === t.id ? html`<span class="resumed-tag">待ちから戻した</span>` : null}${o.long ? reasonTags(t) : null}</div>
         ${o.long ? longNext(t, ctx) : null}
       </div>
       <div class="cell c-due">${due}</div>
@@ -424,7 +412,6 @@
       <div class="cell c-idle">${idleTag(t)}</div>
       <div class="cell c-status">${statusText(t)}</div>
       ${html`<${RemoveIcon} t=${t} ctx=${ctx} />`}
-      ${open ? html`<${D.Panel} key="panel" t=${t} rev=${p.rev} ctx=${ctx} />` : null}
     </li>`;
   }
 

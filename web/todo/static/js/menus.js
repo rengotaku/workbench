@@ -250,7 +250,7 @@
     function shelve() {
       ctx.closeMenu();
       request('POST', path + '/someday', {})
-        .then(function () { ctx.closeRow(id); return ctx.load().then(function () { ctx.flash('いつかへ棚上げした'); }); })
+        .then(function () { return ctx.load().then(function () { ctx.flash('いつかへ棚上げした'); }); })
         .catch(ctx.reloadShowing);
     }
 

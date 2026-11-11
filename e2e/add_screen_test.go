@@ -295,27 +295,27 @@ func TestTodoDetailLinksAddRemoveAreSaved(t *testing.T) {
 		return strings.Join(out, ",")
 	}
 
-	p.click(`.task.row-open .link-add`)
-	p.run(chromedp.SendKeys(`.task.row-open .link-row:last-child .link-input`, "https://example.com/a first", chromedp.ByQuery))
+	p.click(`#detail .link-add`)
+	p.run(chromedp.SendKeys(`#detail .link-row:last-child .link-input`, "https://example.com/a first", chromedp.ByQuery))
 	p.key(kb.Enter)
 	a.untilTask(t, second, "the first URL", count(1))
-	p.click(`.task.row-open .link-add`)
-	p.run(chromedp.SendKeys(`.task.row-open .link-row:last-child .link-input`, "https://example.com/b second", chromedp.ByQuery))
+	p.click(`#detail .link-add`)
+	p.run(chromedp.SendKeys(`#detail .link-row:last-child .link-input`, "https://example.com/b second", chromedp.ByQuery))
 	p.key(kb.Enter)
 	a.untilTask(t, second, "two URLs", count(2))
 	if got := urls(); got != "https://example.com/a,https://example.com/b" {
 		t.Errorf("saved URLs = %q", got)
 	}
 
-	p.eval(`document.querySelectorAll('.task.row-open .link-remove')[0].click()`, nil)
+	p.eval(`document.querySelectorAll('#detail .link-remove')[0].click()`, nil)
 	a.untilTask(t, second, "one URL", count(1))
 	if got := urls(); got != "https://example.com/b" {
 		t.Errorf("saved URLs after the removal = %q, want only the second", got)
 	}
-	p.until("renumbered", `document.querySelectorAll('.task.row-open .link-row').length === 1 && document.querySelector('.task.row-open .link-row .ln').textContent === '[1]'`)
+	p.until("renumbered", `document.querySelectorAll('#detail .link-row').length === 1 && document.querySelector('#detail .link-row .ln').textContent === '[1]'`)
 	// The page and the server agree after a reload.
 	p.reload()
-	p.until("the saved row", `document.querySelectorAll('.task.row-open .link-row').length === 1 && document.querySelector('.task.row-open .link-view')?.href === 'https://example.com/b'`)
+	p.until("the saved row", `document.querySelectorAll('#detail .link-row').length === 1 && document.querySelector('#detail .link-view')?.href === 'https://example.com/b'`)
 }
 
 // An edit made while the previous save of the related URLs is still out is
@@ -341,8 +341,8 @@ func TestTodoDetailLinksQueuedSaveSurvivesClosingTheRow(t *testing.T) {
 		return true;
 	})()`, nil)
 
-	p.click(`.task.row-open .link-add`)
-	p.run(chromedp.SendKeys(`.task.row-open .link-row:last-child .link-input`, "https://example.com/a first", chromedp.ByQuery))
+	p.click(`#detail .link-add`)
+	p.run(chromedp.SendKeys(`#detail .link-row:last-child .link-input`, "https://example.com/a first", chromedp.ByQuery))
 	p.key(kb.Enter)
 	a.untilTask(t, second, "the first save to reach the server", func(m map[string]any) bool {
 		links, _ := m["links"].([]any)
@@ -350,7 +350,7 @@ func TestTodoDetailLinksQueuedSaveSurvivesClosingTheRow(t *testing.T) {
 	})
 	// Edit the row while that answer is held, then close the row by opening another.
 	p.eval(`(() => {
-		const input = document.querySelector('.task.row-open .link-input');
+		const input = document.querySelector('#detail .link-input');
 		input.value = 'https://example.com/c last';
 		input.dispatchEvent(new Event('change', { bubbles: true }));
 		return true;

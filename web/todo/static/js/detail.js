@@ -1,10 +1,10 @@
-// 開いた行の詳細を Preact で描く。ADR todo-0025。
+// 詳細パネルを Preact で描く。ADR todo-0025・todo-0030。
 //
-//   NameField  開いた行の名前の欄（contenteditable）
-//   Panel      開いた行の詳細パネル（詳細・話題・状況・関連 URL・補足・操作ボタン・経緯）
-//   renderSide 一覧の横の詳細欄（読むだけ。話題の欄だけ書ける）
+//   NameField   パネルの名前の欄（contenteditable）
+//   renderPanel 一覧の右に重ねる詳細パネル（行を押したときだけ出る。名前・欄・移動の操作・
+//               詳細・関連 URL・状況・経緯）
 //
-// list.js が行の中に置く。状態（state）・API 呼び出し・読み直し（load）は app.js のもので、
+// app.js が .detail に描く。状態（state）・API 呼び出し・読み直し（load）は app.js のもので、
 // ctx 経由で受け取る。ここは状態を持たない: 持つのは欄ごとの「最後に保存した文字」と
 // 保存中の印だけ（部品の中）。
 //
@@ -232,7 +232,10 @@
       s.applied = v;
     });
 
-    useEffect(function () {
+    // Registered before the browser paints (layout effect), not after: the
+    // panel puts the caret in the name right after it is drawn, and a focus
+    // that came before these listeners would leave the field unguarded.
+    useLayoutEffect(function () {
       var node = ref.current;
       var field = props.current.field;
       var id = props.current.t.id;
@@ -328,8 +331,7 @@
     CSS.highlights.set(HIGHLIGHT_NAME, new Highlight(range));
   }
 
-  // NameField is the open row's name: the same text in the same place, edited
-  // where it is read. Ticket keys stop being links while editing: a link inside
+  // NameField is the panel's name: edited where it is read. Ticket keys stop being links while editing: a link inside
   // an editable line fights the caret.
   function NameField(p) {
     var held = useHeld(p.t, p.rev, p.ctx);
@@ -540,7 +542,7 @@
     var o0 = own.current;
 
     function nameNow() {
-      var n = document.querySelector('.task[data-id="' + id + '"] .txt.live');
+      var n = document.querySelector('#detail .d-name .txt.live');
       return n ? n.textContent : props.current.t.name;
     }
 
@@ -638,25 +640,6 @@
     </div>`;
   }
 
-  // RelatedList shows a task's related URLs ([N] 一言 / URL) in the detail
-  // box, or nothing when it has none. A task from before related URLs keeps
-  // its one link in the name and has no list.
-  function RelatedList(p) {
-    var links = p.t.links || [];
-    if (links.length === 0) return null;
-    return html`<div class="d-sec">
-      <h2>関連 URL</h2>
-      <ul class="d-links">
-        ${links.map(function (l) {
-          return html`<li key=${l.n}>
-            <span class="ln">${'[' + l.n + ']'}</span>
-            <a href=${l.url} target="_blank" rel="noopener noreferrer" title=${l.url}>${l.label || l.url}</a>
-          </li>`;
-        })}
-      </ul>
-    </div>`;
-  }
-
   // ---- 操作ボタン ----
 
   // Act is a button that runs one request. It is held shut while the request
@@ -731,7 +714,7 @@
       setSending(true);
       request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/wait',
         { to: who.value.trim(), note: '' })
-        .then(function () { ctx.closeRow(t.id); return ctx.load().then(function () { ctx.flash('待ちへ移した'); }); })
+        .then(function () { return ctx.load().then(function () { ctx.flash('待ちへ移した'); }); })
         .catch(function (err) { setSending(false); ctx.showError(err); });
     }
 
@@ -918,7 +901,6 @@
       run=${function () {
         var was = t.focused;
         return post('/focus', { on: !was }).then(function () {
-          ctx.closeRow(t.id);
           return ctx.load().then(function () { ctx.flash(was ? 'フォーカスから外した' : 'フォーカスに入れた'); });
         });
       }} />` : null;
@@ -931,7 +913,6 @@
       title=${longOn ? '着手順から外し、長期の枠に置く（フォーカスも外れる）' : '着手順の先頭（フォーカスのすぐ下）へ戻す'}
       run=${function () {
         return post('/long', { on: longOn }).then(function () {
-          ctx.closeRow(t.id);
           return ctx.load().then(function () { ctx.flash(longOn ? '長期にした' : '長期から外した'); });
         });
       }} />` : null;
@@ -944,7 +925,7 @@
       run=${function () {
         var at = ctx.waitIndex(t); // where its row is now, for the line left in its place
         return post('/resume', { note: '' })
-          .then(function (res) { ctx.closeRow(t.id); return ctx.load().then(function () { ctx.landed(t, res, at); }); });
+          .then(function (res) { return ctx.load().then(function () { ctx.landed(t, res, at); }); });
       }} />` : null;
 
     // somedayButton shelves a task with one click: unlike WaitControl, nobody
@@ -954,7 +935,7 @@
       title="いまは着手順に置かず、いつか再開する（1ヶ月後に見る番が来る）"
       run=${function () {
         return post('/someday', {})
-          .then(function () { ctx.closeRow(t.id); return ctx.load().then(function () { ctx.flash('いつかへ棚上げした'); }); });
+          .then(function () { return ctx.load().then(function () { ctx.flash('いつかへ棚上げした'); }); });
       }} />` : null;
 
     // いつかにする lives in the due chip's menu for open rows.
@@ -963,128 +944,11 @@
     return { focusBtn: focusBtn, longBtn: longBtn, resume: resume, someday: someday, wait: wait };
   }
 
-  // ---- パネル ----
-
-  // Panel is the open row's detail: what I wrote above what happened. The
-  // detail is edited where it is read: no label, no box, no save button.
-  function Panel(p) {
-    var ctx = p.ctx;
-    var held = useHeld(p.t, p.rev, ctx);
-    var t = held.t;
-    var st = useState({ text: '', cls: 'save-state' });
-    var saveState = st[0];
-    var setSaveState = st[1];
-    var fade = useRef(null);
-
-    // The fields report "保存中…" / "保存した" through markSave, by task id.
-    useEffect(function () {
-      function set(text, saved) {
-        window.clearTimeout(fade.current);
-        setSaveState({ text: text, cls: 'save-state on' + (saved ? ' saved' : '') });
-        if (saved) {
-          fade.current = window.setTimeout(function () {
-            setSaveState(function (prev) { return { text: prev.text, cls: 'save-state saved' }; });
-          }, 1600);
-        }
-      }
-      saveMarks[t.id] = set;
-      return function () {
-        window.clearTimeout(fade.current);
-        if (saveMarks[t.id] === set) delete saveMarks[t.id];
-      };
-    }, [t.id]);
-
-    var A = moveActions(t, ctx);
-    var focusBtn = A.focusBtn;
-    var longBtn = A.longBtn;
-    var resume = A.resume;
-    var someday = A.someday;
-    var wait = A.wait;
-
-    // Any task that is not done can have children, down to MAX_DEPTH levels.
-    var childBtn = t.state !== 'done' && (t.parent_path || []).length + 1 < MAX_DEPTH
-      ? html`<button key="child" type="button" title=${t.id + ' の子としてタスクを追加する'}
-          onClick=${function (ev) {
-            ev.stopPropagation(); // the row underneath must not open or close
-            ctx.addChild(t);
-          }}>子を追加</button>` : null;
-
-    // A long-run task is the top of a tree, so it has no parent to choose.
-    var picker = t.state !== 'long' && t.state !== 'done' ? html`<${ParentPicker} key="parent" t=${t} ctx=${ctx} />` : null;
-
-    return html`<div class="panel">
-      <${LiveText} tag="div" className="live detail" placeholder="詳細を書く（任意）" field="detail"
-        value=${t.detail || ''} t=${t} ctx=${ctx} />
-      <${TopicField} t=${t} id=${'topic-' + t.id} inRow=${true} ctx=${ctx} />
-      <${StatusBlock} t=${t} ctx=${ctx} />
-      <${LinksBlock} t=${t} ctx=${ctx} />
-      <${Supplements} t=${t} />
-      <div class="panel-actions">
-        ${focusBtn}
-        ${longBtn}
-        ${childBtn}
-        ${picker}
-        <${CopyUrl} t=${t} ctx=${ctx} />
-        <span class=${saveState.cls} data-save="1">${saveState.text}</span>
-        <span class="spacer"></span>
-        ${resume}
-        ${someday}
-        ${wait}
-        <${TrailLinks} t=${t} rev=${held.rev} ctx=${ctx} />
-        ${t.state === 'waiting' && t.handed_to ? html`<span class="handoff-note">${t.handed_on + ' に ' + t.handed_to + ' へ渡した'
-          + (t.wait_note ? ' · ' + t.wait_note : '')}</span>` : null}
-      </div>
-    </div>`;
-  }
-
-  // ---- 一覧の横の詳細欄 ----
-
-  // The side box keeps the trail of the tasks it was shown, by id. A trail
-  // is read again when the board has moved on (rev).
-  var trailCache = {};
-
-  // SideTrail is the box's history list. The cached copy shows at once while
-  // a newer one is read.
-  function SideTrail(p) {
-    var id = p.t.id;
-    var st = useState(function () { return trailCache[id] || null; });
-    var got = st[0];
-    var setGot = st[1];
-    useEffect(function () {
-      var live = true;
-      request('GET', '/api/tasks/' + encodeURIComponent(id) + '/context')
-        .then(function (data) {
-          var next = { events: data.events || [] };
-          trailCache[id] = next;
-          if (live) setGot(next);
-        })
-        .catch(function () { if (live) setGot({ error: true }); });
-      return function () { live = false; };
-    }, [id, p.rev]);
-
-    var items;
-    if (got && got.events) {
-      items = got.events.length === 0
-        ? html`<li>経緯なし</li>`
-        : got.events.slice().reverse().map(function (e, i) {
-          return html`<li key=${i}><time>${whenText(e.at)}</time>${eventWhat(e) + (e.reason ? ' — ' + e.reason : '')}</li>`;
-        });
-    } else if (got && got.error) {
-      items = html`<li>経緯を読めない</li>`;
-    } else {
-      items = html`<li>読み込み中</li>`;
-    }
-    return html`<div class="d-sec">
-      <h2>経緯</h2>
-      <ul class="d-trail">${items}</ul>
-    </div>`;
-  }
-
   var CALENDAR_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
     + ' stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/>'
     + '<path d="M3.5 10h17M8 3v4M16 3v4"/></svg>';
 
-  // SideField is one line of the box's fields: the name on the left, the value
+  // SideField is one line of the panel's fields: the name on the left, the value
   // on the right.
   function SideField(p) {
     return html`<div class="d-field" data-field=${p.name}>
@@ -1117,71 +981,112 @@
       onClick=${function (ev) { ev.stopPropagation(); ctx.toggleSideMenu(t, ev.currentTarget); }}>${icon}${label}</button>`;
   }
 
-  // SideTop is the row of what to do with the task as a whole, and its name.
-  function SideTop(p) {
-    var t = p.t;
-    var ctx = p.ctx;
-    var done = t.state === 'done';
-    return html`<div class="d-top">
-      <${Act} ctx=${ctx} cls="d-complete" label=${done ? '完了を取り消す' : '完了にする'}
-        title=${done ? '着手順の末尾へ戻す' : '完了にする'}
-        run=${function () {
-          return request('POST', '/api/tasks/' + encodeURIComponent(t.id) + (done ? '/reopen' : '/done'))
-            .then(function () { ctx.closeRow(t.id); return ctx.load(); });
-        }} />
-      <span class="spacer"></span>
-      <span class="d-id">${t.id}</span>
-      <${CopyUrl} t=${t} ctx=${ctx} />
-    </div>`;
-  }
+  // ---- 詳細パネル ----
 
-  // Side is the box beside the list. It follows the row under the pointer; the
-  // fields, the topic, the status line and the move buttons act on the task it
-  // shows, and the open row's panel (below the row) has the same operations, so
-  // the box can disappear at narrow widths without taking any with it.
-  function Side(p) {
-    var t = p.t;
+  // DetailPanel is the one detail of a task: what to do with it as a whole, its
+  // name, its fields, the moves, what I wrote, the related URLs, the status
+  // and what happened. It is shown beside the list only while a row is open
+  // (app.js), and every text in it is edited where it is read: no label, no box,
+  // no save button.
+  function DetailPanel(p) {
     var ctx = p.ctx;
+    var held = useHeld(p.t, p.rev, ctx);
+    var t = held.t;
+    var st = useState({ text: '', cls: 'save-state' });
+    var saveState = st[0];
+    var setSaveState = st[1];
+    var fade = useRef(null);
+
+    // The fields report "保存中…" / "保存した" through markSave, by task id.
+    useEffect(function () {
+      function set(text, saved) {
+        window.clearTimeout(fade.current);
+        setSaveState({ text: text, cls: 'save-state on' + (saved ? ' saved' : '') });
+        if (saved) {
+          fade.current = window.setTimeout(function () {
+            setSaveState(function (prev) { return { text: prev.text, cls: 'save-state saved' }; });
+          }, 1600);
+        }
+      }
+      saveMarks[t.id] = set;
+      return function () {
+        window.clearTimeout(fade.current);
+        if (saveMarks[t.id] === set) delete saveMarks[t.id];
+      };
+    }, [t.id]);
+
     var A = moveActions(t, ctx);
+    var done = t.state === 'done';
     var idle = t.idle_days ? t.idle_days + '日' : '—';
-    var moves = [A.longBtn, A.resume, A.someday, A.wait].filter(Boolean);
-    return [
-      html`<${SideTop} key="top" t=${t} ctx=${ctx} />`,
-      html`<h2 key="name" class="d-name">${window.workbench.todoList.nameParts(t)}</h2>`,
-      html`<div key="fields" class="d-fields">
+
+    // Any task that is not done can have children, down to MAX_DEPTH levels.
+    var childBtn = t.state !== 'done' && (t.parent_path || []).length + 1 < MAX_DEPTH
+      ? html`<button key="child" type="button" title=${t.id + ' の子としてタスクを追加する'}
+          onClick=${function () { ctx.addChild(t); }}>子を追加</button>` : null;
+
+    // A long-run task is the top of a tree, so it has no parent to choose.
+    var picker = t.state !== 'long' && t.state !== 'done' ? html`<${ParentPicker} key="parent" t=${t} ctx=${ctx} />` : null;
+    var moves = [A.longBtn, A.resume, A.someday, A.wait, childBtn, picker].filter(Boolean);
+
+    return html`<div class="dp">
+      <div class="d-top">
+        <${Act} ctx=${ctx} cls="d-complete" label=${done ? '完了を取り消す' : '完了にする'}
+          title=${done ? '着手順の末尾へ戻す' : '完了にする'}
+          run=${function () {
+            return request('POST', '/api/tasks/' + encodeURIComponent(t.id) + (done ? '/reopen' : '/done'))
+              .then(function () { return ctx.load(); });
+          }} />
+        <span class="spacer"></span>
+        <span class="d-id">${t.id}</span>
+        <${CopyUrl} t=${t} ctx=${ctx} />
+        <span class=${saveState.cls} data-save="1">${saveState.text}</span>
+        <button type="button" class="d-close" id="detail-close" aria-label="詳細を閉じる" title="閉じる（Esc）"
+          onClick=${function () { ctx.closePanel(true); }}>×</button>
+      </div>
+      <h2 class="d-name"><${NameField} t=${t} rev=${held.rev} ctx=${ctx} /></h2>
+      <div class="d-fields">
         <${SideField} name="状態"><span class="d-state">${detailState(t)}</span><//>
         ${t.state === 'open' || t.state === 'waiting' || t.state === 'long'
           ? html`<${SideField} name=${t.state === 'long' ? '次に見る日' : '期限'}><${DueButton} t=${t} ctx=${ctx} /><//>` : null}
-        <${SideField} name="話題"><${TopicField} t=${t} id=${'d-topic-' + t.id} inRow=${false} ctx=${ctx} /><//>
+        <${SideField} name="話題"><${TopicField} t=${t} id=${'topic-' + t.id} inRow=${false} ctx=${ctx} /><//>
         ${t.state === 'open' ? html`<${SideField} name="フォーカス">${A.focusBtn}<//>` : null}
         <${SideField} name="止まって"><span class="d-idle">${idle}</span><//>
         ${t.state === 'waiting' ? html`<${SideField} name="渡した相手"><span>${t.handed_to || '—'}</span><//>` : null}
         ${t.state === 'waiting' ? html`<${SideField} name="渡した日"><span>${t.handed_on || '—'}</span><//>` : null}
-      </div>`,
-      html`<div key="moves" class="d-moves" hidden=${moves.length === 0}>${moves}</div>`,
-      html`<div key="body" class=${'d-body' + (t.detail ? '' : ' none')}>${t.detail || '詳細なし'}</div>`,
-      html`<${RelatedList} key="related" t=${t} />`,
-      // One status input per task on screen: while the task's row is open the
-      // row has the input, and the box only points there (two inputs would each
-      // keep the sent text and could append it twice).
-      html`<div key="status" class="d-sec"><h2>状況</h2>${ctx.state.openId === t.id
-        ? html`<p class="d-status-here">開いた行の「状況」に書く</p>`
-        : html`<${StatusBlock} t=${t} ctx=${ctx} idPrefix="d-" />`}</div>`,
-      html`<${Supplements} key="supplements" t=${t} />`,
-      html`<${SideTrail} key="trail" t=${t} rev=${p.rev} />`,
-    ];
+      </div>
+      <div class="d-moves" hidden=${moves.length === 0}>${moves}</div>
+      <div class="d-sec">
+        <h2>詳細</h2>
+        <${LiveText} tag="div" className="live detail" placeholder="詳細を書く（任意）" field="detail"
+          value=${t.detail || ''} t=${t} ctx=${ctx} />
+      </div>
+      <div class="d-sec">
+        <h2>関連 URL</h2>
+        <${LinksBlock} t=${t} ctx=${ctx} />
+      </div>
+      <div class="d-sec">
+        <h2>状況</h2>
+        <${StatusBlock} t=${t} ctx=${ctx} />
+        <${Supplements} t=${t} />
+      </div>
+      <div class="d-sec d-trailrow">
+        <${TrailLinks} t=${t} rev=${held.rev} ctx=${ctx} />
+        ${t.state === 'waiting' && t.handed_to ? html`<span class="handoff-note">${t.handed_on + ' に ' + t.handed_to + ' へ渡した'
+          + (t.wait_note ? ' · ' + t.wait_note : '')}</span>` : null}
+      </div>
+    </div>`;
   }
 
-  // renderSide draws task t into the box (the aside element). Keyed by the
-  // task, so another task is a new box and the same one only updates.
-  function renderSide(container, t, rev, ctx) {
-    P.render(html`<${Side} key=${t.id} t=${t} rev=${rev} ctx=${ctx} />`, container);
+  // renderPanel draws task t into the aside, or empties it when t is null.
+  // Keyed by the task, so another task is a new panel and the same one only
+  // updates.
+  function renderPanel(container, t, rev, ctx) {
+    P.render(t ? html`<${DetailPanel} key=${t.id} t=${t} rev=${rev} ctx=${ctx} />` : null, container);
   }
 
   window.workbench = window.workbench || {};
   window.workbench.todoDetail = {
     NameField: NameField,
-    Panel: Panel,
-    renderSide: renderSide,
+    renderPanel: renderPanel,
   };
 })();
