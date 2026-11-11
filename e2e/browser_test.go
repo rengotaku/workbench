@@ -76,18 +76,10 @@ func (p *page) click(sel string) {
 	p.run(chromedp.Click(sel, chromedp.ByQuery))
 }
 
-// nav follows a header link (in the page when the router can). The todo
-// screens hide the header nav and carry their own links in the sidebar, so from
-// there the sidebar's link is the one followed.
+// nav follows a header link (in the page when the router can).
 func (p *page) nav(href string) {
 	p.t.Helper()
-	var navShown bool
-	p.eval(`getComputedStyle(document.querySelector('.site-head')).display !== 'none'`, &navShown)
-	if navShown {
-		p.click(`.site-nav a[href="` + href + `"]`)
-		return
-	}
-	p.click(`.side-links a[href="` + href + `"]`)
+	p.click(`.site-nav a[href="` + href + `"]`)
 }
 
 // key presses one key on whatever has focus.

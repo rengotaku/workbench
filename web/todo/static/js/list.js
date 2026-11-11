@@ -681,14 +681,18 @@
     var tree = [
       html`<div class="app-head">
         <div class="head-left">
+          <button type="button" class="side-show" id="side-show" aria-label="サイドバーを出す" aria-expanded="false"
+            title="サイドバーを出す" hidden=${st.sideOpen} onClick=${ctx.toggleSide}>»</button>
           <h1 class="app-name">着手順</h1>
           <span class="app-date">${dateLabel(b.today)}</span>
+          <button type="button" class="topic-filter" id="topic-filter" hidden=${!st.topicFilter}
+            title="絞り込みを解除する" onClick=${function () { ctx.toggleTopic(st.topicFilter); }}>${'話題: ' + (st.topicFilter || '') + ' ×'}</button>
         </div>
         <div class="head-right">
           <div class="group-set">
             <button type="button" class="group-toggle" id="group-toggle" aria-pressed=${String(st.groupByTopic)}
               title="着手順を話題ごとの見出しで区切って見せる。順序は変わらない" onClick=${ctx.toggleGroup}>話題で分ける</button>
-            <span class="group-note" id="group-note" hidden=${!st.groupByTopic}>分けている間は並べ替えできない</span>
+            <span class="group-note" id="group-note" hidden=${!st.groupByTopic && !st.topicFilter}>${st.topicFilter ? '絞っている間は並べ替えできない' : '分けている間は並べ替えできない'}</span>
           </div>
           <div class="counts-col">
             <div class="counts">
@@ -712,13 +716,13 @@
       </div>`,
       html`<section class=${'focus-band' + (st.drag && st.drag.active ? ' drop-ready' : '')} id="focus-band" ...${dragProps(ctx, 'focus-list')}>
         <div class="focus-head">フォーカス<span class="n" id="focus-count">${focus.length}</span></div>
-        <ul class="list focus-list" id="focus-list">${focus.map(function (t) { return queueRow(t, false, v); })}</ul>
+        <ul class="list focus-list" id="focus-list">${focus.map(function (t) { return queueRow(t, !!st.topicFilter, v); })}</ul>
         <p class="focus-empty" id="focus-empty" hidden=${focus.length > 0}>ここへドラッグするとフォーカスになる</p>
       </section>`,
 
       html`<section class="sec" id="queue-sec" ...${dragProps(ctx, 'queue')}>
         <h2 class="sec-headline" id="queue-head">着手順<span class="n" id="queue-count">${inScope.length}</span><span class="fold-note" id="queue-note">${monthDay(b.today) + '〜' + monthDay(shiftDay(b.today, b.scope_days))}</span></h2>
-        <ul class="list" id="queue">${st.groupByTopic ? groupedRows(inScope, v) : inScope.map(function (t) { return queueRow(t, false, v); })}</ul>
+        <ul class="list" id="queue">${st.groupByTopic ? groupedRows(inScope, v) : inScope.map(function (t) { return queueRow(t, !!st.topicFilter, v); })}</ul>
         <div class="add" id="add-slot">
           <span></span>
           <span class="plus" aria-hidden="true">＋</span>
@@ -739,7 +743,7 @@
         listId="outlist" label="スコープ外" countId="out-count" count=${outRows.length}
         noteId="out-from" note=${'期限 ' + monthDay(shiftDay(b.today, b.scope_days + 1)) + ' 以降'}
         secProps=${dragProps(ctx, 'outlist')}
-        onToggle=${function () { ctx.toggleFold('out'); }}>${outRows.map(function (t) { return queueRow(t, false, v); })}<//>`,
+        onToggle=${function () { ctx.toggleFold('out'); }}>${outRows.map(function (t) { return queueRow(t, !!st.topicFilter, v); })}<//>`,
 
       // Folded, the longest wait is what would otherwise go unseen.
       html`<${Fold} secId="waiting-sec" hidden=${waiting.length === 0 && !st.resumed} foldId="wait-fold" open=${st.waitOpen}

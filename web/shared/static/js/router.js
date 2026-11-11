@@ -28,10 +28,6 @@
     'timeline': '/notes/timeline',
   };
 
-  // The screens that carry their own navigation: the header nav is hidden on
-  // them (the todo screens have a sidebar; note and the timeline keep the nav).
-  var OWN_NAV = { 'todo': true, 'todo-add': true };
-
   var views = {}; // name -> { view, mounted, scrollY }
   var current = null; // name of the screen on show
   var shownPath = ''; // its path and query, to tell a hash-only move apart
@@ -96,7 +92,6 @@
     shownPath = url.pathname + url.search;
     if (entry.view.title) document.title = entry.view.title;
     markNav(name);
-    document.body.classList.toggle('no-site-nav', !!OWN_NAV[name]);
     if (entry.view.show) entry.view.show(url);
     // The window scroll is shared by every screen, so each one keeps its own.
     window.scrollTo(0, restoreScroll ? entry.scrollY : 0);

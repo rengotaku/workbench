@@ -91,8 +91,9 @@ func TestTodoTableCells(t *testing.T) {
 	// than staying where the row was.
 	// Click from script: chromedp's Click scrolls the box to the button first,
 	// and that scroll would itself close the menu this step opens.
-	p.eval(`document.querySelector('.task[data-id="`+open+`"] .due-warn').click(), true`, nil)
-	p.until("due menu open again", `!!document.querySelector('.due-menu')`)
+	// The viewport change above sends a resize, which closes menus, and it can
+	// arrive after this click: press again until the menu stays open.
+	p.until("due menu open again", `(() => { if (!document.querySelector('.due-menu')) document.querySelector('.task[data-id="`+open+`"] .due-warn').click(); return !!document.querySelector('.due-menu'); })()`)
 	p.eval(`(() => { const b = document.querySelector('.tbl-scroll'); b.scrollLeft = 200; b.dispatchEvent(new Event('scroll')); return true; })()`, nil)
 	p.until("due menu closed on scroll", `!document.querySelector('.due-menu')`)
 }
