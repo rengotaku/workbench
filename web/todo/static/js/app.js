@@ -667,6 +667,15 @@
 
     window.addEventListener('resize', closeMenu);
     window.addEventListener('resize', closeDropAsk);
+    // The table scrolls sideways inside its own box on a narrow screen. The menu
+    // and the drop-reason box sit outside it, placed once when they open, so a
+    // sideways scroll would leave them away from their row: close them instead.
+    document.addEventListener('scroll', function (e) {
+      var t = e.target;
+      if (!t || !t.classList || !t.classList.contains('tbl-scroll')) return;
+      if (state.menu) closeMenu();
+      if (state.dropAsk) closeDropAsk();
+    }, true);
 
     // "タスクを追加" and N open the add page (/add) in a dialog over the list:
     // the same form, due chips and detail as a bare `todo` opens. The list is

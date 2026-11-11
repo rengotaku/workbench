@@ -144,7 +144,6 @@
      (ADR todo-0023). */
   .idle-tag {
     flex: none;
-    margin-left: 8px;
     padding: 0 6px;
     font-family: var(--mono);
     font-size: var(--fs-xs);
@@ -354,9 +353,8 @@
     /* Written in the body face, not the mono of the fold headings, so it does
        not read as one more section to unfold. */
     font-family: var(--sans);
-    font-size: var(--fs-lg3);
+    font-size: 16px;
     font-weight: 700;
-    letter-spacing: .04em;
     color: var(--ink);
   }
   /* ◎ is the focus mark the detail pane uses; it takes the place of the caret
@@ -563,36 +561,42 @@
 
   /* The completed list is closed by default: it is a record, not a queue. The
      count stays visible so closing it does not hide how much there is. */
-  .fold-head {
+  .fold-head, .sec-headline {
     display: flex;
     align-items: center;
     gap: 8px;
     background: none;
     border: 0;
     padding: 0;
-    cursor: pointer;
-    font-family: var(--mono);
-    font-size: var(--fs-sm);
-    letter-spacing: .16em;
-    text-transform: uppercase;
-    color: var(--muted);
+    margin: 0;
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--ink);
   }
-  .fold-head:hover { color: var(--ink-soft); }
+  .fold-head { cursor: pointer; }
+  .fold-head:hover .caret { color: var(--accent); }
   .fold-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-  .fold-head .caret { font-size: var(--fs-2xs); }
+  .fold-head .caret { font-size: var(--fs-xs); color: var(--ink-soft); width: 1em; }
   /* What a folded section would show if opened: where スコープ外 starts, how
      long the longest wait has been. */
-  .fold-head .fold-note { margin-left: 8px; }
-  .fold-head .n {
+  .fold-head .fold-note, .sec-headline .fold-note {
+    margin-left: 4px;
+    font-size: var(--fs-md2);
+    font-weight: 400;
+    color: var(--ink-soft);
+  }
+  .fold-head .n, .sec-headline .n {
     font-family: var(--mono);
-    font-size: var(--fs-sm);
-    letter-spacing: 0;
-    color: var(--muted);
+    font-size: var(--fs-md);
+    font-weight: 400;
+    color: var(--ink-soft);
     background: var(--surface-sunk);
     padding: 1px 6px;
     border-radius: var(--radius-sm);
   }
-  .fold-head[aria-expanded="true"] + .list { margin-top: 10px; }
+  .fold-head[aria-expanded="true"] + .list, .sec-headline + .list { margin-top: 10px; }
 
   /* ---- editing in place ---- */
   /* No labels, no boxes, no save button: the text itself is the field. */
@@ -641,11 +645,60 @@
 
   ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 
-  /* ---- one row per task ---- */
+  /* ---- the table: one heading line, one row per task ---- */
+  /* The columns are the same for the heading line and every row: grip, check,
+     name (the first three are the 320px the name column starts at), 期限, 話題,
+     止まって, 状況, trash. Narrower than the table needs, the box scrolls. */
+  .tbl-scroll { overflow-x: auto; }
+  .tbl {
+    --cols: 10px 18px minmax(220px, 1fr) 148px 140px 84px minmax(120px, 0.7fr) 22px;
+    min-width: 850px;
+  }
+  .tbl-colhead {
+    display: grid;
+    grid-template-columns: var(--cols);
+    column-gap: 6px;
+    padding: 8px 22px;
+    border-bottom: 1px solid var(--line);
+    font-size: var(--fs-md);
+    color: var(--ink-soft);
+  }
+  .tbl-colhead .ch-name { grid-column: 1 / 4; }
+  .cell { min-width: 0; }
+  .c-due { overflow: visible; }
+  .c-topic, .c-status { overflow: hidden; }
+  .status-text {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--fs-md);
+    color: var(--ink-soft);
+  }
+  /* A topic's tag: six colours in turn, each text/background pair above 4.5:1. */
+  .topic-tag {
+    display: inline-block;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 2px 8px;
+    border-radius: var(--radius-md);
+    font-size: var(--fs-md);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+  .topic-tag.tp0 { background: #e6effc; color: #1f4f96; }
+  .topic-tag.tp1 { background: #e5f4ee; color: #1d6248; }
+  .topic-tag.tp2 { background: #f1eafb; color: #5a2f93; }
+  .topic-tag.tp3 { background: #e2f3f6; color: #0f5560; }
+  .topic-tag.tp4 { background: #eef0f3; color: #3f4650; }
+  .topic-tag.tp5 { background: #fbe8ef; color: #8c1f4a; }
+
   .task {
     display: grid;
-    grid-template-columns: 10px 16px 18px 1fr auto 22px;
-    align-items: start;
+    grid-template-columns: var(--cols);
+    align-items: center;
     column-gap: 6px;
     /* Rows bleed to the card edge so the colour stripe sits on it, but their
        first column lines up with the headings and the app title above: one left
@@ -677,6 +730,7 @@
      shorthand resets the colour; only the colour is set here, so the stripe and
      its tint stay. The accent lines mark where the open row starts and ends;
      the fill stays grey so it does not read as the focus band. */
+  .task.row-open > .panel { grid-column: 3 / 8; align-self: stretch; }
   .task.row-open {
     background-color: var(--surface-sunk);
     box-shadow: inset 0 1px 0 var(--accent), inset 0 -1px 0 var(--accent);
@@ -730,7 +784,6 @@
     user-select: none;
     line-height: 1.5;
     font-size: var(--fs-md);
-    padding-top: 2px;
   }
   .task:hover .grip { color: var(--muted); }
   .grip.empty { cursor: default; }
@@ -744,13 +797,9 @@
   @media (hover: none) {
     .task .grip { visibility: visible; }
   }
-  /* Queue, focus and out-of-scope rows have no mark column (the position is not
-     shown), so their check sits one column in. */
-  .task.no-num { grid-template-columns: 10px 18px 1fr auto 22px; }
 
-  /* The second column holds ◎ for focused queue rows, ◇ for someday and ✓ for
-     done. Waiting rows leave it empty — ◷ read too much like ◎ — but the column
-     stays so every section shares the same left baseline. */
+  /* The mark in front of a name: ▶ for a long-run row, ◇ for someday. Waiting
+     and queue rows have none. */
   .num {
     font-family: var(--mono);
     font-size: var(--fs-md);
@@ -800,19 +849,13 @@
     min-width: 0;
   }
   .name .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* Queue, focus and out-of-scope rows wrap to two lines before clipping. */
-  .task.no-num .name .txt:not(.live) {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-  .task.no-num .name { align-items: flex-start; }
-  /* Tags inside the name text sit in the line and the text wraps under them. */
-  .task.no-num .name .txt > .tk-tag,
-  .task.no-num .name .txt > .parent-tag,
-  .task.no-num .name .txt > .kids-tag { margin-right: 5px; }
+  /* The open row's name is the editable text: it wraps instead of being cut. */
+  .name .txt.live { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+  /* Tags inside the name text sit in the line before the words. */
+  .task .name .txt > .tk-tag,
+  .task .name .txt > .parent-tag,
+  .task .name .txt > .kids-tag { margin-right: 5px; }
+  .name .num { flex: none; margin-right: 2px; }
   /* The ticket number, set apart from the name it came off. */
   .tk-tag {
     display: inline-block;
@@ -934,15 +977,16 @@
        resize as the label changes. */
     display: inline-block;
     box-sizing: border-box;
-    width: 6.2em;
-    text-align: center;
-    font-family: var(--mono);
-    font-size: var(--fs-sm);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+    font-family: var(--sans);
+    font-size: var(--fs-md);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-    padding: 2px 7px;
+    padding: 2px 8px;
     border-radius: var(--radius-sm);
-    margin-top: 3px;
     /* --ink-soft, not --muted: an uncoloured chip still carries a date to read,
        and --muted on the sunk fill is below 4.5:1 at this size. */
     color: var(--ink-soft);
@@ -953,7 +997,7 @@
     appearance: none;
     border: 1px solid transparent;
     cursor: pointer;
-    font-family: var(--mono);
+    font-family: var(--sans);
   }
   button.due-edit:hover { border-color: var(--line); }
   /* A row with no due date shows its 期限なし chip only while pointed at, open,
@@ -967,6 +1011,11 @@
   }
   button.due-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   button.due-edit[aria-expanded="true"] { border-color: var(--accent); }
+  /* No start day on a queue row: an orange warning, not the red of overdue or
+     the amber of soon. #9a3a00 on #fff1e6 is 6.4:1 (ADR todo-0028). */
+  .due.due-warn { background: #fff1e6; color: #9a3a00; border: 1px solid #f1a56b; font-weight: 600; }
+  button.due-warn:hover { border-color: #d97a2b; }
+  button.due-warn[aria-expanded="true"] { border-color: #d97a2b; }
   .due-input {
     font-family: var(--mono);
     font-size: var(--fs-sm);
@@ -1094,19 +1143,10 @@
     .side-item { transition: background .15s ease; }
   }
 
-  /* Narrow, the chip sits on its own line under the name, so a hidden one
-     would still hold that line open: take it out of the flow instead. Touch
-     screens always show it, as above. */
-  @media (max-width: 460px) and (hover: hover) {
-    .task:not(:hover):not(.row-open):not(:focus-within) .due.due-none:not([aria-expanded="true"]) { display: none; }
-  }
+  /* Narrow: the table keeps its columns and the box scrolls sideways. */
   @media (max-width: 460px) {
-    .task { grid-template-columns: 10px 16px 18px 1fr 22px; margin-inline: -16px; padding: 9px 16px 9px 13px; }
-    .task.no-num { grid-template-columns: 10px 18px 1fr 22px; }
-    .task.no-num .due { grid-column: 3; }
-    .task.no-num .del-slot { grid-column: 4; }
-    .due { grid-column: 4; justify-self: start; }
-    .del-slot { grid-column: 5; grid-row: 1; }
+    .task { margin-inline: -16px; padding: 9px 16px 9px 13px; }
+    .tbl-colhead { padding-inline: 16px; }
     .app-head { padding: 12px 16px 22px; }
     .sec, .add-row { padding-inline: 16px; }
   }
