@@ -54,16 +54,28 @@
   }
 
   // render draws the sidebar into container.
-  //   view.board  the board the API sent (null before the first reply)
-  //   view.ctx    ctx.openSection(key) opens a section and scrolls to it
+  //   view.board  the board the section counts come from (the topic filter has narrowed it)
+  //   view.all    the board the API sent: the topic counts are not narrowed
+  //   view.ctx    ctx.openSection(key) opens a section and scrolls to it;
+  //               ctx.toggleTopic(name) filters the list; ctx.toggleSide() folds the box
   function render(container, view) {
     var b = view.board || { queue: [], focus: [] };
     var ctx = view.ctx;
     var counts = sectionCounts(b);
-    var topics = b.topics || [];
-    var perTopic = topicCounts(b);
+    var all = view.all || b;
+    var topics = all.topics || [];
+    var perTopic = topicCounts(all);
+    var st = view.state;
+
+    if (!st.sideOpen) {
+      // Folded: nothing is drawn here; the list's header has the button that brings it back.
+      P.render(null, container);
+      return;
+    }
 
     var tree = html`<div class="side-inner">
+      <button type="button" class="side-fold" id="side-fold" aria-label="サイドバーを隠す" aria-expanded="true"
+        title="サイドバーを隠す" onClick=${ctx.toggleSide}>«</button>
       <h2 class="side-h">区画</h2>
       <ul class="side-list" id="side-sections">${SECTIONS.map(function (s) {
         return html`<li key=${s.key}><button type="button" class="side-item" data-section=${s.key}
@@ -71,13 +83,12 @@
       })}</ul>
       <h2 class="side-h">話題</h2>
       <ul class="side-list" id="side-topics">${topics.map(function (name) {
-        return html`<li key=${name} class="side-row"><span class="side-name">${name}</span><span class="side-n">${perTopic[name] || 0}</span></li>`;
+        var on = st.topicFilter === name;
+        return html`<li key=${name}><button type="button" class=${'side-item' + (on ? ' on' : '')} data-topic=${name}
+          aria-pressed=${String(on)} title=${on ? '絞り込みを解除する' : 'この話題のタスクだけを一覧に出す'}
+          onClick=${function () { ctx.toggleTopic(name); }}><span class="side-name">${name}</span><span class="side-n">${perTopic[name] || 0}</span></button></li>`;
       })}</ul>
       <p class="side-empty" hidden=${topics.length > 0}>話題はまだない</p>
-      <div class="side-links">
-        <a href="/notes">note</a>
-        <a href="/notes/timeline">タイムライン</a>
-      </div>
     </div>`;
     P.render(tree, container);
   }

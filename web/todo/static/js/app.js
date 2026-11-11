@@ -38,6 +38,7 @@
     root.innerHTML = MARKUP;
     var appEl = root.querySelector('.app');
     var sideEl = root.querySelector('.side');
+    var panesEl = root.querySelector('.panes');
 
     var shared = window.todoShared;
     var composing = shared.composing;
@@ -57,6 +58,7 @@
     var WAIT_KEY = 'todo-order.wait-open';
     var LONG_KEY = 'todo-order.long-open';
     var GROUP_KEY = 'todo-order.group-by-topic';
+    var SIDE_KEY = 'todo-order.side-open';
     var POLL_MS = 4000;
     var state = {
       scope: 'week',
@@ -79,6 +81,12 @@
       // Group the queue under a heading per topic. Display only: the order is
       // still one list (ADR todo-0024).
       groupByTopic: false,
+      // Show only this topic's tasks (null: all). Kept here, not in storage: a
+      // reload clears it. The sections keep their split; the queue cannot be
+      // reordered while it is on, as when grouped.
+      topicFilter: null,
+      // The sidebar is open or folded (kept in localStorage).
+      sideOpen: true,
       board: null,
       openId: null, // only one row is open at a time; another row closes it
       doneOpen: false, // the completed list is a record, not a queue
@@ -246,14 +254,28 @@
       // where the last draw left it, so the draw finds the DOM it expects, and
       // move it to where the pointer put it once the draw is done.
       restorePreview();
-      list.render(appEl, { board: state.board, state: state, ctx: ctx });
-      sidebar.render(sideEl, { board: state.board, ctx: ctx });
+      var shown = filterBoard(state.board, state.topicFilter);
+      panesEl.classList.toggle('side-hidden', !state.sideOpen);
+      list.render(appEl, { board: shown, state: state, ctx: ctx });
+      sidebar.render(sideEl, { board: shown, all: state.board, state: state, ctx: ctx });
       applyPreview();
       renderOverlays();
       var b = state.board;
       if (!b) return;
       fillTopicList(b.topics || []);
       refreshDetail();
+    }
+
+    // filterBoard is the board with only one topic's tasks in each section (the
+    // sidebar's filter). The sections keep their split, so each count is what is
+    // left. A removed task has no topic to match, so none of those are shown.
+    function filterBoard(b, topic) {
+      if (!b || !topic) return b;
+      var out = Object.assign({}, b);
+      ['queue', 'focus', 'long', 'waiting', 'someday', 'done', 'dropped'].forEach(function (k) {
+        out[k] = (b[k] || []).filter(function (t) { return t.topic === topic; });
+      });
+      return out;
     }
 
     // renderOverlays draws the menus, the reason field and the notice (menus.js).
@@ -751,6 +773,17 @@
       render();
     }
 
+    function toggleTopic(name) {
+      state.topicFilter = state.topicFilter === name ? null : name;
+      render();
+    }
+
+    function toggleSide() {
+      state.sideOpen = !state.sideOpen;
+      try { localStorage.setItem(SIDE_KEY, state.sideOpen ? '1' : '0'); } catch (e) { /* private window */ }
+      render();
+    }
+
     function toggleGroup() {
       state.groupByTopic = !state.groupByTopic;
       try { localStorage.setItem(GROUP_KEY, state.groupByTopic ? '1' : '0'); } catch (e) { /* private window */ }
@@ -843,7 +876,7 @@
         if (!d || !d.active) return;
         // Grouped: nothing can land in the queue. No preventDefault, so the
         // browser shows the drop as not allowed and the drag ends as a cancel.
-        if (state.groupByTopic && listId === 'queue') return;
+        if ((state.groupByTopic || state.topicFilter) && listId === 'queue') return;
         ev.preventDefault();
         var target = byId(listId);
         var li = taskNode(d.id);
@@ -1025,6 +1058,7 @@
       state.waitOpen = localStorage.getItem(WAIT_KEY) === '1';
       state.longOpen = localStorage.getItem(LONG_KEY) === '1';
       state.groupByTopic = localStorage.getItem(GROUP_KEY) === '1';
+      state.sideOpen = localStorage.getItem(SIDE_KEY) !== '0';
     } catch (e) { /* storage unavailable; closed is the default */ }
 
     // What list.js calls back into: the parts of the list that stay here.
@@ -1055,6 +1089,8 @@
       openLongTask: openLongTask,
       toggleFold: toggleFold,
       toggleGroup: toggleGroup,
+      toggleTopic: toggleTopic,
+      toggleSide: toggleSide,
       openSection: openSection,
       openAdd: openAdd,
       onCheck: onCheck,
