@@ -1113,7 +1113,7 @@
       ? (t.review_on ? '見る ' + L.monthDay(t.review_on) : '見る 未設定')
       : (t.due ? L.dueText(t, ctx.state.board.today) : (warn ? '⚠ 期限なし' : '期限なし'));
     var cls = 'd-due due' + (warn ? ' due-warn' : '') + (!long && t.due ? ' ' + L.dueChip(t) : '');
-    return html`<button type="button" class=${cls} aria-haspopup="menu" aria-expanded=${String(open)}
+    return html`<button type="button" class=${cls} aria-haspopup="dialog" aria-expanded=${String(open)}
       onClick=${function (ev) { ev.stopPropagation(); ctx.toggleSideMenu(t, ev.currentTarget); }}>${icon}${label}</button>`;
   }
 

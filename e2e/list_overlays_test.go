@@ -64,18 +64,28 @@ func (p *page) pickItem(label string) {
 	p.eval(`Array.from(document.querySelectorAll('.due-menu .dm-item')).find(b => b.textContent.startsWith('`+label+`')).click()`, nil)
 }
 
-// pickDay presses a day (YYYY-MM-DD) of the open menu's calendar, going on to
-// the next month first when the month shown does not hold it.
+// pickDay presses a day (YYYY-MM-DD) of the open menu's calendar, moving the
+// calendar back or on a month at a time until the month shown holds it.
 func (p *page) pickDay(value string) {
 	p.t.Helper()
 	sel := `.due-menu .cal-day[data-day="` + value + `"]`
-	var have bool
-	p.eval(`!!document.querySelector('`+sel+`')`, &have)
-	if !have {
-		p.eval(`document.querySelector('.due-menu .cal-nav button[aria-label="次の月"]').click()`, nil)
-		p.until("month of "+value, `!!document.querySelector('`+sel+`')`)
+	for i := 0; i < 24; i++ {
+		var have bool
+		p.eval(`!!document.querySelector('`+sel+`')`, &have)
+		if have {
+			p.eval(`document.querySelector('`+sel+`').click()`, nil)
+			return
+		}
+		var first string
+		p.eval(`document.querySelector('.due-menu .cal-day').dataset.day`, &first)
+		way := "次の月"
+		if value < first {
+			way = "前の月"
+		}
+		p.eval(`document.querySelector('.due-menu .cal-nav button[aria-label="`+way+`"]').click()`, nil)
+		p.until("month moved", `document.querySelector('.due-menu .cal-day').dataset.day !== '`+first+`'`)
 	}
-	p.eval(`document.querySelector('`+sel+`').click()`, nil)
+	p.t.Fatalf("day %s not found in the calendar", value)
 }
 
 // noticeText is what the notice says, "" while it is hidden.

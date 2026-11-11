@@ -306,7 +306,12 @@
     return html`<${Menu} ctx=${ctx} menu=${m} label="次に見る日">
       <div class="dm-sec">
         <${Calendar} value=${m.current} today=${ymd(base)} scopeDays=${(board && board.scope_days) || 0}
-          marks=${dueDays(board)} onPick=${setReview} />
+          marks=${dueDays(board)} onPick=${function (v) {
+            // The day already set: nothing to record (a review would mark the
+            // task as looked at and clear its stalled warning).
+            if (!v || v === m.current) { ctx.closeMenu(); return; }
+            setReview(v);
+          }} />
       </div>
       <div class="dm-sec">
         <div class="dm-label">${'今日（' + shortDate(base) + '）から'}</div>
