@@ -334,7 +334,7 @@
     function openDropAsk(btn, t) {
       closeMenu();
       closeDropAsk();
-      state.dropAsk = { seq: ++overlaySeq, task: t, btn: btn };
+      state.dropAsk = { seq: ++overlaySeq, task: t, btn: btn, left: tableLeft() };
       // Hold the poll for the same reason as the due menu: a redraw would
       // replace the row, and the icon, under the field.
       state.busy = true;
@@ -649,6 +649,7 @@
 
     function openMenu(chip) {
       state.menu = {
+        left: tableLeft(),
         seq: ++overlaySeq,
         kind: chip.classList.contains('review-chip') ? 'review' : 'due',
         taskId: chip.closest('.task').dataset.id,
@@ -669,6 +670,7 @@
       if (same) return;
       var long = t.state === 'long';
       state.menu = {
+        left: tableLeft(),
         seq: ++overlaySeq,
         kind: long ? 'review' : 'due',
         taskId: t.id,
@@ -693,12 +695,21 @@
     // The table scrolls sideways inside its own box on a narrow screen. The menu
     // and the drop-reason box sit outside it, placed once when they open, so a
     // sideways scroll would leave them away from their row: close them instead.
+    // A scroll event arrives after the scroll itself: focusing a button in the
+    // table (Esc puts the focus back on the row's button) scrolls the box, and
+    // its event can land after the next menu has opened. So each overlay keeps
+    // the box's position from when it opened, and only a move from there closes it.
     document.addEventListener('scroll', function (e) {
       var t = e.target;
       if (!t || !t.classList || !t.classList.contains('tbl-scroll')) return;
-      if (state.menu) closeMenu();
-      if (state.dropAsk) closeDropAsk();
+      if (state.menu && Math.abs(t.scrollLeft - state.menu.left) > 1) closeMenu();
+      if (state.dropAsk && Math.abs(t.scrollLeft - state.dropAsk.left) > 1) closeDropAsk();
     }, true);
+
+    function tableLeft() {
+      var box = document.querySelector('.tbl-scroll');
+      return box ? box.scrollLeft : 0;
+    }
 
     // "タスクを追加" and N open the add page (/add) in a dialog over the list:
     // the same form, due chips and detail as a bare `todo` opens. The list is

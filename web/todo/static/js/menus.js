@@ -1,8 +1,9 @@
 // 一覧に重なって出るもの（期限のメニュー・見直しのメニュー・削除の理由欄・通知）を Preact で描く。
 // ADR todo-0025。
 //
-//   DueMenu    期限の札を押すと出るメニュー（日付・ずらす・期限なし・いつかにする）
-//   ReviewMenu 長期の行の「次に見る日」のメニュー
+//   Calendar   メニューの中に最初から出す月のカレンダー（日を押すとその日にする）
+//   DueMenu    期限の札を押すと出るメニュー（カレンダー・ずらす・期限なし・いつかにする）
+//   ReviewMenu 長期の行の「次に見る日」のメニュー（同じカレンダー）
 //   DropAsk    ごみ箱の横に出る「やめる理由」の欄
 //   Flash      したことの通知と、元に戻す・見るの導線（失敗の表示も同じ場所）
 //
@@ -72,15 +73,15 @@
   // ---- 期限と見直しのメニュー ----
 
   function Item(p) {
-    return html`<button type="button" class=${'dm-item' + (p.cls ? ' ' + p.cls : '')} role="menuitem"
+    return html`<button type="button" class=${'dm-item' + (p.cls ? ' ' + p.cls : '')}
       onClick=${p.run}><span>${p.label}</span>${p.hint ? html`<span class="dm-hint">${p.hint}</span>` : null}</button>`;
   }
 
   // Menu is the box both menus share: the keys, the place, and the first
   // item taking the focus.
   //   Escape       closes and returns the focus to the chip
-  //   ↑ ↓          move between the fields and items (not inside the date field,
-  //                where the arrows step the date)
+  //   ↑ ↓          move between the items outside the calendar (inside it the
+  //                arrows move the day: Calendar's own keys)
   //   Enter, Space the item's own click runs; the row must not toggle
   function Menu(p) {
     var ctx = p.ctx;
@@ -91,14 +92,15 @@
     // the page would scroll the window to it.
     var placedAt = !!placed[1];
     useLayoutEffect(function () {
-      var first = placedAt && ref.current.querySelector('.dm-item');
+      // The calendar's day to start from (the current date, or today), else the first item.
+      var first = placedAt && (ref.current.querySelector('.cal-day[tabindex="0"]') || ref.current.querySelector('.dm-item'));
       if (first) first.focus();
     }, [placedAt]);
 
     function onKeyDown(e) {
       if (composing(e)) return;
       var box = ref.current;
-      var items = Array.prototype.slice.call(box.querySelectorAll('input, button:not([disabled])'));
+      var items = Array.prototype.slice.call(box.querySelectorAll('.dm-item:not([disabled]), .cal-nav button, .cal-day[tabindex="0"]'));
       var at = items.indexOf(document.activeElement);
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -106,8 +108,8 @@
         ctx.closeMenu();
         m.chip.focus();
       } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        // Inside the date field the arrows step the date; leave them alone.
-        if (document.activeElement === box.querySelector('input')) return;
+        // Inside the calendar the arrows move the day (Calendar handles them).
+        if (document.activeElement.classList.contains('cal-day')) return;
         e.preventDefault();
         e.stopPropagation();
         var step = e.key === 'ArrowDown' ? 1 : -1;
@@ -117,17 +119,118 @@
       }
     }
 
-    return html`<div ref=${ref} class="due-menu" role="menu" aria-label=${p.label} style=${placed[1]}
+    return html`<div ref=${ref} class="due-menu" role="dialog" aria-label=${p.label} style=${placed[1]}
       onKeyDown=${onKeyDown}>${p.children}</div>`;
   }
 
-  // DateField is the menu's date input. It keeps its own text (uncontrolled):
-  // a half-typed date is not a value, and a draw must not wipe it.
-  function DateField(p) {
+  var WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+  function parseYmd(v) { return new Date(v + 'T00:00:00'); }
+
+  // dueDays is the set of days some open task is due on, from the board.
+  function dueDays(board) {
+    var seen = {};
+    ['queue', 'long', 'waiting', 'someday'].forEach(function (k) {
+      ((board && board[k]) || []).forEach(function (t) { if (t.due) seen[t.due] = true; });
+    });
+    return seen;
+  }
+
+  // Calendar is the month the menus show from the start, in place of the
+  // browser's date field (ADR todo-0029). It is a grid of day buttons; the one
+  // holding the focus is the only one in the tab order (roving tabindex), and
+  // the arrows move it. It keeps its own state: the focused day (the month
+  // shown is that day's month).
+  //   value     the current date, or ''. The month opens on it, and it is filled
+  //   today     the board's today (a framed day); scopeDays reaches this week's Sunday
+  //   marks     the days some task is due on (a small dot)
+  //   onPick    called with YYYY-MM-DD when a day is pressed (or Enter / Space)
+  function Calendar(p) {
+    var st = useState(p.value || p.today);
+    var focus = st[0];
+    var setFocus = st[1];
     var ref = useRef(null);
-    useLayoutEffect(function () { ref.current.value = p.value; }, []);
-    return html`<input ref=${ref} type="date" class="due-input" aria-label=${p.label}
-      onChange=${function (e) { p.onPick(e.target.value); }} />`;
+    var moved = useRef(false); // a key moved the day: the focus follows it once drawn
+
+    useLayoutEffect(function () {
+      if (!moved.current) return;
+      moved.current = false;
+      var b = ref.current.querySelector('[data-day="' + focus + '"]');
+      if (b) b.focus();
+    }, [focus]);
+
+    var f = parseYmd(focus);
+    var first = new Date(f.getFullYear(), f.getMonth(), 1);
+    var start = addDays(first, -first.getDay());
+    var scopeEnd = ymd(addDays(parseYmd(p.today), p.scopeDays));
+
+    // A month on or back keeps the day of the month where it can.
+    function inMonth(n) {
+      var last = new Date(f.getFullYear(), f.getMonth() + n + 1, 0).getDate();
+      return new Date(f.getFullYear(), f.getMonth() + n, Math.min(f.getDate(), last));
+    }
+    function go(d, byKey) {
+      moved.current = byKey;
+      setFocus(ymd(d));
+    }
+    var KEYS = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+    function onKeyDown(e) {
+      var step = KEYS[e.key];
+      var d = null;
+      if (step !== undefined) d = addDays(f, step);
+      else if (e.key === 'PageUp') d = inMonth(-1);
+      else if (e.key === 'PageDown') d = inMonth(1);
+      if (!d) return;
+      e.preventDefault();
+      e.stopPropagation();
+      go(d, true);
+    }
+
+    var rows = [];
+    for (var w = 0; w < 6; w++) {
+      var cells = [];
+      for (var c = 0; c < 7; c++) {
+        var d = addDays(start, w * 7 + c);
+        cells.push(Day({ d: d, c: c, f: f, focus: focus, p: p, scopeEnd: scopeEnd }));
+      }
+      rows.push(html`<div class="cal-row" role="row" key=${w}>${cells}</div>`);
+    }
+
+    return html`<div ref=${ref} class="cal">
+      <div class="cal-nav">
+        <button type="button" aria-label="前の月" onClick=${function () { go(inMonth(-1), false); }}>‹</button>
+        <span class="cal-title" aria-live="polite">${f.getFullYear() + '年 ' + (f.getMonth() + 1) + '月'}</span>
+        <button type="button" aria-label="次の月" onClick=${function () { go(inMonth(1), false); }}>›</button>
+      </div>
+      <div class="cal-grid" role="grid" aria-label=${f.getFullYear() + '年' + (f.getMonth() + 1) + '月'} onKeyDown=${onKeyDown}>
+        <div class="cal-row cal-head" role="row">${WEEKDAYS.map(function (n, i) {
+          return html`<span key=${n} role="columnheader" class=${'cal-wd dow' + i}>${n}</span>`;
+        })}</div>
+        ${rows}
+      </div>
+      <div class="cal-legend">
+        <span><i class="lg-today"></i>今日</span>
+        <span><i class="lg-scope"></i>今週</span>
+        <span><i class="lg-dot"></i>期限のあるタスク</span>
+      </div>
+    </div>`;
+  }
+
+  // Day is one day button of the calendar.
+  function Day(o) {
+    var d = o.d;
+    var key = ymd(d);
+    var isToday = key === o.p.today;
+    var isCur = key === o.p.value;
+    var cls = 'cal-day dow' + o.c + (d.getMonth() !== o.f.getMonth() ? ' out' : '')
+      + (isToday ? ' today' : '') + (isCur ? ' cur' : '')
+      + (key >= o.p.today && key <= o.scopeEnd ? ' scope' : '')
+      + (o.p.marks[key] ? ' has' : '');
+    var label = (d.getMonth() + 1) + '月' + d.getDate() + '日（' + WEEKDAYS[d.getDay()] + '）'
+      + (isToday ? ' 今日' : '') + (isCur ? ' 今の日付' : '');
+    return html`<span role="gridcell" key=${key}><button type="button" class=${cls} data-day=${key} aria-label=${label}
+      aria-pressed=${String(isCur)} tabindex=${key === o.focus ? 0 : -1}
+      onClick=${function () { o.p.onPick(key); }}><span>${d.getDate()}</span><i aria-hidden="true"></i></button></span>`;
   }
 
   function DueMenu(p) {
@@ -152,7 +255,9 @@
     }
 
     var base = shiftBase(current);
-    var steps = [['+1週間', addDays(base, 7)], ['+2週間', addDays(base, 14)], ['+1ヶ月', addMonths(base, 1)]];
+    var steps = [['+1日', addDays(base, 1)], ['+3日', addDays(base, 3)], ['+1週間', addDays(base, 7)],
+      ['+2週間', addDays(base, 14)], ['+1ヶ月', addMonths(base, 1)]];
+    var board = ctx.state.board || {};
     // A long-run task is not shelved: it is already out of the queue.
     var last = [
       current ? html`<${Item} key="clear" label="期限なし" cls="dm-clear" run=${function () { setDue('', '期限を外した'); }} />` : null,
@@ -162,18 +267,19 @@
 
     return html`<${Menu} ctx=${ctx} menu=${m} label="期限">
       <div class="dm-sec">
-        <div class="dm-label">期限</div>
-        <${DateField} value=${current} label="期限の日付" onPick=${function (v) {
-          if (!v || v === current) return;
-          setDue(v, '期限を ' + shortDate(new Date(v + 'T00:00:00')) + ' にした');
-        }} />
+        <${Calendar} value=${current} today=${board.today || ymd(new Date())} scopeDays=${board.scope_days || 0}
+          marks=${dueDays(board)} onPick=${function (v) {
+            // The same date: nothing to change, so only the menu goes.
+            if (v === current) { ctx.closeMenu(); return; }
+            setDue(v, '期限を ' + shortDate(parseYmd(v)) + ' にした');
+          }} />
       </div>
       <div class="dm-sec">
         <div class="dm-label">${'後ろにずらす（' + shortDate(base) + ' から）'}</div>
-        ${steps.map(function (o) {
-          return html`<${Item} key=${o[0]} label=${o[0]} hint=${shortDate(o[1])}
+        <div class="dm-shifts dm-shifts5">${steps.map(function (o) {
+          return html`<${Item} key=${o[0]} cls="dm-shift" label=${o[0]} hint=${shortDate(o[1])}
             run=${function () { setDue(ymd(o[1]), '期限を ' + shortDate(o[1]) + ' にずらした'); }} />`;
-        })}
+        })}</div>
       </div>
       ${last.length ? html`<div class="dm-sec">${last}</div>` : null}
     <//>`;
@@ -199,14 +305,14 @@
 
     return html`<${Menu} ctx=${ctx} menu=${m} label="次に見る日">
       <div class="dm-sec">
-        <div class="dm-label">次に見る日</div>
-        <${DateField} value=${m.current} label="次に見る日の日付" onPick=${function (v) { if (v) setReview(v); }} />
+        <${Calendar} value=${m.current} today=${ymd(base)} scopeDays=${(board && board.scope_days) || 0}
+          marks=${dueDays(board)} onPick=${setReview} />
       </div>
       <div class="dm-sec">
         <div class="dm-label">${'今日（' + shortDate(base) + '）から'}</div>
-        ${steps.map(function (o) {
-          return html`<${Item} key=${o[0]} label=${o[0]} hint=${shortDate(o[1])} run=${function () { setReview(ymd(o[1])); }} />`;
-        })}
+        <div class="dm-shifts">${steps.map(function (o) {
+          return html`<${Item} key=${o[0]} cls="dm-shift" label=${o[0]} hint=${shortDate(o[1])} run=${function () { setReview(ymd(o[1])); }} />`;
+        })}</div>
       </div>
     <//>`;
   }
