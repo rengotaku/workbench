@@ -40,7 +40,7 @@ func (a *app) addTaskDue(t *testing.T, name, due string) string {
 	return fmt.Sprint(task["id"])
 }
 
-// What the list's own controls do: scope, folds, grouping, the due menu, drag
+// What the list's own controls do: folds, grouping, the due menu, drag
 // and drop (cancelled and dropped), the checkbox, the trash, resuming a waiting
 // task and a long-run task's add-child button.
 func TestTodoListControls(t *testing.T) {
@@ -55,13 +55,11 @@ func TestTodoListControls(t *testing.T) {
 	p := newPage(t, a, "/")
 	p.until("rows", `document.querySelectorAll('#queue .task').length === 3`)
 
-	// Scope buttons: one is pressed; 指定 shows its date field.
-	p.click(`[data-scope="2weeks"]`)
-	p.until("2weeks pressed", `document.querySelector('[data-scope="2weeks"]').getAttribute('aria-pressed') === 'true' && document.querySelector('[data-scope="week"]').getAttribute('aria-pressed') === 'false'`)
-	p.click(`[data-scope="custom"]`)
-	p.until("date field shown", `!document.getElementById('scope-until-wrap').hidden`)
-	p.click(`[data-scope="week"]`)
-	p.until("date field hidden", `document.getElementById('scope-until-wrap').hidden`)
+	// The scope has no control: the header shows no scope buttons or date
+	// field, and the list reads the calendar week.
+	if n := p.num(`document.querySelectorAll('[data-scope], #scope-until').length`); n != 0 {
+		t.Errorf("scope controls on the screen = %v, want none", n)
+	}
 
 	// A fold opens, and grouping by topic toggles.
 	p.click(`#long-fold`)
