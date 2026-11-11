@@ -84,7 +84,7 @@ func openSecond(t *testing.T, a *app) (first, second string, p *page) {
 	p = newPage(t, a, "/")
 	p.until("3 rows", `document.querySelectorAll('#queue .task').length === 3`)
 	p.eval(`document.querySelectorAll('#queue .task')[1].click()`, nil)
-	p.until("second open", `document.querySelectorAll('.task.row-open').length === 1 && document.querySelector('.task.row-open .txt.live')`)
+	p.until("second open", `document.querySelectorAll('.task.row-open').length === 1 && document.querySelector('#detail .d-name .txt.live')`)
 	return first, second, p
 }
 
@@ -130,13 +130,13 @@ func TestTodoListPollReplyKeepsTheStatusFieldBeingTyped(t *testing.T) {
 func TestTodoListPollReplyKeepsTheNameBeingTyped(t *testing.T) {
 	a := startApp(t)
 	first, _, p := openSecond(t, a)
-	name := `document.querySelector('.task.row-open .txt.live')`
+	name := `document.querySelector('#detail .d-name .txt.live')`
 	p.eval(name+`.__mark = 'same'`, nil)
 
 	g := p.holdList(fetch.RequestStageRequest)
 	a.addTask(t, "fourth")
 	g.waitHeld(t, 10*time.Second)
-	p.run(chromedp.SendKeys(`.task.row-open .txt.live`, "XYZ", chromedp.ByQuery))
+	p.run(chromedp.SendKeys(`#detail .d-name .txt.live`, "XYZ", chromedp.ByQuery))
 	// The row above the open one goes: without keys by task id, the open
 	// row's element would be taken over by its neighbour.
 	a.done(t, first)
@@ -175,7 +175,7 @@ func TestTodoListFieldRemovedWhileFocusedReleasesThePoll(t *testing.T) {
 		}
 		return true;
 	})()`, nil)
-	a.done(t, second) // the open row's own task: its row leaves the queue
+	a.remove(t, second) // the open task is gone: the panel closes with it
 	g.release()
 	p.until("the open row gone", `document.querySelectorAll('.task.row-open').length === 0 && `+queueNames+`.includes('fourth')`)
 	if got := p.str(`String(!!document.getElementById('status-` + second + `'))`); got != "false" {
@@ -201,12 +201,12 @@ func TestTodoListHeldPanelCatchesUpWhenTheFieldIsLeft(t *testing.T) {
 	a.patch(t, second, map[string]any{"links": []map[string]any{{"url": "https://example.com/added", "label": "added"}}})
 	g.release()
 	p.until("list redrawn", queueHas(4, "fourth"))
-	if n := p.num(`document.querySelectorAll('.task.row-open .link-row').length`); n != 0 {
+	if n := p.num(`document.querySelectorAll('#detail .link-row').length`); n != 0 {
 		t.Fatalf("link rows while the field is held = %v, want the panel kept as it was", n)
 	}
 
 	p.eval(`document.activeElement.blur()`, nil)
-	p.until("the added URL shown", `document.querySelectorAll('.task.row-open .link-row').length === 1`)
+	p.until("the added URL shown", `document.querySelectorAll('#detail .link-row').length === 1`)
 }
 
 // 見直した is drawn disabled while its request is out and enabled again after

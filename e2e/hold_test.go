@@ -149,3 +149,20 @@ func (a *app) done(t *testing.T, id string) {
 	t.Helper()
 	a.post(t, "/api/tasks/"+id+"/done", map[string]any{})
 }
+
+// remove deletes a task through the API (a change made elsewhere).
+func (a *app) remove(t *testing.T, id string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodDelete, a.base+"/api/tasks/"+id, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE %s: %v", id, err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode >= 300 {
+		t.Fatalf("DELETE %s = %d", id, res.StatusCode)
+	}
+}

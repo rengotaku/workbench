@@ -5,17 +5,16 @@
 
   // The markup of the screen. It used to be templates/index.html; the router
   // shows every screen in one page, so the screen draws itself when first shown.
-  // The detail box only reads: it follows the row under the pointer. On a
-  // narrow screen it is gone and opening a row is the way in (opening works on
-  // a wide screen too).
+  // The detail is one panel laid over the right of the list, shown only while a
+  // row is open (ADR todo-0030). It is outside .panes, so the list takes the width.
   var MARKUP = [
     '<div class="wrap">',
     '  <div class="panes">',
     '  <nav class="side" aria-label="todo のナビゲーション"></nav>',
     '  <div class="app"></div>',
-    '  <aside class="detail" id="detail" aria-live="polite"></aside>',
     '  <datalist id="todo-topics"></datalist>',
     '  </div>',
+    '  <aside class="dpanel" id="detail" aria-label="タスクの詳細" hidden></aside>',
     '',
     '  <div class="legend">',
     '    <span class="l-over"><i></i>期限超過</span>',
@@ -88,13 +87,12 @@
       // The sidebar is open or folded (kept in localStorage).
       sideOpen: true,
       board: null,
-      openId: null, // only one row is open at a time; another row closes it
+      openId: null, // the task whose detail panel is open; another row replaces it
       doneOpen: false, // the completed list is a record, not a queue
       dropOpen: false, // so is the list of what was given up on
       somedayOpen: false, // and so is the shelf: closed by default, like done
       statusDrafts: {}, // unsent status text per task id; survives redraws
       reviewing: {}, // long-run task ids whose 見直した is in flight
-      shownId: null, // the task the detail box is showing; the pointer moves it
       revealId: null, // the task a link named; its section is unfolded on first load
       landedId: null, // the task just resumed; its row is tinted for a moment
       // The line left in the waiting list after 着手順へ戻す (list.js draws it):
@@ -260,10 +258,10 @@
       sidebar.render(sideEl, { board: shown, all: state.board, state: state, ctx: ctx });
       applyPreview();
       renderOverlays();
+      renderPanel();
       var b = state.board;
       if (!b) return;
       fillTopicList(b.topics || []);
-      refreshDetail();
     }
 
     // filterBoard is the board with only one topic's tasks in each section (the
@@ -295,19 +293,46 @@
       });
     }
 
-    // After a reload the box holds an older copy of the task. Redraw it from the
-    // fresh board, or fall back to the first task when it has none yet (the box
-    // should not open empty).
-    function refreshDetail() {
-      if (!el.detail) return;
+    // renderPanel draws the detail panel for the open task, from the fresh board.
+    // A task that is no longer on the board (deleted, or hidden from every
+    // section) closes the panel; one that moved to another section, 今週完了
+    // included, keeps it, so a task just completed can still be taken back.
+    function renderPanel() {
       var b = state.board;
-      if (!b) return;
-      var all = (b.queue || []).concat(b.long || [], b.waiting || [], b.someday || [], b.done || []);
-      if (all.length === 0) return;
-      var still = null;
-      all.forEach(function (t) { if (t.id === state.shownId) still = t; });
-      if (still) { showDetail(still); return; }
-      if (state.shownId === null) showDetail(all[0]);
+      var id = state.openId;
+      var t = null;
+      if (id && b) {
+        ['queue', 'long', 'waiting', 'someday', 'done'].forEach(function (k) {
+          (b[k] || []).forEach(function (x) { if (x.id === id) t = x; });
+        });
+        if (!t) state.openId = null;
+      }
+      if (id && !b) return; // the first reply is not here yet
+      el.detail.hidden = !t;
+      detail.renderPanel(el.detail, t, b ? b.revision : 0, ctx);
+    }
+
+    // openPanel opens the detail of a task and puts the caret in its name, so
+    // typing goes where the panel is. focusName is false for a link (#T007),
+    // which should not take the keyboard.
+    function openPanel(id, focusName) {
+      state.openId = id;
+      render();
+      if (!focusName) return;
+      var n = el.detail.querySelector('.d-name .txt.live');
+      if (n) n.focus({ preventScroll: true });
+    }
+
+    // closePanel closes it. With returnFocus the keyboard goes back to the row
+    // that was open (× and Esc), so it does not fall to the page.
+    function closePanel(returnFocus) {
+      var id = state.openId;
+      if (!id) return;
+      state.openId = null;
+      render();
+      if (!returnFocus) return;
+      var row = document.querySelector('.task[data-id="' + id + '"]');
+      if (row) row.focus({ preventScroll: true });
     }
 
     // openLongTask opens the long-run fold and the task's row in it.
@@ -348,7 +373,7 @@
     // second button). Same shape as detail.js: close the row, reload, say so.
     function waitTask(t, to, note) {
       return request('POST', '/api/tasks/' + encodeURIComponent(t.id) + '/wait', { to: to, note: note })
-        .then(function () { closeRow(t.id); return load().then(function () { flash('待ちへ移した'); }); });
+        .then(function () { return load().then(function () { flash('待ちへ移した'); }); });
     }
 
     // openDropAsk hangs a reason field off the trash icon, the way the due menu
@@ -378,27 +403,8 @@
       });
     }
 
-    // showDetail fills the box beside the list (detail.js draws it). It reads;
-    // every change is still made in the row, so the box can disappear at narrow
-    // widths without taking any operation with it. The box keeps the last task
-    // it was given: letting it empty when the pointer leaves the list would
-    // blank it mid-read, which is when it is most in use.
-    function showDetail(t) {
-      if (!el.detail) return;
-      // Typing in the box's topic field: another row under the pointer must not
-      // swap the box (and the field) away mid-edit.
-      if (el.detail.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
-      // Nor while a menu opened from the box is out: it belongs to this task.
-      if (state.menu && state.menu.fromSide && t.id !== state.menu.taskId) return;
-      state.shownId = t.id;
-      detail.renderSide(el.detail, t, state.board ? state.board.revision : 0, ctx);
-    }
-
     function isOpen(id) { return state.openId === id; }
 
-    // closeRow folds a row whose task changed state. The task moves to another
-    // section, often a folded one, where an open panel would wait unseen.
-    function closeRow(id) { if (state.openId === id) state.openId = null; }
 
     // landed tells where a resumed task went. It goes to the end of the queue,
     // which may be below the fold or in the closed スコープ外 section, so the
@@ -591,29 +597,15 @@
         return;
       }
 
-      // How opening and editing live together:
-      //   closed row, anywhere        → open it (the name is not editable yet)
-      //   open row, the name          → put the caret in it; do not close
-      //   open row, panel / checkbox  → that action only
-      //   open row, anywhere else     → close it
-      //   another row                 → that one opens, this one closes
+      // A row opens the detail panel (the name there is edited, not the row's);
+      // another row replaces it, and the same row again closes it.
       var row = ev.target.closest('.task.openable');
       if (!row) return;
-      if (ev.target.closest('.check') || ev.target.closest('.due-input') ||
-          ev.target.closest('.panel')) {
-        return;
-      }
+      if (ev.target.closest('.check')) return;
 
       var id = row.dataset.id;
-      if (!isOpen(id)) {
-        state.openId = id; // opening does not place a caret: opening is reading
-        render();
-        return;
-      }
-      if (ev.target.closest('.txt')) return; // the name is being edited
-
-      state.openId = null;
-      render();
+      if (isOpen(id)) { closePanel(false); return; }
+      openPanel(id, true);
     });
 
     // Enter / Space open a row from the keyboard.
@@ -633,16 +625,16 @@
       }
       if (ev.key === 'Escape') {
         // First Escape leaves the field (which saves it); the second closes the
-        // row. The field's own handler stops the event while it has focus.
-        if (state.openId) { state.openId = null; render(); }
+        // panel. The field's own handler stops the event while it has focus.
+        if (state.openId) closePanel(true);
         return;
       }
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
       var row = ev.target.closest && ev.target.closest('.task.openable');
       if (!row || row !== ev.target) return;
       ev.preventDefault();
-      state.openId = isOpen(row.dataset.id) ? null : row.dataset.id;
-      render();
+      if (isOpen(row.dataset.id)) closePanel(false);
+      else openPanel(row.dataset.id, true);
     });
 
     // onCheck ticks a task done, or puts a done one back when it is unticked: a
@@ -653,7 +645,7 @@
       var path = was ? '/done' : '/reopen';
       box.disabled = true;
       request('POST', '/api/tasks/' + encodeURIComponent(t.id) + path)
-        .then(function () { closeRow(t.id); return load(); })
+        .then(function () { return load(); })
         .catch(function (err) {
           box.checked = !was;
           box.disabled = false;
@@ -685,7 +677,7 @@
 
     // toggleSideMenu opens the same menu from the box beside the list: the 期限
     // button there stands in for the row's chip (a long-run task's opens the
-    // review menu). The box keeps its task while the menu is open (showDetail).
+    // review menu).
     function toggleSideMenu(t, btn) {
       var same = state.menu && state.menu.chip === btn;
       closeMenu();
@@ -775,10 +767,9 @@
 
     function toggleTopic(name) {
       state.topicFilter = state.topicFilter === name ? null : name;
-      // The open row and the task in the box may now be hidden: let go of them
-      // rather than keep acting on a task the list no longer shows.
+      // The open task may now be hidden: let go of it rather than keep acting
+      // on a task the list no longer shows.
       state.openId = null;
-      state.shownId = null;
       render();
     }
 
@@ -1035,7 +1026,6 @@
           settleDrag(d);
           // Reordering within a section keeps the row open; moving it across one
           // changes its state, as the buttons do.
-          if (crossed || due) closeRow(id);
           return load().then(function () {
             if (due) flash('期限を ' + monthDay(due) + ' にした');
             else if (crossed) flash(inBand ? 'フォーカスに入れた' : 'フォーカスから外した');
@@ -1075,11 +1065,10 @@
     // What list.js calls back into: the parts of the list that stay here.
     var ctx = {
       state: state,
-      showDetail: showDetail,
       // What the open row's name and panel (detail.js) call back into.
       load: load,
       flash: flash,
-      closeRow: closeRow,
+      closePanel: closePanel,
       landed: landed,
       waitIndex: waitIndex,
       showRow: showRow,

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The box beside the list lays the task out as fields. Its 期限 button opens
+// The detail panel lays the task out as fields. Its 期限 button opens
 // the due menu; for a waiting task the button is shut. The clicks are made from
 // the page's script: the table scrolls sideways at this width, and a real click
 // that scrolls would close the menu it opens.
@@ -18,10 +18,7 @@ func TestTodoSideFields(t *testing.T) {
 	p := newPage(t, a, "/")
 	p.until("rows", `document.querySelectorAll('#queue .task').length === 1`)
 
-	show := func(id string) {
-		p.eval(`document.querySelector('.task[data-id="`+id+`"]').dispatchEvent(new MouseEvent('mouseenter'))`, nil)
-		p.until("box shows "+id, `document.querySelector('#detail .d-id') && document.querySelector('#detail .d-id').textContent === '`+id+`'`)
-	}
+	show := func(id string) { p.openRow(id) }
 
 	// An open-ended queue task: the name large, the fields named, the due
 	// button warns and opens the menu.
@@ -37,8 +34,6 @@ func TestTodoSideFields(t *testing.T) {
 	}
 	p.eval(`document.querySelector('#detail .d-due').click()`, nil)
 	p.until("due menu open", `!!document.querySelector('.due-menu') && document.querySelector('#detail .d-due').getAttribute('aria-expanded') === 'true'`)
-	// Another row under the pointer must not swap the box while the menu is open.
-	p.eval(`document.querySelector('.task[data-id="`+open+`"]').dispatchEvent(new MouseEvent('mouseenter'))`, nil)
 	p.esc()
 	p.until("due menu closed", `!document.querySelector('.due-menu')`)
 
@@ -59,7 +54,7 @@ func TestTodoSideFields(t *testing.T) {
 		t.Errorf("a due menu is open for a waiting task")
 	}
 	// The moves for a waiting task sit under the fields.
-	if got := p.str(`Array.from(document.querySelectorAll('#detail .d-moves button')).map(b => b.textContent).join(',')`); got != "着手順へ戻す,いつかにする" {
+	if got := p.str(`Array.from(document.querySelectorAll('#detail .d-moves button')).map(b => b.textContent).join(',')`); got != "着手順へ戻す,いつかにする,子を追加" {
 		t.Errorf("moves = %q", got)
 	}
 }

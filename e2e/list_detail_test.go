@@ -58,15 +58,17 @@ func (a *app) untilTask(t *testing.T, id, what string, check func(task map[strin
 func (p *page) openRow(id string) {
 	p.t.Helper()
 	p.until("row "+id, `document.querySelector('.task[data-id="`+id+`"]')`)
-	p.eval(`document.querySelector('.task[data-id="`+id+`"]').click()`, nil)
-	p.until("row "+id+" open", `document.querySelector('.task[data-id="`+id+`"].row-open .panel .panel-actions')`)
+	// A press on the open row would close it: an operation that moved the task
+	// left its panel open, so press only when the panel is for another task.
+	p.eval(`(() => { const d = document.querySelector('#detail .d-id'); if (!d || d.textContent !== '`+id+`') document.querySelector('.task[data-id="`+id+`"]').click(); return true; })()`, nil)
+	p.until("row "+id+" open", `document.querySelector('.task[data-id="`+id+`"].row-open') && !!document.querySelector('#detail .d-id') && document.querySelector('#detail .d-id').textContent === '`+id+`'`)
 }
 
-// clickButton presses the button with this text in the open row's panel.
+// clickButton presses the button with this text in the detail panel.
 func (p *page) clickButton(id, text string) {
 	p.t.Helper()
-	p.until("button "+text, `Array.from(document.querySelectorAll('.task[data-id="`+id+`"] .panel button')).some(b => b.textContent === '`+text+`')`)
-	p.eval(`Array.from(document.querySelectorAll('.task[data-id="`+id+`"] .panel button')).find(b => b.textContent === '`+text+`').click()`, nil)
+	p.until("button "+text, `Array.from(document.querySelectorAll('#detail button')).some(b => b.textContent === '`+text+`')`)
+	p.eval(`Array.from(document.querySelectorAll('#detail button')).find(b => b.textContent === '`+text+`').click()`, nil)
 }
 
 func str(task map[string]any, key string) string {
@@ -88,25 +90,25 @@ func TestTodoDetailFieldsKeepTypingAcrossAReply(t *testing.T) {
 		sel  string
 		prop string // the property holding the typed text
 	}{
-		{name: "name", sel: `.task.row-open .txt.live`, prop: "textContent"},
-		{name: "detail", sel: `.task.row-open .live.detail`, prop: "textContent"},
-		{name: "topic", sel: `.task.row-open .topic-input`, prop: "value"},
-		{name: "status", sel: `.task.row-open .status-input`, prop: "value"},
+		{name: "name", sel: `#detail .d-name .txt.live`, prop: "textContent"},
+		{name: "detail", sel: `#detail .live.detail`, prop: "textContent"},
+		{name: "topic", sel: `#detail .topic-input`, prop: "value"},
+		{name: "status", sel: `#detail .status-input`, prop: "value"},
 		{
 			name: "related URL",
 			prep: func(p *page) {
 				// Adding a row focuses it, which holds the poll: leave it first.
-				p.click(`.task.row-open .link-add`)
+				p.click(`#detail .link-add`)
 				p.eval(`document.activeElement.blur()`, nil)
 			},
-			sel: `.task.row-open .link-input`, prop: "value",
+			sel: `#detail .link-input`, prop: "value",
 		},
 		{
 			name: "wait-to",
 			prep: func(p *page) {
-				p.eval(`Array.from(document.querySelectorAll('.task.row-open .panel button')).find(b => b.textContent === '待ちにする').click()`, nil)
+				p.eval(`Array.from(document.querySelectorAll('#detail button')).find(b => b.textContent === '待ちにする').click()`, nil)
 			},
-			sel: `.task.row-open input[aria-label="渡した相手"]`, prop: "value",
+			sel: `#detail input[aria-label="渡した相手"]`, prop: "value",
 		},
 	}
 	for _, c := range cases {
@@ -160,11 +162,12 @@ func TestTodoDetailActions(t *testing.T) {
 	other := a.addTask(t, "other task")
 	p := newPage(t, a, "/")
 	p.until("rows", `document.querySelectorAll('#queue .task').length === 5`)
-	row := func(id string) string { return `.task[data-id="` + id + `"]` }
+	// Every field is in the detail panel, which shows the task opened last.
+	row := func(id string) string { return `#detail` }
 
 	// Edit the name, the detail and the topic; add a status line.
 	p.openRow(main)
-	p.run(chromedp.SendKeys(row(main)+` .txt.live`, "XYZ", chromedp.ByQuery))
+	p.run(chromedp.SendKeys(`#detail .d-name .txt.live`, "XYZ", chromedp.ByQuery))
 	p.eval(`document.activeElement.blur()`, nil)
 	a.untilTask(t, main, "the name", func(m map[string]any) bool { return strings.Contains(str(m, "name"), "XYZ") })
 
@@ -193,7 +196,7 @@ func TestTodoDetailActions(t *testing.T) {
 		links, _ := m["links"].([]any)
 		return len(links) == 1
 	})
-	p.eval(`document.querySelector('`+row(main)+` .link-remove').click()`, nil)
+	p.eval(`document.querySelector('`+`#detail .link-remove').click()`, nil)
 	a.untilTask(t, main, "the URL removed", func(m map[string]any) bool {
 		links, _ := m["links"].([]any)
 		return len(links) == 0
@@ -201,12 +204,12 @@ func TestTodoDetailActions(t *testing.T) {
 
 	// The copy button carries the task's address; 子を追加 opens the add
 	// dialog; the parent picker ties the task to another.
-	p.until("the copy button", `Array.from(document.querySelectorAll('`+row(main)+` .panel button')).some(b => b.textContent === 'URLをコピー' && b.title.includes('#`+main+`'))`)
+	p.until("the copy button", `Array.from(document.querySelectorAll('#detail button')).some(b => b.textContent === 'URLをコピー' && b.title.includes('#`+main+`'))`)
 	p.clickButton(main, "子を追加")
 	p.until("add dialog", `document.querySelector('dialog[open]')`)
 	p.esc()
 	p.until("add dialog closed", `!document.querySelector('dialog[open]')`)
-	p.eval(`(() => { const s = document.querySelector('`+row(main)+` .parent-pick select'); s.value = '`+other+`'; s.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`, nil)
+	p.eval(`(() => { const s = document.querySelector('#detail .parent-pick select'); s.value = '`+other+`'; s.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`, nil)
 	a.untilTask(t, main, "the parent", func(m map[string]any) bool { return str(m, "parent") == other })
 
 	// 待ちにする asks who holds the ball; 渡した sends it. From waiting the
@@ -270,13 +273,12 @@ func TestTodoDetailReasonEditor(t *testing.T) {
 	p.until("moved to the top", queueNames+`[0] === 'three'`)
 
 	p.openRow(third)
-	row := `.task[data-id="` + third + `"]`
-	p.until("the reason offer", `document.querySelector('`+row+` .reason-link') && !document.querySelector('`+row+` .reason-link').hidden`)
-	p.eval(`document.querySelector('`+row+` .reason-link').click()`, nil)
-	p.until("the reason field", `document.activeElement === document.querySelector('`+row+` .panel-actions input[aria-label="理由"]')`)
-	p.run(chromedp.SendKeys(row+` .panel-actions input[aria-label="理由"]`, "due soon", chromedp.ByQuery))
+	p.until("the reason offer", `document.querySelector('#detail .reason-link') && !document.querySelector('#detail .reason-link').hidden`)
+	p.eval(`document.querySelector('#detail .reason-link').click()`, nil)
+	p.until("the reason field", `document.activeElement === document.querySelector('#detail input[aria-label="理由"]')`)
+	p.run(chromedp.SendKeys(`#detail input[aria-label="理由"]`, "due soon", chromedp.ByQuery))
 	p.key(kb.Enter)
-	p.until("the offer gone", `!document.querySelector('`+row+` .panel-actions input[aria-label="理由"]') && document.querySelector('`+row+` .reason-link').hidden`)
+	p.until("the offer gone", `!document.querySelector('#detail input[aria-label="理由"]') && document.querySelector('#detail .reason-link').hidden`)
 
 	res, err := http.Get(a.base + "/api/tasks/" + third + "/context")
 	if err != nil {
@@ -308,13 +310,13 @@ func TestTodoDetailReasonEditor(t *testing.T) {
 func TestTodoDetailExternalChangeDoesNotOverwriteTypedText(t *testing.T) {
 	a := startApp(t)
 	_, second, p := openSecond(t, a)
-	field := `document.querySelector('.task.row-open .live.detail')`
+	field := `document.querySelector('#detail .live.detail')`
 	p.until("detail field", field)
 
 	g := p.holdList(fetch.RequestStageRequest)
 	a.addTask(t, "fourth")
 	g.waitHeld(t, 10*time.Second)
-	p.run(chromedp.SendKeys(`.task.row-open .live.detail`, "typed", chromedp.ByQuery))
+	p.run(chromedp.SendKeys(`#detail .live.detail`, "typed", chromedp.ByQuery))
 	a.patch(t, second, map[string]any{"detail": "from elsewhere"})
 	g.release()
 	p.until("list redrawn", queueHas(4, "fourth"))
@@ -332,7 +334,7 @@ func TestTodoDetailExternalChangeDoesNotOverwriteTypedText(t *testing.T) {
 func TestTodoDetailParentPickerWorksAgainAndAfterAFailure(t *testing.T) {
 	a := startApp(t)
 	first, second, p := openSecond(t, a)
-	sel := `.task.row-open .parent-pick select`
+	sel := `#detail .parent-pick select`
 	set := func(v string) {
 		p.eval(`(() => { const s = document.querySelector('`+sel+`'); s.value = '`+v+`'; s.dispatchEvent(new Event('change', {bubbles: true})); return true; })()`, nil)
 	}
@@ -381,8 +383,8 @@ func TestTodoDetailLinksTakeUpAnExternalChangeAfterASave(t *testing.T) {
 		return len(links)
 	}
 
-	p.click(`.task.row-open .link-add`)
-	p.run(chromedp.SendKeys(`.task.row-open .link-row:last-child .link-input`, "https://example.com/one one", chromedp.ByQuery))
+	p.click(`#detail .link-add`)
+	p.run(chromedp.SendKeys(`#detail .link-row:last-child .link-input`, "https://example.com/one one", chromedp.ByQuery))
 	p.key(kb.Enter)
 	a.untilTask(t, second, "the first URL", func(m map[string]any) bool { return linkCount(m) == 1 })
 
@@ -391,10 +393,10 @@ func TestTodoDetailLinksTakeUpAnExternalChangeAfterASave(t *testing.T) {
 		{"url": "https://example.com/elsewhere", "label": "elsewhere"},
 	}})
 	p.reload()
-	p.until("both URLs shown", `document.querySelectorAll('.task.row-open .link-row').length === 2`)
+	p.until("both URLs shown", `document.querySelectorAll('#detail .link-row').length === 2`)
 
-	p.click(`.task.row-open .link-add`)
-	p.run(chromedp.SendKeys(`.task.row-open .link-row:last-child .link-input`, "https://example.com/three three", chromedp.ByQuery))
+	p.click(`#detail .link-add`)
+	p.run(chromedp.SendKeys(`#detail .link-row:last-child .link-input`, "https://example.com/three three", chromedp.ByQuery))
 	p.key(kb.Enter)
 	a.untilTask(t, second, "three URLs", func(m map[string]any) bool { return linkCount(m) == 3 })
 	links, _ := a.task(t, second)["links"].([]any)
@@ -412,9 +414,9 @@ func TestTodoDetailTypedTextIsSavedWhenTheRowGoes(t *testing.T) {
 		check     func(m map[string]any) bool
 		name, sel string
 	}{
-		{func(m map[string]any) bool { return strings.Contains(str(m, "name"), "typed") }, "name", `.task.row-open .txt.live`},
-		{func(m map[string]any) bool { return str(m, "detail") == "typed" }, "detail", `.task.row-open .live.detail`},
-		{func(m map[string]any) bool { return str(m, "topic") == "typed" }, "topic", `.task.row-open .topic-input`},
+		{func(m map[string]any) bool { return strings.Contains(str(m, "name"), "typed") }, "name", `#detail .d-name .txt.live`},
+		{func(m map[string]any) bool { return str(m, "detail") == "typed" }, "detail", `#detail .live.detail`},
+		{func(m map[string]any) bool { return str(m, "topic") == "typed" }, "topic", `#detail .topic-input`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
